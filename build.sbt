@@ -1,4 +1,4 @@
-name := "uhu01"
+name := "innovative-solutions"
 
 version := "1.0"
 
