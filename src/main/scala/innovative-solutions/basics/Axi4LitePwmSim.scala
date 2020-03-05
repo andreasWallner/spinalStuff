@@ -47,7 +47,9 @@ class InteractiveAxiLite4Writer(axilite: AxiLite4, clockDomain: ClockDomain) {
 
     val resp = wresp.dequeue()
     if (resp != 0)
-      throw new RuntimeException(f"write of 0x$address%04x unsuccessful, status: $resp")
+      throw new RuntimeException(
+        f"write of 0x$address%04x unsuccessful, status: $resp"
+      )
   }
 
   val rresp = new Queue[(BigInt, BigInt)]
@@ -66,8 +68,10 @@ class InteractiveAxiLite4Writer(axilite: AxiLite4, clockDomain: ClockDomain) {
     clockDomain.waitActiveEdgeWhere(!rresp.isEmpty)
 
     val (value, resp) = rresp.dequeue()
-    if(resp != 0)
-      throw new RuntimeException(f"read of 0x$address%04x unsuccessful, status: $resp")
+    if (resp != 0)
+      throw new RuntimeException(
+        f"read of 0x$address%04x unsuccessful, status: $resp"
+      )
     value
   }
 }
@@ -76,7 +80,7 @@ object AxiLite4PwmSim {
   def main(args: Array[String]) {
     SimConfig.withWave
       .workspacePath("/mnt/c/work/tmp/sim")
-      .doSim(new AxiLite4Pwm(5)) { dut =>
+      .doSim(new AxiLite4Pwm(PwmGenerics(5, 1))) { dut =>
         dut.clockDomain.forkStimulus(period = 10)
         dut.clockDomain.waitRisingEdge(10)
         val writer =

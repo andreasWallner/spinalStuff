@@ -54,17 +54,17 @@ object PwmSim {
   def main(args: Array[String]) {
     var dut = SimConfig.withWave
       .workspacePath("/mnt/c/work/tmp/sim")
-      .compile(new Pwm(3))
+      .compile(new Pwm(PwmGenerics(3, 1)))
 
-    dut.doSim("constant levels") { dut =>
+    dut.doSim("constant levelss") { dut =>
       SimTimeout(200 * 10)
       val pwm_times = new Queue[PwmResult]
-      val decoder = PwmDetect(dut.io.pwm, 10, dut.clockDomain) { result =>
+      val decoder = PwmDetect(dut.io.pwms(0), 10, dut.clockDomain) { result =>
         println(f"${simTime()}: ${result}")
         pwm_times += result
       }
-      dut.io.level #= 0
-      dut.io.max_level #= 7
+      dut.io.levels(0) #= 0
+      dut.io.max_count #= 7
       dut.clockDomain.forkStimulus(period = 10)
 
       // if level is zero, we do not want any output
@@ -75,32 +75,32 @@ object PwmSim {
       pwm_times.clear()
       decoder.clear()
 
-      dut.io.level #= 1
+      dut.io.levels(0) #= 1
       dut.clockDomain.waitRisingEdgeWhere(pwm_times.size >= 3)
       assert(pwm_times.forall(_ == PwmCycle(10, 70)) == true)
 
       pwm_times.clear()
       decoder.clear()
 
-      dut.io.max_level #= 6
-      dut.io.level #= 7
+      dut.io.max_count #= 6
+      dut.io.levels(0) #= 7
       dut.clockDomain.waitRisingEdgeWhere(pwm_times.size >= 3)
       assert(pwm_times.forall(_ == PwmConstant(true)) == true)
     }
 
-    dut.doSim("level change") { dut =>
+    dut.doSim("levels change") { dut =>
       SimTimeout(200 * 10)
       val pwm_times = new Queue[PwmResult]
-      val decoder = PwmDetect(dut.io.pwm, 10, dut.clockDomain) { result =>
+      val decoder = PwmDetect(dut.io.pwms(0), 10, dut.clockDomain) { result =>
         println(f"${simTime()}: ${result}")
         pwm_times += result
       }
-      dut.io.level #= 0
-      dut.io.max_level #= 6
+      dut.io.levels(0) #= 0
+      dut.io.max_count #= 6
       dut.clockDomain.forkStimulus(period = 10)
 
       dut.clockDomain.waitRisingEdge(9)
-      dut.io.level #= 6
+      dut.io.levels(0) #= 6
       dut.clockDomain.waitRisingEdge(30)
       assert(pwm_times.forall(_ match {
         case PwmCycle(high, low) => high + low == 70
