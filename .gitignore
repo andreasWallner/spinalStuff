@@ -17,6 +17,7 @@ project/plugins/project/
 .scala_dependencies
 .worksheet
 .metals
+.bloop
 
 .idea
 out
@@ -36,6 +37,9 @@ bin/
 *.vcd
 !tester/src/test/resources/*.vhd
 
-
 simWorkspace/
 tmp/
+
+# Project folder
+project
+!project/build.properties
