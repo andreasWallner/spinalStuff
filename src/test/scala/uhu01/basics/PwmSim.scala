@@ -12,11 +12,14 @@ case class PwmCycle(high: Long, low: Long) extends PwmResult
 case class PwmDetect(pwm: Bool, period_limit: Long, clockDomain: ClockDomain)(
     report: (PwmResult) => Unit
 ) {
+  var lastState = pwm.toBoolean
+  
   var limit = period_limit
   var active = false
-  var lastState = pwm.toBoolean
+  
   var risingEdge: java.lang.Long = null
   var fallingEdge: java.lang.Long = null
+
   def fsm(): Unit = {
     limit = limit - 1
     if (limit == 0) {
@@ -52,9 +55,9 @@ case class PwmDetect(pwm: Bool, period_limit: Long, clockDomain: ClockDomain)(
 
 object PwmSim {
   def main(args: Array[String]) {
-    var dut = SimConfig.withWave
+    val dut = SimConfig.withWave
       .workspacePath("/mnt/c/work/tmp/sim")
-      .compile(new Pwm(PwmGenerics(3, 1)))
+      .compile(Pwm(PwmGenerics(3, 1)))
 
     dut.doSim("constant levelss") { dut =>
       SimTimeout(200 * 10)
