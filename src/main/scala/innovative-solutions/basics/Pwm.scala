@@ -13,19 +13,20 @@ case class Pwm(generics: PwmGenerics) extends Component {
   }
   val counter = Reg(UInt(generics.counterWidth bits)) init (0)
   val levelsLatched = Vec(Reg(UInt(generics.counterWidth bits)), generics.channelCnt)
-  val counter_next = UInt(generics.counterWidth bits)
-  //val pwmsRegistered = Vec(Reg(Bool), generics.channelCnt)
-
+  levelsLatched.foreach((l) => l init(0))
   
-  //io.pwms := pwmsRegistered
+  val pwmsNext = Vec(Bool, generics.channelCnt)
+  val pwmsRegs = RegNext(pwmsNext)
+  pwmsRegs.foreach((p) => p init(False))
+  io.pwms := pwmsRegs
 
+  val counter_next = UInt(generics.counterWidth bits)
   when(counter === io.max_count) {
     counter_next := 0
   } otherwise {
     counter_next := counter + 1
   }
 
-  // TODO: registered outputs
   // TODO: enable & run
   // TODO: count modes
   // TODO: output modes
@@ -35,6 +36,6 @@ case class Pwm(generics: PwmGenerics) extends Component {
   }
   counter := counter_next
 
-  for ((pwmRegistered, levelLatched) <- io.pwms.zip(levelsLatched))
-    pwmRegistered := counter < levelLatched
+  for ((pwmNext, levelLatched) <- pwmsNext.zip(levelsLatched))
+    pwmNext := counter < levelLatched
 }
