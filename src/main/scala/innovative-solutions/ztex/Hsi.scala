@@ -30,19 +30,21 @@ case class HsiInterface() extends Component {
       val data = slave(Stream(Bits(16 bit)))
       val en = in Bool
       val pktend = in Bool
-      val pktend_timeout = in UInt(16 bits)
+      val pktend_timeout = in UInt (16 bits)
     }
     val rx = new Bundle {
       val data = master(Stream(Bits(16 bit)))
     }
   }
-
-  val do_rx = RegNext(True) init(False)
-
+  val rx_buffer = new Area {
+    val data = Vec(Reg(Bits(16 bit)), 3)
+    val valid = Vec(Reg(Bool), 3).map(_.init(False))
+  }
+  val do_rx = RegNext(True) init (False)
   val reg = new Area {
     val wr = Reg(False)
-    val rd = RegNext(do_rx && !io.fx3.empty_n && io.rx.data.ready) init(False)
-    val oe = Reg(False) init(False)
+    val rd = do_rx && io.fx3.empty_n && !rx_buffer.valid(0)
+    val oe = Reg(False) init (False)
 
     io.fx3.wr_n := !wr
     io.fx3.rd_n := !rd
@@ -55,30 +57,22 @@ case class HsiInterface() extends Component {
   io.fx3.pktend_n := False
   io.tx.data.ready := False
 
-  val rds = History(reg.rd, 3)
-  val rx_buffer = new Area {
-    val data = Vec(Reg(Bits(16 bit)), 3)
-    val valid = Vec(Reg(Bool), 3)
-  }
+  val rds = History(reg.rd, 4)
+  rds(3).init(False)
+  rds(2).init(False)
+  rds(1).init(False)
   io.rx.data.valid := False
   io.rx.data.payload := 0
   reg.oe := do_rx
-  when(do_rx && io.fx3.empty_n && rds(2)) {
-    when(io.rx.data.ready) {
-      when(!rx_buffer.valid(0)) {
-        io.rx.data.payload := io.fx3.dq.read
-        io.rx.data.valid := True
-      } otherwise {
-        io.rx.data.payload := rx_buffer.data(0)
-        rx_buffer.data(2) := 0
-        rx_buffer.data(1) := rx_buffer.data(2)
-        rx_buffer.data(0) := rx_buffer.data(1)
-        rx_buffer.valid(2) := False
-        rx_buffer.valid(1) := rx_buffer.valid(2)
-        rx_buffer.valid(0) := rx_buffer.valid(1)
-      }
+  when(rds(2)) {
+  // data available && data accepted
+    when(io.rx.data.ready && !rx_buffer.valid(0)) {
+    // ready and not buffering?
+    // then give it out
+      io.rx.data.payload := io.fx3.dq.read
+      io.rx.data.valid := True
     } otherwise {
-      // backpressure but stream does not accept
+    // otherwise, buffer it
       when(!rx_buffer.valid(0)) {
         rx_buffer.data(0) := io.fx3.dq.read
         rx_buffer.valid(0) := True
@@ -86,9 +80,19 @@ case class HsiInterface() extends Component {
         rx_buffer.data(1) := io.fx3.dq.read
         rx_buffer.valid(1) := True
       } otherwise {
-        rx_buffer.data(1) := io.fx3.dq.read
-        rx_buffer.valid(1) := True
+        rx_buffer.data(2) := io.fx3.dq.read
+        rx_buffer.valid(2) := True
       }
     }
+  } elsewhen (io.rx.data.ready && rx_buffer.valid(0)) {
+  // buffer and ready to accept?
+  // then shift out one buffered element
+    io.rx.data.payload := rx_buffer.data(0)
+    rx_buffer.data(1) := rx_buffer.data(2)
+    rx_buffer.data(0) := rx_buffer.data(1)
+    rx_buffer.valid(2) := False
+    rx_buffer.valid(1) := rx_buffer.valid(2)
+    rx_buffer.valid(0) := rx_buffer.valid(1)
+    io.rx.data.valid := True
   }
 }
