@@ -64,7 +64,7 @@ case class HsiInterface() extends Component {
   io.rx.data.valid := False
   io.rx.data.payload := 0
   reg.oe := do_rx
-  when(rds(2)) {
+  when(rds(2) && io.fx3.empty_n) {
   // data available && data accepted
     when(io.rx.data.ready && !rx_buffer.valid(0)) {
     // ready and not buffering?

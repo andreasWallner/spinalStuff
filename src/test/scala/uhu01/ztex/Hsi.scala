@@ -57,7 +57,7 @@ object HsiSim {
 
     dut.doSim("write") { dut =>
       SimTimeout(2000 * 10)
-      val fx3 = FX3Sim(dut.io.fx3, Range(1, 2), dut.clockDomain){_ =>}
+      val fx3 = FX3Sim(dut.io.fx3, Range(1, 200), dut.clockDomain){_ =>}
 
       dut.io.tx.en #= false
 
