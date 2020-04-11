@@ -65,14 +65,14 @@ case class HsiInterface() extends Component {
   io.rx.data.payload := 0
   reg.oe := do_rx
   when(rds(2) && io.fx3.empty_n) {
-  // data available && data accepted
+    // data available && data accepted
     when(io.rx.data.ready && !rx_buffer.valid(0)) {
-    // ready and not buffering?
-    // then give it out
+      // ready and not buffering?
+      // then give it out
       io.rx.data.payload := io.fx3.dq.read
       io.rx.data.valid := True
     } otherwise {
-    // otherwise, buffer it
+      // otherwise, buffer it
       when(!rx_buffer.valid(0)) {
         rx_buffer.data(0) := io.fx3.dq.read
         rx_buffer.valid(0) := True
@@ -85,8 +85,8 @@ case class HsiInterface() extends Component {
       }
     }
   } elsewhen (io.rx.data.ready && rx_buffer.valid(0)) {
-  // buffer and ready to accept?
-  // then shift out one buffered element
+    // buffer and ready to accept?
+    // then shift out one buffered element
     io.rx.data.payload := rx_buffer.data(0)
     rx_buffer.data(1) := rx_buffer.data(2)
     rx_buffer.data(0) := rx_buffer.data(1)

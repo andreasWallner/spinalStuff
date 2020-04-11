@@ -5,6 +5,7 @@ import spinal.sim._
 import spinal.core.sim._
 import spinal.lib.sim.{StreamDriver, StreamMonitor, StreamReadyRandomizer}
 import scala.collection.mutable.Queue
+import scala.util.Random
 
 case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(rxCallback : (Int) => Unit) {
   intf.empty_n #= block.size > 0
@@ -25,23 +26,27 @@ case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(rxCallba
     }
   }
 
-  var wr_del0 = true
-  var wr_del1 = true
-  var wr_del2 = true
-  var dq_write_del0 = 0
-  var dq_write_del1 = 0
-  var dq_write_del2 = 0
+  var remainingSpace = 10
+  var emptyDelay = 5
+  var full_del0 = false
+  var full_del1 = false
+  var full_del2 = false
   def txFsm(): Unit = {
-    wr_del0 = !intf.wr_n.toBoolean
-    wr_del1 = wr_del0
-    wr_del2 = wr_del1
-    dq_write_del0 = intf.dq.write.toInt
-    dq_write_del1 = dq_write_del0
-    dq_write_del2 = dq_write_del1
-
-    if(wr_del2) {
-      rxCallback(dq_write_del2)
+    if(emptyDelay == 0) {
+      remainingSpace = Random.nextInt(5) + 5
+      emptyDelay = Random.nextInt(5) + 3
     }
+    if(remainingSpace == 0) {
+      emptyDelay = emptyDelay - 1
+    }
+    if(remainingSpace > 0 && wr_del2) {
+      remainingSpace = remainingSpace - 1
+      rxCallback(if(intf.dq.writeEnable.toBoolean) intf.dq.write.toInt else 0xffffffff)
+    }
+    full_del2 = full_del1
+    full_del1 = full_del0
+    full_del0 = remainingSpace == 0
+    intf.full_n #= !full_del2
   }
 
   // TODO tristate checker
