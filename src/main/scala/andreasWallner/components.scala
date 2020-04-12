@@ -1,8 +1,9 @@
-package innovative_solutions
+package andreasWallner
 
 import spinal.core._
-import innovative_solutions.basics.{AxiLite4Pwm, PwmGenerics}
-import innovative_solutions.xilinx._
+import andreasWallner.basics.{AxiLite4Pwm, PwmGenerics}
+import andreasWallner._
+import andreasWallner.xilinx._
 
 object AxiLite4PwmTopLevel {
   def main(args: Array[String]) {
@@ -20,5 +21,14 @@ object AxiLite4PwmModule {
       device=Device.XILINX
     ).generateVerilog(AxiLite4Pwm(PwmGenerics(8,3)))
     VivadoIpify.emitComponentXml(report.toplevel)
+  }
+}
+
+object HsiComponent {
+  def main(args: Array[String]) {
+    val report = SpinalConfig(defaultConfigForClockDomains =
+      ClockDomainConfig(resetActiveLevel = LOW),
+      device=Device.XILINX
+    ).generateVerilog(XilinxNamer(ztex.HsiInterface()))
   }
 }

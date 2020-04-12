@@ -1,6 +1,6 @@
-name := "innovative-solutions"
+name := "andreasWallner"
 
-version := "1.0"
+version := "0.1"
 scalaVersion := "2.11.12"
 val spinalVersion = "1.4.0"
 

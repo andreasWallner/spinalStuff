@@ -1,4 +1,4 @@
-package innovative_solutions.ztex
+package andreasWallner.ztex
 
 import spinal.core._
 import spinal.lib._

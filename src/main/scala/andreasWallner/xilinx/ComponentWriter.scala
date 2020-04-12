@@ -1,4 +1,4 @@
-package innovative_solutions.xilinx
+package andreasWallner.xilinx
 
 import spinal.core._
 import scala.collection.mutable.StringBuilder

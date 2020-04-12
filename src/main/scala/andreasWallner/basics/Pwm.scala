@@ -1,4 +1,4 @@
-package innovative_solutions.basics
+package andreasWallner.basics
 
 import spinal.core._
 import spinal.lib._
