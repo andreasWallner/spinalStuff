@@ -70,7 +70,7 @@ case class HsiInterface() extends Component {
   }
   val rx_buffer = ShortBuffer(Bits(16 bit), 3)
 
-  val do_rx = RegNext(True) init (False)
+  val do_rx = RegNext(!io.tx.en) init (False)
   val reg = new Area {
     val wr = Reg(False)
     val rd = do_rx && io.fx3.empty_n && rx_buffer.empty
@@ -85,12 +85,8 @@ case class HsiInterface() extends Component {
   io.fx3.dq.write := 0
   io.fx3.dq.writeEnable := False
   io.fx3.pktend_n := False
-  io.tx.data.ready := False
 
-  val rds = History(reg.rd, 4)
-  rds(3).init(False)
-  rds(2).init(False)
-  rds(1).init(False)
+  val rds = History(reg.rd, 4, init = False)
   io.rx.data.valid := False
   io.rx.data.payload := 0
   reg.oe := do_rx
@@ -110,5 +106,27 @@ case class HsiInterface() extends Component {
     // then shift out one buffered element
     io.rx.data.payload := rx_buffer.pop()
     io.rx.data.valid := True
+  }
+
+  val tx_buffer = ShortBuffer(Bits(16 bits), 4)
+  val do_tx = RegNext(io.tx.en) init (False)
+  val needs_retransmit = Reg(Bool) init (False)
+  io.tx.data.ready := False
+  when(do_tx && io.fx3.full_n) {
+    when(tx_buffer.empty && (!needs_retransmit || tx_buffer.empty)) {
+      when(tx_buffer.empty) {
+        needs_retransmit := False
+      }
+      when(!io.fx3.full_n) {
+        needs_retransmit := True
+      }
+      tx_buffer.push(io.tx.data.payload)
+      io.fx3.dq.write := io.tx.data.payload
+      io.tx.data.ready := True
+      reg.wr := True
+    } elsewhen (!tx_buffer.empty) {
+      io.fx3.dq.write := tx_buffer.pop()
+      reg.wr := True
+    }
   }
 }
