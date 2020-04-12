@@ -23,6 +23,38 @@ case class FX3() extends Bundle with IMasterSlave {
   }
 }
 
+case class ShortBuffer[T <: Data](val dataType: HardType[T], val depth: Int)
+    extends Area {
+  val buffer = Vec(Reg(dataType), depth)
+  val valid = Vec(Reg(Bool), depth).map(_.init(False))
+
+  // TODO: we would not necessarily need a elsewhen on the last entry, might save minimal hardware is it worth it?
+  def push(data: T) = {
+    valid.zip(buffer).foldLeft(when(False) {}) {
+      case (expr, (v, b)) =>
+        expr elsewhen (!v) {
+          b := data
+          v := True
+        }
+    }
+  }
+
+  def pop(): T = {
+    val output = cloneOf(dataType)
+    output := buffer(0)
+    valid(depth - 1) := False
+
+    for (i <- (1 to depth - 1).reverse) {
+      buffer(i - 1) := buffer(i)
+      valid(i - 1) := valid(i)
+    }
+
+    output
+  }
+
+  def empty: Bool = !valid(0)
+}
+
 case class HsiInterface() extends Component {
   val io = new Bundle {
     val fx3 = master(FX3())
@@ -36,14 +68,12 @@ case class HsiInterface() extends Component {
       val data = master(Stream(Bits(16 bit)))
     }
   }
-  val rx_buffer = new Area {
-    val data = Vec(Reg(Bits(16 bit)), 3)
-    val valid = Vec(Reg(Bool), 3).map(_.init(False))
-  }
+  val rx_buffer = ShortBuffer(Bits(16 bit), 3)
+
   val do_rx = RegNext(True) init (False)
   val reg = new Area {
     val wr = Reg(False)
-    val rd = do_rx && io.fx3.empty_n && !rx_buffer.valid(0)
+    val rd = do_rx && io.fx3.empty_n && rx_buffer.empty
     val oe = Reg(False) init (False)
 
     io.fx3.wr_n := !wr
@@ -66,33 +96,19 @@ case class HsiInterface() extends Component {
   reg.oe := do_rx
   when(rds(2) && io.fx3.empty_n) {
     // data available && data accepted
-    when(io.rx.data.ready && !rx_buffer.valid(0)) {
+    when(io.rx.data.ready && rx_buffer.empty) {
       // ready and not buffering?
       // then give it out
       io.rx.data.payload := io.fx3.dq.read
       io.rx.data.valid := True
     } otherwise {
       // otherwise, buffer it
-      when(!rx_buffer.valid(0)) {
-        rx_buffer.data(0) := io.fx3.dq.read
-        rx_buffer.valid(0) := True
-      } elsewhen (!rx_buffer.valid(1)) {
-        rx_buffer.data(1) := io.fx3.dq.read
-        rx_buffer.valid(1) := True
-      } otherwise {
-        rx_buffer.data(2) := io.fx3.dq.read
-        rx_buffer.valid(2) := True
-      }
+      rx_buffer.push(io.fx3.dq.read)
     }
-  } elsewhen (io.rx.data.ready && rx_buffer.valid(0)) {
+  } elsewhen (io.rx.data.ready && !rx_buffer.empty) {
     // buffer and ready to accept?
     // then shift out one buffered element
-    io.rx.data.payload := rx_buffer.data(0)
-    rx_buffer.data(1) := rx_buffer.data(2)
-    rx_buffer.data(0) := rx_buffer.data(1)
-    rx_buffer.valid(2) := False
-    rx_buffer.valid(1) := rx_buffer.valid(2)
-    rx_buffer.valid(0) := rx_buffer.valid(1)
+    io.rx.data.payload := rx_buffer.pop()
     io.rx.data.valid := True
   }
 }

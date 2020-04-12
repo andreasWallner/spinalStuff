@@ -39,7 +39,7 @@ case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(rxCallba
     if(remainingSpace == 0) {
       emptyDelay = emptyDelay - 1
     }
-    if(remainingSpace > 0 && wr_del2) {
+    if(remainingSpace > 0 && !intf.wr_n.toBoolean) {
       remainingSpace = remainingSpace - 1
       rxCallback(if(intf.dq.writeEnable.toBoolean) intf.dq.write.toInt else 0xffffffff)
     }
@@ -69,14 +69,13 @@ object HsiSim {
       StreamReadyRandomizer(dut.io.rx.data, dut.clockDomain)
       val received = new Queue[Integer]
       StreamMonitor(dut.io.rx.data, dut.clockDomain) { payload =>
-        println(f"${simTime()} ${payload.toInt}")
+        //println(f"${simTime()} ${payload.toInt}")
         received += payload.toInt
       }
 
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdgeWhere(dut.io.fx3.empty_n.toBoolean == false)
       dut.clockDomain.waitRisingEdge(10)
-      println(f"${received}")
       assert(received.toSeq == Range(1, 200).toSeq)
     }
 
