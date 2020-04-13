@@ -26,7 +26,8 @@ case class FX3() extends Bundle with IMasterSlave {
 case class ShortBuffer[T <: Data](val dataType: HardType[T], val depth: Int)
     extends Area {
   val buffer = Vec(Reg(dataType), depth)
-  val valid = Vec(Reg(Bool), depth).map(_.init(False))
+  val valid = Vec(Reg(Bool), depth)
+  valid.map(_.init(False))
 
   // TODO: we would not necessarily need a elsewhen on the last entry, might save minimal hardware is it worth it?
   def push(data: T) = {
@@ -55,6 +56,26 @@ case class ShortBuffer[T <: Data](val dataType: HardType[T], val depth: Int)
   def empty: Bool = !valid(0)
 }
 
+case class ValidFlagShiftReg[T <: Data](
+    val dataType: HardType[T],
+    val depth: Int
+) extends Area {
+  val buffer = Vec(Reg(dataType), depth)
+  val valid = Reg(Bits(depth bits)) init (0)
+
+  def shift(data: T, validFlag: Bool = True): T = {
+    val output = cloneOf(dataType)
+    output := buffer(0)
+
+    for (i <- 1 to depth - 1)
+      buffer(i - 1) := buffer(i)
+    buffer(depth - 1) := data
+    valid := validFlag ## valid >> 1
+
+    output
+  }
+}
+
 case class HsiInterface() extends Component {
   val io = new Bundle {
     val fx3 = master(FX3())
@@ -71,8 +92,9 @@ case class HsiInterface() extends Component {
   val rx_buffer = ShortBuffer(Bits(16 bit), 3)
 
   val do_rx = RegNext(!io.tx.en) init (False)
+  val do_tx = RegNext(io.tx.en) init (False)
   val reg = new Area {
-    val wr = Reg(False)
+    val wr = Bool
     val rd = do_rx && io.fx3.empty_n && rx_buffer.empty
     val oe = Reg(False) init (False)
 
@@ -80,10 +102,8 @@ case class HsiInterface() extends Component {
     io.fx3.rd_n := !rd
     io.fx3.oe_n := !oe
   }
-  reg.wr := False
 
   io.fx3.dq.write := 0
-  io.fx3.dq.writeEnable := False
   io.fx3.pktend_n := False
 
   val rds = History(reg.rd, 4, init = False)
@@ -108,25 +128,28 @@ case class HsiInterface() extends Component {
     io.rx.data.valid := True
   }
 
-  val tx_buffer = ShortBuffer(Bits(16 bits), 4)
-  val do_tx = RegNext(io.tx.en) init (False)
-  val needs_retransmit = Reg(Bool) init (False)
+  val tx_buffer = ValidFlagShiftReg(Bits(16 bits), 3)
+  val retransmit = Reg(Bits(3 bits)) init (0)
+  val needs_retransmit = retransmit.orR
   io.tx.data.ready := False
-  when(do_tx && io.fx3.full_n) {
-    when(tx_buffer.empty && (!needs_retransmit || tx_buffer.empty)) {
-      when(tx_buffer.empty) {
-        needs_retransmit := False
+  io.fx3.dq.writeEnable := do_tx
+  reg.wr := False
+  when(do_tx) {
+    when(io.fx3.full_n) {
+      when(!needs_retransmit && io.tx.data.valid) {
+        tx_buffer.shift(io.tx.data.payload, True)
+        io.fx3.dq.write := io.tx.data.payload
+        io.tx.data.ready := True
+        reg.wr := True
+      } elsewhen (needs_retransmit) {
+        io.fx3.dq.write := tx_buffer.shift(0, False)
+        reg.wr := retransmit(0)
+        retransmit := False ## retransmit >> 1
+      } otherwise {
+        tx_buffer.shift(0, False)
       }
-      when(!io.fx3.full_n) {
-        needs_retransmit := True
-      }
-      tx_buffer.push(io.tx.data.payload)
-      io.fx3.dq.write := io.tx.data.payload
-      io.tx.data.ready := True
-      reg.wr := True
-    } elsewhen (!tx_buffer.empty) {
-      io.fx3.dq.write := tx_buffer.pop()
-      reg.wr := True
+    } otherwise {
+      retransmit := tx_buffer.valid
     }
   }
 }

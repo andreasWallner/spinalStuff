@@ -40,6 +40,7 @@ case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
   var full_del0 = false
   var full_del1 = false
   var full_del2 = false
+  var full_del3 = false
   def txFsm(): Unit = {
     if (emptyDelay == 0) {
       remainingSpace = Random.nextInt(5) + 5
@@ -48,21 +49,23 @@ case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
     if (remainingSpace == 0) {
       emptyDelay = emptyDelay - 1
     }
-    if (remainingSpace > 0 && !intf.wr_n.toBoolean) {
+    if (remainingSpace > 0 && !intf.wr_n.toBoolean) { // TODO should we check that we also indicate not-full?
       remainingSpace = remainingSpace - 1
       rxCallback(
-        if (intf.dq.writeEnable.toBoolean) intf.dq.write.toInt else 0xffffffff
+        { //println(f"${simTime()} ${intf.dq.writeEnable.toBoolean}")
+          if (intf.dq.writeEnable.toBoolean) intf.dq.write.toInt else 0xffffffff
+        }
       )
     }
+    intf.full_n #= !full_del2
     full_del2 = full_del1
     full_del1 = full_del0
     full_del0 = remainingSpace == 0
-    intf.full_n #= !full_del2
-    println(
-      f"${simTime()} ${remainingSpace} ${emptyDelay} ${full_del0} ${full_del1} ${full_del1}"
-    )
+    //println(
+    //  f"${simTime()} ${remainingSpace} ${emptyDelay} ${full_del0} ${full_del1} ${full_del1}"
+    //)
   }
-  clockDomain.onSamplings(txFsm)
+  clockDomain.onActiveEdges(txFsm)
 }
 
 object HsiSim {
@@ -95,10 +98,17 @@ object HsiSim {
     // TODO: take care to check case where empty goes away but comes back a cycle later
     // TODO: full backpressure
     // TODO: check tristate
+  }
+}
 
+object HsiSimRx {
+  def main(args: Array[String]) {
+    var dut = SimConfig.withWave
+      .workspacePath("/c/work/tmp/sim")
+      .compile(HsiInterface())
     dut.doSim("read") { dut =>
-      SimTimeout(200 * 10)
-      val toSend = 10
+      SimTimeout(2000 * 10)
+      val toSend = 200
       val scoreboard = ScoreboardInOrder[Int]()
       val fx3 = FX3Sim(dut.io.fx3, Range(1, 2), dut.clockDomain) { payload =>
         scoreboard.pushDut(payload.toInt)
@@ -108,17 +118,43 @@ object HsiSim {
 
       StreamDriver(dut.io.tx.data, dut.clockDomain) { payload =>
         payload.randomize()
-        scoreboard.ref.length < toSend
+        scoreboard.matches + scoreboard.ref.length < toSend
       }
       StreamMonitor(dut.io.tx.data, dut.clockDomain) { payload =>
         scoreboard.pushRef(payload.toInt)
       }
 
       dut.clockDomain.forkStimulus(10)
-      dut.clockDomain.waitActiveEdgeWhere(scoreboard.ref.length >= toSend)
-      dut.clockDomain.waitRisingEdge(20)
-      println(f"${scoreboard.ref}")
-      println(f"${scoreboard.dut}")
+      dut.clockDomain.waitActiveEdgeWhere({
+        scoreboard.matches >= toSend
+      })
+      dut.clockDomain.waitRisingEdge(40)
+      scoreboard.check()
+    }
+
+    dut.doSim("read, full backpressure") { dut =>
+      SimTimeout(2000 * 10)
+      val toSend = 50
+      val scoreboard = ScoreboardInOrder[Int]()
+      val fx3 = FX3Sim(dut.io.fx3, Range(1, 2), dut.clockDomain) { payload =>
+        scoreboard.pushDut(payload.toInt)
+      }
+
+      dut.io.tx.en #= true
+
+      StreamDriver(dut.io.tx.data, dut.clockDomain) { payload =>
+        payload.randomize()
+        scoreboard.matches + scoreboard.ref.length < toSend
+      }.transactionDelay = () => { 0 }
+      StreamMonitor(dut.io.tx.data, dut.clockDomain) { payload =>
+        scoreboard.pushRef(payload.toInt)
+      }
+
+      dut.clockDomain.forkStimulus(10)
+      dut.clockDomain.waitActiveEdgeWhere({
+        scoreboard.matches >= toSend
+      })
+      dut.clockDomain.waitRisingEdge(40)
       scoreboard.check()
     }
   }
