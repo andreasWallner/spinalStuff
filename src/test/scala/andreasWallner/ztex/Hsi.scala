@@ -11,38 +11,30 @@ import spinal.lib.sim.{
 }
 import scala.collection.mutable.Queue
 import scala.util.Random
+import org.scalatest.FunSuite
 
 case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
     rxCallback: (Int) => Unit
 ) {
-  var next_block_delay:() => Int = () => {
+  var next_block_delay: () => Int = () => {
     5
   }
-  var next_block_size:() => Int = () => {
+  var next_block_size: () => Int = () => {
     5
   }
 
-  
-  intf.empty_n #= True
+  intf.empty_n #= true
   var rd_del0 = false
   var rd_del1 = false
   var rd_del2 = false
   var remaining_block_size = 0
   var remaining_block_delay = 0
+  var idx = 0
   def rxFsm(): Unit = {
     rd_del2 = rd_del1
     rd_del1 = rd_del0
     rd_del0 = !intf.rd_n.toBoolean
 
-    if (remaining_block_delay == 0) {
-      remaining_block_size = next_block_size()
-      remaining_block_delay = next_block_delay()
-    }
-    if (remaining_block_size == 0) {
-      remaining_block_size = remaining_block_size - 1
-    }
-    if (remaining_block_size > 0) {
-      intf.empty_n #= txCallback(intf.dq.read)
     intf.empty_n #= idx < block.size
     if (rd_del1 && (idx < block.size)) { // TODO check that we can keep rd low even if no data is present
       intf.dq.read #= block(idx)
@@ -51,12 +43,10 @@ case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
   }
   clockDomain.onSamplings(rxFsm)
 
-
-
-  var next_remaining_space:() => Int = () => {
+  var next_remaining_space: () => Int = () => {
     Random.nextInt(5) + 5
   }
-  var next_empty_delay:() => Int = () => {
+  var next_empty_delay: () => Int = () => {
     Random.nextInt(5) + 3
   }
 
@@ -78,7 +68,7 @@ case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
     if (remainingSpace > 0 && !intf.wr_n.toBoolean) { // TODO should we check that we also indicate not-full?
       remainingSpace = remainingSpace - 1
       rxCallback(
-          if (intf.dq.writeEnable.toBoolean) intf.dq.write.toInt else 0xffffffff
+        if (intf.dq.writeEnable.toBoolean) intf.dq.write.toInt else 0xffffffff
       )
     }
     intf.full_n #= !full_del2
@@ -89,12 +79,12 @@ case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
   clockDomain.onActiveEdges(txFsm)
 }
 
-object HsiSim {
-  def main(args: Array[String]) {
-    var dut = SimConfig.withWave
-      .workspacePath("/c/work/tmp/sim")
-      .compile(HsiInterface())
+class HsiSim extends FunSuite {
+  val dut = SimConfig.withWave
+    .workspacePath("/c/work/tmp/sim")
+    .compile(HsiInterface())
 
+  test("write") {
     dut.doSim("write") { dut =>
       SimTimeout(2000 * 10)
       val fx3 = FX3Sim(dut.io.fx3, Range(1, 200), dut.clockDomain) { _ =>
@@ -105,7 +95,6 @@ object HsiSim {
       StreamReadyRandomizer(dut.io.rx.data, dut.clockDomain)
       val received = new Queue[Integer]
       StreamMonitor(dut.io.rx.data, dut.clockDomain) { payload =>
-        //println(f"${simTime()} ${payload.toInt}")
         received += payload.toInt
       }
 
@@ -114,19 +103,14 @@ object HsiSim {
       dut.clockDomain.waitRisingEdge(10)
       assert(received.toSeq == Range(1, 200).toSeq)
     }
-
-    // TODO: block data on transmitter, with random empty/non empty
-    // TODO: take care to check case where empty goes away but comes back a cycle later
-    // TODO: full backpressure
-    // TODO: check tristate
   }
-}
 
-object HsiSimRx {
-  def main(args: Array[String]) {
-    var dut = SimConfig.withWave
-      .workspacePath("/c/work/tmp/sim")
-      .compile(HsiInterface())
+  // TODO: block data on transmitter, with random empty/non empty
+  // TODO: take care to check case where empty goes away but comes back a cycle later
+  // TODO: full backpressure
+  // TODO: check tristate
+
+  test("read") {
     dut.doSim("read") { dut =>
       SimTimeout(2000 * 10)
       val toSend = 200
@@ -152,7 +136,9 @@ object HsiSimRx {
       dut.clockDomain.waitRisingEdge(40)
       scoreboard.check()
     }
+  }
 
+  test("read, full backpressure") {
     dut.doSim("read, full backpressure") { dut =>
       SimTimeout(2000 * 10)
       val toSend = 50
