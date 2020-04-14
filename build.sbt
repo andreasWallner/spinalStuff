@@ -1,7 +1,7 @@
 name := "andreasWallner"
 
 version := "0.1"
-scalaVersion := "2.11.12"
+scalaVersion := "2.12.12"
 val spinalVersion = "1.4.0"
 
 libraryDependencies ++= Seq(

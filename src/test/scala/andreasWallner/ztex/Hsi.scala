@@ -15,17 +15,34 @@ import scala.util.Random
 case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
     rxCallback: (Int) => Unit
 ) {
-  intf.empty_n #= block.size > 0
-  var idx = 0
+  var next_block_delay:() => Int = () => {
+    5
+  }
+  var next_block_size:() => Int = () => {
+    5
+  }
 
+  
+  intf.empty_n #= True
   var rd_del0 = false
   var rd_del1 = false
   var rd_del2 = false
+  var remaining_block_size = 0
+  var remaining_block_delay = 0
   def rxFsm(): Unit = {
     rd_del2 = rd_del1
     rd_del1 = rd_del0
     rd_del0 = !intf.rd_n.toBoolean
 
+    if (remaining_block_delay == 0) {
+      remaining_block_size = next_block_size()
+      remaining_block_delay = next_block_delay()
+    }
+    if (remaining_block_size == 0) {
+      remaining_block_size = remaining_block_size - 1
+    }
+    if (remaining_block_size > 0) {
+      intf.empty_n #= txCallback(intf.dq.read)
     intf.empty_n #= idx < block.size
     if (rd_del1 && (idx < block.size)) { // TODO check that we can keep rd low even if no data is present
       intf.dq.read #= block(idx)
@@ -33,6 +50,15 @@ case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
     }
   }
   clockDomain.onSamplings(rxFsm)
+
+
+
+  var next_remaining_space:() => Int = () => {
+    Random.nextInt(5) + 5
+  }
+  var next_empty_delay:() => Int = () => {
+    Random.nextInt(5) + 3
+  }
 
   intf.full_n #= true
   var remainingSpace = 1
@@ -43,8 +69,8 @@ case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
   var full_del3 = false
   def txFsm(): Unit = {
     if (emptyDelay == 0) {
-      remainingSpace = Random.nextInt(5) + 5
-      emptyDelay = Random.nextInt(5) + 3
+      remainingSpace = next_remaining_space()
+      emptyDelay = next_empty_delay()
     }
     if (remainingSpace == 0) {
       emptyDelay = emptyDelay - 1
@@ -52,18 +78,13 @@ case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
     if (remainingSpace > 0 && !intf.wr_n.toBoolean) { // TODO should we check that we also indicate not-full?
       remainingSpace = remainingSpace - 1
       rxCallback(
-        { //println(f"${simTime()} ${intf.dq.writeEnable.toBoolean}")
           if (intf.dq.writeEnable.toBoolean) intf.dq.write.toInt else 0xffffffff
-        }
       )
     }
     intf.full_n #= !full_del2
     full_del2 = full_del1
     full_del1 = full_del0
     full_del0 = remainingSpace == 0
-    //println(
-    //  f"${simTime()} ${remainingSpace} ${emptyDelay} ${full_del0} ${full_del1} ${full_del1}"
-    //)
   }
   clockDomain.onActiveEdges(txFsm)
 }

@@ -134,8 +134,9 @@ case class HsiInterface() extends Component {
   io.tx.data.ready := False
   io.fx3.dq.writeEnable := do_tx
   reg.wr := False
+  // TODO check generated HW - optimize code if necessary (duplicate statements like shift...)
   when(do_tx) {
-    when(io.fx3.full_n) {
+    when(io.fx3.full_n) { 
       when(!needs_retransmit && io.tx.data.valid) {
         tx_buffer.shift(io.tx.data.payload, True)
         io.fx3.dq.write := io.tx.data.payload
