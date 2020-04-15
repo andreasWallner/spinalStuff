@@ -13,8 +13,8 @@ import scala.collection.mutable.Queue
 import scala.util.Random
 import org.scalatest.FunSuite
 
-case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
-    rxCallback: (Int) => Unit
+case class FX3SimTx(intf: FX3, clockDomain: ClockDomain)(
+    txCallback: () => (Boolean, Int)
 ) {
   var next_block_delay: () => Int = () => {
     5
@@ -23,26 +23,32 @@ case class FX3Sim(intf: FX3, block: Seq[Int], clockDomain: ClockDomain)(
     5
   }
 
-  intf.empty_n #= true
-  var rd_del0 = false
-  var rd_del1 = false
-  var rd_del2 = false
+  intf.empty_n #= false
   var remaining_block_size = 0
   var remaining_block_delay = 0
-  var idx = 0
+  var x0 = 0
+  var dataLeft0 = false
+  var buffer = 0
+  var buffer_valid = false
   def rxFsm(): Unit = {
-    rd_del2 = rd_del1
-    rd_del1 = rd_del0
-    rd_del0 = !intf.rd_n.toBoolean
+    intf.empty_n #= dataLeft0
+    intf.dq.read #= x0
 
-    intf.empty_n #= idx < block.size
-    if (rd_del1 && (idx < block.size)) { // TODO check that we can keep rd low even if no data is present
-      intf.dq.read #= block(idx)
-      idx = idx + 1
+    dataLeft0 = buffer_valid
+    if ((intf.empty_n.toBoolean && !intf.rd_n.toBoolean) || !buffer_valid) {
+      x0 = buffer
+      
+      val (new_empty, new_x) = txCallback()
+      buffer_valid = new_empty
+      buffer = new_x
     }
   }
-  clockDomain.onSamplings(rxFsm)
+  clockDomain.onActiveEdges(rxFsm)
+}
 
+case class FX3SimRx(intf: FX3, clockDomain: ClockDomain)(
+    rxCallback: (Int) => Unit
+) {
   var next_remaining_space: () => Int = () => {
     Random.nextInt(5) + 5
   }
@@ -86,8 +92,18 @@ class HsiSim extends FunSuite {
 
   test("write") {
     dut.doSim("write") { dut =>
-      SimTimeout(2000 * 10)
-      val fx3 = FX3Sim(dut.io.fx3, Range(1, 200), dut.clockDomain) { _ =>
+      SimTimeout(500 * 10)
+      val scoreboard = ScoreboardInOrder[Int]()
+      var idx = 0
+      val toSend = 100
+      val fx3 = FX3SimTx(dut.io.fx3, dut.clockDomain) { () =>
+        if (scoreboard.matches + scoreboard.ref.length < toSend) {
+          val dataValue = scoreboard.matches + scoreboard.ref.length + 10
+          scoreboard.pushRef(dataValue)
+          (true, dataValue)
+        } else {
+          (false, 0)
+        }
       }
 
       dut.io.tx.en #= false
@@ -95,13 +111,13 @@ class HsiSim extends FunSuite {
       StreamReadyRandomizer(dut.io.rx.data, dut.clockDomain)
       val received = new Queue[Integer]
       StreamMonitor(dut.io.rx.data, dut.clockDomain) { payload =>
-        received += payload.toInt
+        scoreboard.pushDut(payload.toInt)
       }
 
       dut.clockDomain.forkStimulus(10)
-      dut.clockDomain.waitActiveEdgeWhere(dut.io.fx3.empty_n.toBoolean == false)
-      dut.clockDomain.waitRisingEdge(10)
-      assert(received.toSeq == Range(1, 200).toSeq)
+      dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches + scoreboard.ref.length >= toSend)
+      dut.clockDomain.waitRisingEdge(20)
+      scoreboard.check()
     }
   }
 
@@ -115,7 +131,7 @@ class HsiSim extends FunSuite {
       SimTimeout(2000 * 10)
       val toSend = 200
       val scoreboard = ScoreboardInOrder[Int]()
-      val fx3 = FX3Sim(dut.io.fx3, Range(1, 2), dut.clockDomain) { payload =>
+      val fx3 = FX3SimRx(dut.io.fx3, dut.clockDomain) { payload =>
         scoreboard.pushDut(payload.toInt)
       }
 
@@ -143,7 +159,7 @@ class HsiSim extends FunSuite {
       SimTimeout(2000 * 10)
       val toSend = 50
       val scoreboard = ScoreboardInOrder[Int]()
-      val fx3 = FX3Sim(dut.io.fx3, Range(1, 2), dut.clockDomain) { payload =>
+      val fx3 = FX3SimRx(dut.io.fx3, dut.clockDomain) { payload =>
         scoreboard.pushDut(payload.toInt)
       }
 
