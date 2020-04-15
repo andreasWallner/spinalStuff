@@ -17,10 +17,10 @@ case class FX3SimTx(intf: FX3, clockDomain: ClockDomain)(
     txCallback: () => (Boolean, Int)
 ) {
   var next_block_delay: () => Int = () => {
-    5
+    Random.nextInt(10)
   }
   var next_block_size: () => Int = () => {
-    5
+    Random.nextInt(10)
   }
 
   intf.empty_n #= false
@@ -34,13 +34,25 @@ case class FX3SimTx(intf: FX3, clockDomain: ClockDomain)(
     intf.empty_n #= dataLeft0
     intf.dq.read #= x0
 
+    if (remaining_block_delay == 0 && remaining_block_size == 0) {
+      remaining_block_delay = next_block_delay()
+      remaining_block_size = next_block_size()
+    }
+    if (remaining_block_size == 0 && remaining_block_delay > 0) {
+      remaining_block_delay = remaining_block_delay - 1
+    }
     dataLeft0 = buffer_valid
     if ((intf.empty_n.toBoolean && !intf.rd_n.toBoolean) || !buffer_valid) {
       x0 = buffer
-      
-      val (new_empty, new_x) = txCallback()
-      buffer_valid = new_empty
-      buffer = new_x
+
+      if (remaining_block_size > 0) {
+        val (new_empty, new_x) = txCallback()
+        buffer_valid = new_empty
+        buffer = new_x
+        remaining_block_size = remaining_block_size - 1
+      } else {
+        buffer_valid = false
+      }
     }
   }
   clockDomain.onActiveEdges(rxFsm)
@@ -92,10 +104,10 @@ class HsiSim extends FunSuite {
 
   test("write") {
     dut.doSim("write") { dut =>
-      SimTimeout(500 * 10)
+      val toSend = 200
+
+      SimTimeout(1000 * 10)
       val scoreboard = ScoreboardInOrder[Int]()
-      var idx = 0
-      val toSend = 100
       val fx3 = FX3SimTx(dut.io.fx3, dut.clockDomain) { () =>
         if (scoreboard.matches + scoreboard.ref.length < toSend) {
           val dataValue = scoreboard.matches + scoreboard.ref.length + 10
@@ -105,31 +117,85 @@ class HsiSim extends FunSuite {
           (false, 0)
         }
       }
-
-      dut.io.tx.en #= false
-
       StreamReadyRandomizer(dut.io.rx.data, dut.clockDomain)
-      val received = new Queue[Integer]
       StreamMonitor(dut.io.rx.data, dut.clockDomain) { payload =>
         scoreboard.pushDut(payload.toInt)
       }
 
+      dut.io.tx.en #= false
+
       dut.clockDomain.forkStimulus(10)
-      dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches + scoreboard.ref.length >= toSend)
-      dut.clockDomain.waitRisingEdge(20)
+      dut.clockDomain.waitActiveEdgeWhere(
+        scoreboard.matches >= toSend
+      )
       scoreboard.check()
     }
   }
+  test("write, full backpressure") {
+    dut.doSim("write, full backpressure") { dut =>
+      val toSend = 200
 
-  // TODO: block data on transmitter, with random empty/non empty
-  // TODO: take care to check case where empty goes away but comes back a cycle later
-  // TODO: full backpressure
+      SimTimeout(1000 * 10)
+      val scoreboard = ScoreboardInOrder[Int]()
+      val fx3 = FX3SimTx(dut.io.fx3, dut.clockDomain) { () =>
+        if (scoreboard.matches + scoreboard.ref.length < toSend) {
+          val dataValue = scoreboard.matches + scoreboard.ref.length + 10
+          scoreboard.pushRef(dataValue)
+          (true, dataValue)
+        } else {
+          (false, 0)
+        }
+      }
+      StreamReadyRandomizer(dut.io.rx.data, dut.clockDomain)
+      StreamMonitor(dut.io.rx.data, dut.clockDomain) { payload =>
+        scoreboard.pushDut(payload.toInt)
+      }
+
+      fx3.next_block_size = () => { toSend }
+      dut.io.tx.en #= false
+
+      dut.clockDomain.forkStimulus(10)
+      dut.clockDomain.waitActiveEdgeWhere(
+        scoreboard.matches >= toSend
+      )
+      scoreboard.check()
+    }
+  }
+  test("write, no extra delay") {
+    dut.doSim("write, no delay") { dut =>
+      val toSend = 200
+
+      SimTimeout(1000 * 10)
+      val scoreboard = ScoreboardInOrder[Int]()
+      val fx3 = FX3SimTx(dut.io.fx3, dut.clockDomain) { () =>
+        val dataValue = scoreboard.matches + scoreboard.ref.length + 10
+        val sendMore = scoreboard.matches + scoreboard.ref.length < toSend
+        if (sendMore)
+          scoreboard.pushRef(dataValue)
+        (sendMore, dataValue)
+      }
+      StreamReadyRandomizer(dut.io.rx.data, dut.clockDomain)
+      StreamMonitor(dut.io.rx.data, dut.clockDomain) { payload =>
+        scoreboard.pushDut(payload.toInt)
+      }
+
+      fx3.next_block_delay = () => { 1 }
+      dut.io.tx.en #= false
+
+      dut.clockDomain.forkStimulus(10)
+      dut.clockDomain.waitActiveEdgeWhere(
+        scoreboard.matches >= toSend
+      )
+      scoreboard.check()
+    }
+  }
   // TODO: check tristate
 
   test("read") {
     dut.doSim("read") { dut =>
-      SimTimeout(2000 * 10)
       val toSend = 200
+
+      SimTimeout(2000 * 10)
       val scoreboard = ScoreboardInOrder[Int]()
       val fx3 = FX3SimRx(dut.io.fx3, dut.clockDomain) { payload =>
         scoreboard.pushDut(payload.toInt)
@@ -146,9 +212,9 @@ class HsiSim extends FunSuite {
       }
 
       dut.clockDomain.forkStimulus(10)
-      dut.clockDomain.waitActiveEdgeWhere({
+      dut.clockDomain.waitActiveEdgeWhere(
         scoreboard.matches >= toSend
-      })
+      )
       dut.clockDomain.waitRisingEdge(40)
       scoreboard.check()
     }
@@ -156,8 +222,9 @@ class HsiSim extends FunSuite {
 
   test("read, full backpressure") {
     dut.doSim("read, full backpressure") { dut =>
-      SimTimeout(2000 * 10)
       val toSend = 50
+
+      SimTimeout(2000 * 10)
       val scoreboard = ScoreboardInOrder[Int]()
       val fx3 = FX3SimRx(dut.io.fx3, dut.clockDomain) { payload =>
         scoreboard.pushDut(payload.toInt)
