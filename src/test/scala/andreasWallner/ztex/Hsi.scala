@@ -97,6 +97,21 @@ case class FX3SimRx(intf: FX3, clockDomain: ClockDomain)(
   clockDomain.onActiveEdges(txFsm)
 }
 
+case class OpenDrainMonitor(
+    writeEnable: List[(Bool, Boolean)],
+    clockDomain: ClockDomain
+) {
+  var last: List[Boolean] = writeEnable.map(v => false)
+
+  def check() {
+    val current = writeEnable.map(v => v._1.toBoolean == v._2)
+    val enabledLines = last.zip(current).map(b => b._1 || b._2).count(b => b)
+    assert(enabledLines <= 1, f"overlapping enables: last cycle ${last}, current cycle ${current}")
+    last = current
+  }
+  clockDomain.onActiveEdges(check)
+}
+
 class HsiSim extends FunSuite {
   val dut = SimConfig.withWave
     .workspacePath("/c/work/tmp/sim")
@@ -246,6 +261,53 @@ class HsiSim extends FunSuite {
       })
       dut.clockDomain.waitRisingEdge(40)
       scoreboard.check()
+    }
+  }
+
+  test("bidirectional") {
+    dut.doSim("bidirectional") { dut =>
+      val toSend = 10000
+      val toReceive = 10000
+
+      SimTimeout(1000000 * 10)
+      val scoreboardTx = ScoreboardInOrder[Int]()
+      val fx3tx = FX3SimRx(dut.io.fx3, dut.clockDomain) { payload =>
+        scoreboardTx.pushDut(payload.toInt)
+      }
+      StreamDriver(dut.io.tx.data, dut.clockDomain) { payload =>
+        payload.randomize()
+        scoreboardTx.matches < toSend
+      }.transactionDelay = () => { 0 }
+      StreamMonitor(dut.io.tx.data, dut.clockDomain) { payload =>
+        scoreboardTx.pushRef(payload.toInt)
+      }
+
+      val scoreboardRx = ScoreboardInOrder[Int]()
+      val fx3rx = FX3SimTx(dut.io.fx3, dut.clockDomain) { () =>
+        val dataValue = scoreboardRx.matches + scoreboardRx.ref.length + 10
+        val sendMore = scoreboardRx.matches + scoreboardRx.ref.length < toReceive
+        if (sendMore)
+          scoreboardRx.pushRef(dataValue)
+        (sendMore, dataValue)
+      }
+      StreamReadyRandomizer(dut.io.rx.data, dut.clockDomain)
+      StreamMonitor(dut.io.rx.data, dut.clockDomain) { payload =>
+        scoreboardRx.pushDut(payload.toInt)
+      }
+
+      OpenDrainMonitor(
+        List((dut.io.fx3.oe_n, false), (dut.io.fx3.dq.writeEnable, true)),
+        dut.clockDomain
+      )
+
+      dut.io.tx.en #= false
+      dut.clockDomain.forkStimulus(10)
+      while (scoreboardTx.matches < toSend || scoreboardRx.matches < toReceive) {
+        dut.io.tx.en #= !dut.io.tx.en.toBoolean
+        dut.clockDomain.waitRisingEdge(Random.nextInt(40))
+      }
+      scoreboardTx.check()
+      scoreboardRx.check()
     }
   }
 }

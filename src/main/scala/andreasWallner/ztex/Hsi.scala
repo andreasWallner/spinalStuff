@@ -91,8 +91,8 @@ case class HsiInterface() extends Component {
   }
   val rx_buffer = ShortBuffer(Bits(16 bit), 3)
 
-  val do_rx = RegNext(!io.tx.en) init (False)
-  val do_tx = RegNext(io.tx.en) init (False)
+  val do_rx = Reg(Bool()) init(False)
+  val do_tx = Reg(Bool()) init(False)
   val reg = new Area {
     val wr = Bool
     val rd = do_rx && io.fx3.empty_n && rx_buffer.empty
@@ -135,22 +135,45 @@ case class HsiInterface() extends Component {
   io.fx3.dq.writeEnable := do_tx
   reg.wr := False
   // TODO check generated HW - optimize code if necessary (duplicate statements like shift...)
-  when(do_tx) {
-    when(io.fx3.full_n) { 
-      when(!needs_retransmit && io.tx.data.valid) {
-        tx_buffer.shift(io.tx.data.payload, True)
-        io.fx3.dq.write := io.tx.data.payload
-        io.tx.data.ready := True
-        reg.wr := True
-      } elsewhen (needs_retransmit) {
-        io.fx3.dq.write := tx_buffer.shift(0, False)
-        reg.wr := retransmit(0)
-        retransmit := False ## retransmit >> 1
-      } otherwise {
-        tx_buffer.shift(0, False)
+  when(io.fx3.full_n) { 
+    when(do_tx && !needs_retransmit && io.tx.data.valid) {
+      tx_buffer.shift(io.tx.data.payload, True)
+      io.fx3.dq.write := io.tx.data.payload
+      io.tx.data.ready := True
+      reg.wr := True
+    } elsewhen (do_tx && needs_retransmit) {
+      io.fx3.dq.write := tx_buffer.shift(0, False)
+      reg.wr := retransmit(0)
+      retransmit := False ## retransmit >> 1
+    } elsewhen (!needs_retransmit) {
+      tx_buffer.shift(0, False)
+    }
+  } otherwise {
+    retransmit := tx_buffer.valid
+  }
+
+  val dir = new Area {
+    // TODO look for useless rx <-> tx changes
+    // TODO explain why 5
+    val delay = Reg(Bits(5 bits)) init(0)
+    val should_be_tx = RegInit(False)
+
+    // FIXME if do_tx goes away disabling tx and full_n goes away afterwards, we do not store correctly that data has to be resent
+    delay := delay(0 to 3) ## B"1"
+    when(!do_tx && io.tx.en && io.tx.data.valid && io.fx3.full_n) {
+      do_rx := False
+      when (delay(4)) {
+        do_tx := delay(4)
+        delay := 0
+      }
+    } elsewhen(!do_rx && !(io.tx.en && io.tx.data.valid && io.fx3.full_n)) {
+      do_tx := False
+      when(delay(4)) {
+        do_rx := True
+        delay := 0
       }
     } otherwise {
-      retransmit := tx_buffer.valid
+      delay := 0
     }
   }
 }
