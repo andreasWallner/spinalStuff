@@ -17,23 +17,21 @@ case class FX3SimTx(intf: FX3, clockDomain: ClockDomain)(
     txCallback: () => (Boolean, Int)
 ) {
   var next_block_delay: () => Int = () => {
-    Random.nextInt(10)
+    Random.nextInt(10) + 2
   }
   var next_block_size: () => Int = () => {
     Random.nextInt(10)
   }
 
+  // txCallback -> data to buffer if empty, then use this 
   intf.empty_n #= false
   var remaining_block_size = 0
   var remaining_block_delay = 0
-  var x0 = 0
-  var dataLeft0 = false
-  var buffer = 0
   var buffer_valid = false
+  var buffer = 0
+  var empty_n_next = false
+  var last_rd_n = true
   def rxFsm(): Unit = {
-    intf.empty_n #= dataLeft0
-    intf.dq.read #= x0
-
     if (remaining_block_delay == 0 && remaining_block_size == 0) {
       remaining_block_delay = next_block_delay()
       remaining_block_size = next_block_size()
@@ -41,19 +39,25 @@ case class FX3SimTx(intf: FX3, clockDomain: ClockDomain)(
     if (remaining_block_size == 0 && remaining_block_delay > 0) {
       remaining_block_delay = remaining_block_delay - 1
     }
-    dataLeft0 = buffer_valid
-    if ((intf.empty_n.toBoolean && !intf.rd_n.toBoolean) || !buffer_valid) {
-      x0 = buffer
-
-      if (remaining_block_size > 0) {
-        val (new_empty, new_x) = txCallback()
-        buffer_valid = new_empty
-        buffer = new_x
-        remaining_block_size = remaining_block_size - 1
-      } else {
-        buffer_valid = false
-      }
+    if (!buffer_valid) {
+      val (valid, x) = txCallback()
+      buffer_valid = valid
+      buffer = x
     }
+    intf.empty_n #= empty_n_next
+    if ((intf.empty_n.toBoolean && !last_rd_n && remaining_block_size > 0)) {
+      remaining_block_size = remaining_block_size - 1
+
+      intf.dq.read #= buffer
+      
+      val (valid, x) = txCallback()
+      buffer_valid = valid
+      buffer = x
+      empty_n_next = buffer_valid && (remaining_block_size > 0)
+    } else {
+      empty_n_next = buffer_valid && (remaining_block_size > 0)
+    }
+    last_rd_n = intf.rd_n.toBoolean
   }
   clockDomain.onActiveEdges(rxFsm)
 }
@@ -117,8 +121,8 @@ class HsiSim extends FunSuite {
     .workspacePath("/c/work/tmp/sim")
     .compile(HsiInterface())
 
-  test("write") {
-    dut.doSim("write") { dut =>
+  test("host writes fpga") {
+    dut.doSim("host writes fpga", seed=1457153588) { dut =>
       val toSend = 200
 
       SimTimeout(1000 * 10)

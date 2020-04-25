@@ -30,12 +30,12 @@ case class ShortBuffer[T <: Data](val dataType: HardType[T], val depth: Int)
   valid.map(_.init(False))
 
   // TODO: we would not necessarily need a elsewhen on the last entry, might save minimal hardware is it worth it?
-  def push(data: T) = {
+  def push(data: T, data_valid: Bool) = {
     valid.zip(buffer).foldLeft(when(False) {}) {
       case (expr, (v, b)) =>
         expr elsewhen (!v) {
           b := data
-          v := True
+          v := data_valid
         }
     }
   }
@@ -89,13 +89,13 @@ case class HsiInterface() extends Component {
       val data = master(Stream(Bits(16 bit)))
     }
   }
-  val rx_buffer = ShortBuffer(Bits(16 bit), 3)
+  val rx_buffer = ShortBuffer(Bits(16 bit), 4)
 
   val do_rx = Reg(Bool()) init(False)
   val do_tx = Reg(Bool()) init(False)
   val reg = new Area {
     val wr = Bool
-    val rd = do_rx && io.fx3.empty_n && rx_buffer.empty
+    val rd = RegNext(do_rx && io.fx3.empty_n && rx_buffer.empty) init (False)
     val oe = Reg(False) init (False)
 
     io.fx3.wr_n := !wr
@@ -106,6 +106,7 @@ case class HsiInterface() extends Component {
   io.fx3.dq.write := 0
   io.fx3.pktend_n := False
 
+  // TODO never directly connect input: always go through short buffer on read? - or simply delay inputs by one?
   val rds = History(reg.rd, 4, init = False)
   io.rx.data.valid := False
   io.rx.data.payload := 0
@@ -119,7 +120,7 @@ case class HsiInterface() extends Component {
       io.rx.data.valid := True
     } otherwise {
       // otherwise, buffer it
-      rx_buffer.push(io.fx3.dq.read)
+      rx_buffer.push(io.fx3.dq.read, True)
     }
   } elsewhen (io.rx.data.ready && !rx_buffer.empty) {
     // buffer and ready to accept?
@@ -155,18 +156,19 @@ case class HsiInterface() extends Component {
   val dir = new Area {
     // TODO look for useless rx <-> tx changes
     // TODO explain why 5
+    // TODO do lazy switching? only switch if other direction would transfer?
     val delay = Reg(Bits(5 bits)) init(0)
     val should_be_tx = RegInit(False)
+    val ready_to_tx = io.tx.en && (io.tx.data.valid || needs_retransmit) && io.fx3.full_n
 
-    // FIXME if do_tx goes away disabling tx and full_n goes away afterwards, we do not store correctly that data has to be resent
     delay := delay(0 to 3) ## B"1"
-    when(!do_tx && io.tx.en && io.tx.data.valid && io.fx3.full_n) {
+    when(!do_tx && ready_to_tx) {
       do_rx := False
       when (delay(4)) {
         do_tx := delay(4)
         delay := 0
       }
-    } elsewhen(!do_rx && !(io.tx.en && io.tx.data.valid && io.fx3.full_n)) {
+    } elsewhen(!do_rx && !(ready_to_tx)) {
       do_tx := False
       when(delay(4)) {
         do_rx := True
