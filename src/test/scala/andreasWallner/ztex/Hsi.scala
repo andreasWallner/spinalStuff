@@ -13,6 +13,15 @@ import scala.collection.mutable.Queue
 import scala.util.Random
 import org.scalatest.FunSuite
 
+case class SimHistory[T](depth: Int, initial: T = None) {
+  var data: Seq[T] = List.fill(depth)(initial)
+
+  def apply(idx: Int) = data(idx)
+  def update(next: T) = {
+    data = List(next) ++ data.slice(0, depth - 1)
+  }
+}
+
 case class FX3SimTx(intf: FX3, clockDomain: ClockDomain)(
     txCallback: () => (Boolean, Int)
 ) {
@@ -66,19 +75,24 @@ case class FX3SimRx(intf: FX3, clockDomain: ClockDomain)(
     rxCallback: (Int) => Unit
 ) {
   var next_remaining_space: () => Int = () => {
-    Random.nextInt(5) + 5
+    // use a minimum of 4 as worst case
+    // in practice the memory is much bigger, but smaller
+    // values produce weird special cases in simulation that
+    // can't happen in reality
+    // (having to retransmit stuff from retransmit buffer)
+    Random.nextInt(10) + 4
   }
   var next_empty_delay: () => Int = () => {
-    Random.nextInt(5) + 3
+    // with a delay of 3 cycles until state is shown, we can't have less
+    // than 4 cycles of delay as a torture test, in practise we will have
+    // more as this is done in software
+    Random.nextInt(5) + 4
   }
 
   intf.full_n #= true
   var remainingSpace = 1
   var emptyDelay = 10
-  var full_del0 = false
-  var full_del1 = false
-  var full_del2 = false
-  var full_del3 = false
+  val full = SimHistory(4, false)
   def txFsm(): Unit = {
     if (emptyDelay == 0) {
       remainingSpace = next_remaining_space()
@@ -93,10 +107,8 @@ case class FX3SimRx(intf: FX3, clockDomain: ClockDomain)(
         if (intf.dq.writeEnable.toBoolean) intf.dq.write.toInt else 0xffffffff
       )
     }
-    intf.full_n #= !full_del2
-    full_del2 = full_del1
-    full_del1 = full_del0
-    full_del0 = remainingSpace == 0
+    full.update(remainingSpace > 0)
+    intf.full_n #= full(3)
   }
   clockDomain.onActiveEdges(txFsm)
 }
@@ -122,10 +134,10 @@ class HsiSim extends FunSuite {
     .compile(HsiInterface())
 
   test("host writes fpga") {
-    dut.doSim("host writes fpga", seed=1457153588) { dut =>
+    dut.doSim("host writes fpga") { dut =>
       val toSend = 200
 
-      SimTimeout(1000 * 10)
+      SimTimeout(toSend * 5 * 10)
       val scoreboard = ScoreboardInOrder[Int]()
       val fx3 = FX3SimTx(dut.io.fx3, dut.clockDomain) { () =>
         if (scoreboard.matches + scoreboard.ref.length < toSend) {
@@ -154,7 +166,7 @@ class HsiSim extends FunSuite {
     dut.doSim("write, full backpressure") { dut =>
       val toSend = 200
 
-      SimTimeout(1000 * 10)
+      SimTimeout(toSend * 5 * 10)
       val scoreboard = ScoreboardInOrder[Int]()
       val fx3 = FX3SimTx(dut.io.fx3, dut.clockDomain) { () =>
         if (scoreboard.matches + scoreboard.ref.length < toSend) {
@@ -184,7 +196,7 @@ class HsiSim extends FunSuite {
     dut.doSim("write, no delay") { dut =>
       val toSend = 200
 
-      SimTimeout(1000 * 10)
+      SimTimeout(toSend * 5 * 10)
       val scoreboard = ScoreboardInOrder[Int]()
       val fx3 = FX3SimTx(dut.io.fx3, dut.clockDomain) { () =>
         val dataValue = scoreboard.matches + scoreboard.ref.length + 10
@@ -208,13 +220,12 @@ class HsiSim extends FunSuite {
       scoreboard.check()
     }
   }
-  // TODO: check tristate
 
   test("read") {
     dut.doSim("read") { dut =>
-      val toSend = 200
+      val toSend = 10000
 
-      SimTimeout(2000 * 10)
+      SimTimeout(toSend * 15 * 10)
       val scoreboard = ScoreboardInOrder[Int]()
       val fx3 = FX3SimRx(dut.io.fx3, dut.clockDomain) { payload =>
         scoreboard.pushDut(payload.toInt)
@@ -241,9 +252,9 @@ class HsiSim extends FunSuite {
 
   test("read, full backpressure") {
     dut.doSim("read, full backpressure") { dut =>
-      val toSend = 50
+      val toSend = 10000
 
-      SimTimeout(2000 * 10)
+      SimTimeout(toSend * 15 * 10)
       val scoreboard = ScoreboardInOrder[Int]()
       val fx3 = FX3SimRx(dut.io.fx3, dut.clockDomain) { payload =>
         scoreboard.pushDut(payload.toInt)
@@ -273,7 +284,7 @@ class HsiSim extends FunSuite {
       val toSend = 10000
       val toReceive = 10000
 
-      SimTimeout(1000000 * 10)
+      SimTimeout((toSend + toReceive) * 20 * 10)
       val scoreboardTx = ScoreboardInOrder[Int]()
       val fx3tx = FX3SimRx(dut.io.fx3, dut.clockDomain) { payload =>
         scoreboardTx.pushDut(payload.toInt)

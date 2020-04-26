@@ -94,23 +94,33 @@ case class HsiInterface() extends Component {
   val do_rx = Reg(Bool()) init(False)
   val do_tx = Reg(Bool()) init(False)
   val reg = new Area {
-    val wr = Bool
-    val rd = RegNext(do_rx && io.fx3.empty_n && rx_buffer.empty) init (False)
-    val oe = Reg(False) init (False)
+    val fx3 = new Area {
+      val wr = Reg(Bool) init(False)
+      val rd = RegNext(do_rx && io.fx3.empty_n && rx_buffer.empty) init (False)
+      val oe = Reg(False) init (False)
+      io.fx3.wr_n := !wr
+      io.fx3.rd_n := !rd
+      io.fx3.oe_n := !oe
+      val dq = new Area {
+        val write = Reg(Bits(16 bit))
+        val writeEnable = Reg(Bool)
 
-    io.fx3.wr_n := !wr
-    io.fx3.rd_n := !rd
-    io.fx3.oe_n := !oe
+        io.fx3.dq.write := write
+        io.fx3.dq.writeEnable := writeEnable
+      }
+    }
   }
 
-  io.fx3.dq.write := 0
   io.fx3.pktend_n := False
 
   // TODO never directly connect input: always go through short buffer on read? - or simply delay inputs by one?
-  val rds = History(reg.rd, 4, init = False)
+  val rds = History(reg.fx3.rd, 3, init = False)
   io.rx.data.valid := False
   io.rx.data.payload := 0
-  reg.oe := do_rx
+  reg.fx3.oe := do_rx
+  when(!io.fx3.empty_n) {
+    rds.map(_.clear()) // TODO really leave this workaround in?
+  }
   when(rds(2) && io.fx3.empty_n) {
     // data available && data accepted
     when(io.rx.data.ready && rx_buffer.empty) {
@@ -129,25 +139,27 @@ case class HsiInterface() extends Component {
     io.rx.data.valid := True
   }
 
-  val tx_buffer = ValidFlagShiftReg(Bits(16 bits), 3)
-  val retransmit = Reg(Bits(3 bits)) init (0)
+  val tx_buffer = ValidFlagShiftReg(Bits(16 bits), 4)
+  val retransmit = Reg(tx_buffer.valid.clone()) init (0)
   val needs_retransmit = retransmit.orR
   io.tx.data.ready := False
-  io.fx3.dq.writeEnable := do_tx
-  reg.wr := False
+  reg.fx3.dq.writeEnable := False
+  reg.fx3.wr := False
   // TODO check generated HW - optimize code if necessary (duplicate statements like shift...)
-  when(io.fx3.full_n) { 
+  when(io.fx3.full_n) {
     when(do_tx && !needs_retransmit && io.tx.data.valid) {
       tx_buffer.shift(io.tx.data.payload, True)
-      io.fx3.dq.write := io.tx.data.payload
+      reg.fx3.dq.write := io.tx.data.payload
       io.tx.data.ready := True
-      reg.wr := True
+      reg.fx3.wr := True
+      reg.fx3.dq.writeEnable := True
     } elsewhen (do_tx && needs_retransmit) {
-      io.fx3.dq.write := tx_buffer.shift(0, False)
-      reg.wr := retransmit(0)
+      reg.fx3.dq.write := tx_buffer.shift(0, False)
+      reg.fx3.wr := retransmit(0)
       retransmit := False ## retransmit >> 1
+      reg.fx3.dq.writeEnable := True
     } elsewhen (!needs_retransmit) {
-      tx_buffer.shift(0, False)
+      reg.fx3.dq.write := tx_buffer.shift(0, False)
     }
   } otherwise {
     retransmit := tx_buffer.valid
@@ -158,7 +170,6 @@ case class HsiInterface() extends Component {
     // TODO explain why 5
     // TODO do lazy switching? only switch if other direction would transfer?
     val delay = Reg(Bits(5 bits)) init(0)
-    val should_be_tx = RegInit(False)
     val ready_to_tx = io.tx.en && (io.tx.data.valid || needs_retransmit) && io.fx3.full_n
 
     delay := delay(0 to 3) ## B"1"
