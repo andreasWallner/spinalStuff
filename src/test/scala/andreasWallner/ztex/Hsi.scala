@@ -74,6 +74,7 @@ case class FX3SimTx(intf: FX3, clockDomain: ClockDomain)(
 case class FX3SimRx(intf: FX3, clockDomain: ClockDomain)(
     rxCallback: (Int) => Unit
 ) {
+  var pktendCallback: (Queue[Int]) => Unit = (_) => {}
   var next_remaining_space: () => Int = () => {
     // use a minimum of 4 as worst case
     // in practice the memory is much bigger, but smaller
@@ -93,7 +94,9 @@ case class FX3SimRx(intf: FX3, clockDomain: ClockDomain)(
   var remainingSpace = 1
   var emptyDelay = 10
   val full = SimHistory(4, false)
+  var packetBuffer = Queue[Int]()
   def txFsm(): Unit = {
+    val currentRemainingSpace = remainingSpace
     if (emptyDelay == 0) {
       remainingSpace = next_remaining_space()
       emptyDelay = next_empty_delay()
@@ -106,6 +109,12 @@ case class FX3SimRx(intf: FX3, clockDomain: ClockDomain)(
       rxCallback(
         if (intf.dq.writeEnable.toBoolean) intf.dq.write.toInt else 0xffffffff
       )
+      packetBuffer += intf.dq.write.toInt
+    }
+    if (currentRemainingSpace > 0 && (!intf.pktend_n.toBoolean || remainingSpace == 0)) {
+      pktendCallback(packetBuffer)
+      packetBuffer.clear()
+      remainingSpace = 0
     }
     full.update(remainingSpace > 0)
     intf.full_n #= full(3)
@@ -231,8 +240,6 @@ class HsiSim extends FunSuite {
         scoreboard.pushDut(payload.toInt)
       }
 
-      dut.io.tx.en #= true
-
       StreamDriver(dut.io.tx.data, dut.clockDomain) { payload =>
         payload.randomize()
         scoreboard.matches + scoreboard.ref.length < toSend
@@ -240,6 +247,9 @@ class HsiSim extends FunSuite {
       StreamMonitor(dut.io.tx.data, dut.clockDomain) { payload =>
         scoreboard.pushRef(payload.toInt)
       }
+
+      dut.io.tx.en #= true
+      dut.io.tx.pktend_timeout #= 0
 
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdgeWhere(
@@ -249,7 +259,6 @@ class HsiSim extends FunSuite {
       scoreboard.check()
     }
   }
-
   test("read, full backpressure") {
     dut.doSim("read, full backpressure") { dut =>
       val toSend = 10000
@@ -260,8 +269,6 @@ class HsiSim extends FunSuite {
         scoreboard.pushDut(payload.toInt)
       }
 
-      dut.io.tx.en #= true
-
       StreamDriver(dut.io.tx.data, dut.clockDomain) { payload =>
         payload.randomize()
         scoreboard.matches + scoreboard.ref.length < toSend
@@ -269,6 +276,10 @@ class HsiSim extends FunSuite {
       StreamMonitor(dut.io.tx.data, dut.clockDomain) { payload =>
         scoreboard.pushRef(payload.toInt)
       }
+
+      dut.io.tx.en #= true
+      dut.io.tx.pktend_timeout #= 0
+      dut.io.tx.pktend #= false
 
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdgeWhere({
@@ -316,6 +327,9 @@ class HsiSim extends FunSuite {
       )
 
       dut.io.tx.en #= false
+      dut.io.tx.pktend_timeout #= 0
+      dut.io.tx.pktend #= false
+
       dut.clockDomain.forkStimulus(10)
       while (scoreboardTx.matches < toSend || scoreboardRx.matches < toReceive) {
         dut.io.tx.en #= !dut.io.tx.en.toBoolean
@@ -323,6 +337,89 @@ class HsiSim extends FunSuite {
       }
       scoreboardTx.check()
       scoreboardRx.check()
+    }
+  }
+
+  test("auto pktend") {
+    dut.doSim("auto pktend") { dut =>
+      val toSend = 5
+
+      SimTimeout(toSend * (20 + toSend*10) * 5 * 10)
+      var transmitNext = true
+      val scoreboard = ScoreboardInOrder[Int]()
+      val fx3rx = FX3SimRx(dut.io.fx3, dut.clockDomain) { _ => }
+      fx3rx.pktendCallback = { (values: Queue[Int]) =>
+        assert(values.size == 1)
+        scoreboard.pushDut(values(0))
+        transmitNext = true
+        dut.io.tx.pktend_timeout #= dut.io.tx.pktend_timeout.toInt + 10
+      }
+      fx3rx.next_remaining_space = () => { 100 }
+      fx3rx.next_empty_delay = () => { 20 }
+      StreamDriver(dut.io.tx.data, dut.clockDomain) { payload =>
+        val currentTransmitNext = transmitNext
+        payload.randomize()
+        transmitNext = false
+        currentTransmitNext
+      }.transactionDelay = () => { 0 }
+      StreamMonitor(dut.io.tx.data, dut.clockDomain) { payload =>
+        scoreboard.pushRef(payload.toInt)
+      }
+      dut.io.tx.pktend_timeout #= 20
+      dut.io.tx.en #= true
+      dut.io.tx.pktend #= false
+
+      dut.clockDomain.forkStimulus(10)
+      dut.clockDomain.waitActiveEdgeWhere({
+        scoreboard.matches >= toSend
+      })
+      dut.clockDomain.waitRisingEdge(40)
+      scoreboard.check()
+    }
+  }
+  test("manual pktend") {
+    dut.doSim("manual pktend") { dut =>
+      val toSend = 5
+
+      SimTimeout(toSend * (20 + toSend*10) * 5 * 10)
+      var transmitNext = true
+      val scoreboard = ScoreboardInOrder[Int]()
+      val fx3rx = FX3SimRx(dut.io.fx3, dut.clockDomain) { _ => }
+      fx3rx.pktendCallback = { (values: Queue[Int]) =>
+        assert(values.size == 1)
+        scoreboard.pushDut(values(0))
+      }
+      fx3rx.next_remaining_space = () => { 100 }
+      fx3rx.next_empty_delay = () => { 20 }
+      // initial remainingSpace is otherwise 1
+      //  -> would end block before manual end can be triggered
+      fx3rx.remainingSpace = 20
+      StreamDriver(dut.io.tx.data, dut.clockDomain) { payload =>
+        val currentTransmitNext = transmitNext
+        payload.randomize()
+        transmitNext = false
+        currentTransmitNext
+      }.transactionDelay = () => { 0 }
+      StreamMonitor(dut.io.tx.data, dut.clockDomain) { payload =>
+        scoreboard.pushRef(payload.toInt)
+      }
+      dut.io.tx.pktend_timeout #= 0
+      dut.io.tx.en #= true
+      dut.io.tx.pktend #= false
+
+      dut.clockDomain.forkStimulus(10)
+      while(scoreboard.matches < toSend) {
+        dut.clockDomain.waitActiveEdge(40);
+        dut.io.tx.pktend #= true
+        dut.clockDomain.waitActiveEdge();
+        dut.io.tx.pktend #= false
+
+        dut.clockDomain.waitActiveEdgeWhere(dut.io.tx.pktend_done.toBoolean == true)
+        dut.clockDomain.waitActiveEdge(10)
+        scoreboard.check()
+
+        transmitNext = true
+      }
     }
   }
 }

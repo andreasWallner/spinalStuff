@@ -84,6 +84,7 @@ case class HsiInterface() extends Component {
       val en = in Bool
       val pktend = in Bool
       val pktend_timeout = in UInt (16 bits)
+      val pktend_done = out Bool
     }
     val rx = new Bundle {
       val data = master(Stream(Bits(16 bit)))
@@ -98,9 +99,12 @@ case class HsiInterface() extends Component {
       val wr = Reg(Bool) init(False)
       val rd = RegNext(do_rx && io.fx3.empty_n && rx_buffer.empty) init (False)
       val oe = Reg(False) init (False)
+      val pktend = Reg(Bool) init (False)
+      // TODO remove inversion after register?
       io.fx3.wr_n := !wr
       io.fx3.rd_n := !rd
       io.fx3.oe_n := !oe
+      io.fx3.pktend_n := !pktend
       val dq = new Area {
         val write = Reg(Bits(16 bit))
         val writeEnable = Reg(Bool)
@@ -110,8 +114,6 @@ case class HsiInterface() extends Component {
       }
     }
   }
-
-  io.fx3.pktend_n := False
 
   // TODO never directly connect input: always go through short buffer on read? - or simply delay inputs by one?
   val rds = History(reg.fx3.rd, 3, init = False)
@@ -187,6 +189,31 @@ case class HsiInterface() extends Component {
       }
     } otherwise {
       delay := 0
+    }
+  }
+
+  val pktend = new Area {
+    val autoArmed = Reg(Bool) init(False)
+    val manualArmed = Reg(Bool) init(False)
+    val timeout = Reg(UInt(16 bits)) init(0)
+    val pktendRequest = History(io.tx.pktend, 2)
+    reg.fx3.pktend := False
+    io.tx.pktend_done := False
+    // reset if we write, still have to write or as long as we are full
+    // start pktend auto timer when sending data
+    when(reg.fx3.wr || needs_retransmit || !io.fx3.full_n) {
+      when(reg.fx3.wr) { autoArmed := True }
+      when(pktendRequest(0) && !pktendRequest(1)) { manualArmed := True }
+      timeout := 0
+    } elsewhen(manualArmed || (autoArmed && (io.tx.pktend_timeout =/= 0) && (timeout === io.tx.pktend_timeout))) {
+      autoArmed := False
+      manualArmed := False
+      timeout := 0
+      reg.fx3.pktend := True
+      io.tx.pktend_done := True
+    } otherwise {
+      when(pktendRequest(0) && !pktendRequest(1)) { manualArmed := True }
+      timeout := timeout + 1
     }
   }
 }
