@@ -171,8 +171,9 @@ case class HsiInterface() extends Component {
     // TODO look for useless rx <-> tx changes
     // TODO explain why 5
     // TODO do lazy switching? only switch if other direction would transfer?
+    // TODO should we really keep transmitting as long as retransmit is set? does _not_ doing so make sense?
     val delay = Reg(Bits(5 bits)) init(0)
-    val ready_to_tx = io.tx.en && (io.tx.data.valid || needs_retransmit) && io.fx3.full_n
+    val ready_to_tx = (io.tx.en || needs_retransmit) && (io.tx.data.valid || needs_retransmit) && io.fx3.full_n
 
     delay := delay(0 to 3) ## B"1"
     when(!do_tx && ready_to_tx) {
