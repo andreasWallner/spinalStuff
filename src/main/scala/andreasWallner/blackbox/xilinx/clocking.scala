@@ -16,11 +16,12 @@ case class IBUFG() extends BlackBox {
   val O = out Bool()
 }
 
+// See UG472 (v1.14), 7 Series Clocking, p. 78 ff
 case class MMCME2_BASE(
+    CLKIN1_PERIOD: Double,
     BANDWIDTH: String = "OPTIMIZED",
     CLKFBOUT_MULT_F: Double = 5.0,
     CLKFBOUT_PHASE: Double = 0.0,
-    CLKIN1_PERIOD: Double = 0.0,
     CLKOUT0_DIVIDE_F: Double = 1.0,
     CLKOUT1_DIVIDE: Double = 1,
     CLKOUT2_DIVIDE: Double = 1,
@@ -44,6 +45,28 @@ case class MMCME2_BASE(
     REF_JITTER1: Double = 0.0,
     STARTUP_WAIT: String = "FALSE"
 ) extends BlackBox {
+  assert(List("OPTIMIZED", "HIGH", "LOW").contains(BANDWIDTH), message = "Invalid BANDWIDTH")
+  assert(CLKFBOUT_MULT_F >= 5.0 && CLKFBOUT_MULT_F <= 64.0, message = "Invalid CLKFBOUT_MULT_F")
+  assert(CLKFBOUT_PHASE >= -360.0 && CLKFBOUT_PHASE <= 360.0)
+  assert(CLKIN1_PERIOD >= 1.0 && CLKIN1_PERIOD <= 1000.0)
+  assert(CLKOUT0_DIVIDE_F >= 1.0 && CLKOUT0_DIVIDE_F <= 128.0)
+  assert(CLKOUT0_DUTY_CYCLE >= 0.001 && CLKOUT0_DUTY_CYCLE <= 0.999)
+  assert(CLKOUT1_DUTY_CYCLE >= 0.001 && CLKOUT1_DUTY_CYCLE <= 0.999)
+  assert(CLKOUT2_DUTY_CYCLE >= 0.001 && CLKOUT2_DUTY_CYCLE <= 0.999)
+  assert(CLKOUT3_DUTY_CYCLE >= 0.001 && CLKOUT3_DUTY_CYCLE <= 0.999)
+  assert(CLKOUT4_DUTY_CYCLE >= 0.001 && CLKOUT4_DUTY_CYCLE <= 0.999)
+  assert(CLKOUT5_DUTY_CYCLE >= 0.001 && CLKOUT5_DUTY_CYCLE <= 0.999)
+  assert(CLKOUT6_DUTY_CYCLE >= 0.001 && CLKOUT6_DUTY_CYCLE <= 0.999)
+  assert(CLKOUT0_PHASE >= -360.0 && CLKOUT0_PHASE <= 360.0)
+  assert(CLKOUT1_PHASE >= -360.0 && CLKOUT1_PHASE <= 360.0)
+  assert(CLKOUT2_PHASE >= -360.0 && CLKOUT2_PHASE <= 360.0)
+  assert(CLKOUT3_PHASE >= -360.0 && CLKOUT3_PHASE <= 360.0)
+  assert(CLKOUT4_PHASE >= -360.0 && CLKOUT4_PHASE <= 360.0)
+  assert(CLKOUT5_PHASE >= -360.0 && CLKOUT5_PHASE <= 360.0)
+  assert(CLKOUT6_PHASE >= -360.0 && CLKOUT6_PHASE <= 360.0)
+  assert(DIVCLK_DIVIDE >= 1 && DIVCLK_DIVIDE <= 128)
+  assert(REF_JITTER1 >= 0.0 && REF_JITTER1 <= 0.999)
+
   addGeneric("BANDWIDTH", BANDWIDTH)
   addGeneric("CLKFBOUT_MULT_F", CLKFBOUT_MULT_F)
   addGeneric("CLKFBOUT_PHASE", CLKFBOUT_PHASE)
@@ -70,13 +93,10 @@ case class MMCME2_BASE(
   addGeneric("DIVCLK_DIVIDE", DIVCLK_DIVIDE)
   addGeneric("REF_JITTER1", REF_JITTER1)
   addGeneric("STARTUP_WAIT", STARTUP_WAIT)
-  val CLKIN1 = in Bool ()
-  val CLKFBIN = in Bool ()
-  val RST = in Bool ()
-  val PWRDWN = in Bool ()
 
+  val CLKIN1 = in Bool ()
   val CLKOUT0 = out Bool ()
-  val BLKOUT0B = out Bool ()
+  val CLKOUT0B = out Bool ()
   val CLKOUT1 = out Bool ()
   val CLKOUT1B = out Bool ()
   val CLKOUT2 = out Bool ()
@@ -86,7 +106,12 @@ case class MMCME2_BASE(
   val CLKOUT4 = out Bool ()
   val CLKOUT5 = out Bool ()
   val CLKOUT6 = out Bool ()
-  val CLKOUTFB = out Bool ()
+
+  val CLKFBIN = in Bool ()
+  val CLKFBOUT = out Bool ()
   val CLKFBOUTB = out Bool ()
+
   val LOCKED = out Bool ()
+  val RST = in Bool ()
+  val PWRDWN = in Bool ()
 }

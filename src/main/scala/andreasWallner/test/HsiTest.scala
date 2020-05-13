@@ -7,6 +7,7 @@ import andreasWallner.ztex.{HsiInterface, FX3};
 case class HsiLoopbackTest() extends Component {
   val io = new Bundle {
     val fx3 = master(FX3())
+    val activity = out Bool
   }
 
   val hsiTxEn = RegInit(False)
@@ -30,4 +31,5 @@ case class HsiLoopbackTest() extends Component {
   } elsewhen(fifo.io.occupancy === 0) {
     hsiTxEn := False
   }
+  io.activity := fifo.io.occupancy =/= 0
 }
