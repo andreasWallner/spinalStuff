@@ -23,7 +23,7 @@ case class Board_2_14() extends Component {
     //val rdwr_b = Bool() // R16 // TODO dir gpio
     //val csi_b = Bool() // V15 // TODO dir gpio
 
-    val gpio = inout(Analog(Bits(4 bits)))
+    val gpio = inout(Analog(Bits(4 bits))) // will pullups
     /*val gpio23 = ? // T14
     val gpio25 = ? // V16
     val gpio26 = ? // U14
@@ -56,11 +56,11 @@ case class Board_2_14() extends Component {
     val D = inout(Analog (Bits(30 bits))) // V9...
   }
 
-  val mmce = MMCME2_BASE(CLKIN_PERIOD = 1.0e9/104.0e6, CLKFBOUT_MULT_F = 10.0, CLKOUT0_DIVIDE_F = 10.0)
+  val mmce = MMCME2_BASE(CLKIN1_PERIOD = 1.0e9/104.0e6, CLKFBOUT_MULT_F = 10.0, CLKOUT0_DIVIDE_F = 10.0)
   val clk_bufd = BUFG.on(mmce.CLKOUT0)
   val rstSynced = ResetBridge.on(Array(!mmce.LOCKED, io.reset), clk_bufd)
   mmce.CLKIN1 := io.ifclk // no buffer since ifclk PIN is an MRCC I/O
-  mmce.CLKFBIN := BUFG.on(mmce.CLKOUTFB)
+  mmce.CLKFBIN := BUFG.on(mmce.CLKFBOUT)
   mmce.RST := False
   mmce.PWRDWN := False
 
@@ -72,8 +72,10 @@ case class Board_2_14() extends Component {
     )
 
   new ClockingArea(ifclk_domain) {
+    val gpio = BufferCC(io.gpio)
     val top = HsiLoopbackTest()
 
+    top.io.mode := gpio
     top.io.fx3.dq.read := io.dq
     when(top.io.fx3.dq.writeEnable) { io.dq := top.io.fx3.dq.write }
     io.slwr_n := top.io.fx3.wr_n
