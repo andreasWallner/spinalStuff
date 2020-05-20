@@ -96,15 +96,16 @@ case class HsiInterface() extends Component {
   val do_tx = Reg(Bool()) init(False)
   val reg = new Area {
     val fx3 = new Area {
-      val wr = Reg(Bool) init(False)
-      val rd = RegNext(do_rx && io.fx3.empty_n && rx_buffer.empty) init (False)
-      val oe = Reg(False) init (False)
-      val pktend = Reg(Bool) init (False)
+      val rd_n = Reg(Bool) init True
+      val wr_n = Reg(Bool) init True
+      val oe_n = Reg(Bool) init True
+      val pktend_n = Reg(Bool) init True
+
       // TODO remove inversion after register?
-      io.fx3.wr_n := !wr
-      io.fx3.rd_n := !rd
-      io.fx3.oe_n := !oe
-      io.fx3.pktend_n := !pktend
+      io.fx3.wr_n := wr_n
+      io.fx3.rd_n := rd_n
+      io.fx3.oe_n := oe_n
+      io.fx3.pktend_n := pktend_n
       val dq = new Area {
         val write = Reg(Bits(16 bit))
         val writeEnable = Reg(Bool)
@@ -116,10 +117,11 @@ case class HsiInterface() extends Component {
   }
 
   // TODO never directly connect input: always go through short buffer on read? - or simply delay inputs by one?
-  val rds = History(reg.fx3.rd, 3, init = False)
+  reg.fx3.rd_n := !(do_rx && io.fx3.empty_n && rx_buffer.empty)
+  val rds = History(!reg.fx3.rd_n, 3, init = False)
   io.rx.data.valid := False
   io.rx.data.payload := 0
-  reg.fx3.oe := do_rx
+  reg.fx3.oe_n := !do_rx
   when(!io.fx3.empty_n) {
     rds.map(_.clear()) // TODO really leave this workaround in?
   }
@@ -146,18 +148,18 @@ case class HsiInterface() extends Component {
   val needs_retransmit = retransmit.orR
   io.tx.data.ready := False
   reg.fx3.dq.writeEnable := False
-  reg.fx3.wr := False
+  reg.fx3.wr_n := True
   // TODO check generated HW - optimize code if necessary (duplicate statements like shift...)
   when(io.fx3.full_n) {
     when(do_tx && !needs_retransmit && io.tx.data.valid) {
       tx_buffer.shift(io.tx.data.payload, True)
       reg.fx3.dq.write := io.tx.data.payload
       io.tx.data.ready := True
-      reg.fx3.wr := True
+      reg.fx3.wr_n := False
       reg.fx3.dq.writeEnable := True
     } elsewhen (do_tx && needs_retransmit) {
       reg.fx3.dq.write := tx_buffer.shift(0, False)
-      reg.fx3.wr := retransmit(0)
+      reg.fx3.wr_n := !retransmit(0)
       retransmit := False ## retransmit >> 1
       reg.fx3.dq.writeEnable := True
     } elsewhen (!needs_retransmit) {
@@ -198,19 +200,19 @@ case class HsiInterface() extends Component {
     val manualArmed = Reg(Bool) init(False)
     val timeout = Reg(UInt(16 bits)) init(0)
     val pktendRequest = History(io.tx.pktend, 2)
-    reg.fx3.pktend := False
+    reg.fx3.pktend_n := True
     io.tx.pktend_done := False
     // reset if we write, still have to write or as long as we are full
     // start pktend auto timer when sending data
-    when(reg.fx3.wr || needs_retransmit || !io.fx3.full_n) {
-      when(reg.fx3.wr) { autoArmed := True }
+    when(!reg.fx3.wr_n || needs_retransmit || !io.fx3.full_n) {
+      when(!reg.fx3.wr_n) { autoArmed := True }
       when(pktendRequest(0) && !pktendRequest(1)) { manualArmed := True }
       timeout := 0
     } elsewhen(manualArmed || (autoArmed && (io.tx.pktend_timeout =/= 0) && (timeout === io.tx.pktend_timeout))) {
       autoArmed := False
       manualArmed := False
       timeout := 0
-      reg.fx3.pktend := True
+      reg.fx3.pktend_n := False
       io.tx.pktend_done := True
     } otherwise {
       when(pktendRequest(0) && !pktendRequest(1)) { manualArmed := True }
