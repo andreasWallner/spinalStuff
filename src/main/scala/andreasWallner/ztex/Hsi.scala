@@ -23,37 +23,60 @@ case class FX3() extends Bundle with IMasterSlave {
   }
 }
 
+/** Buffer to provide incoming data as Stream
+  *
+  * Provides a shift-register to push data into and mux & logic to get data
+  * out as in a FIFO.
+  *
+  * We want this to be directly connected to the input pins, therefore we
+  * want no logic between the data input and the register.
+  * This is the reason why no standard SpinalHDL FIFO can be used.
+  * Also the reason why this is written inefficiently w.r.t. hardware size:
+  * it could be smaller if the input was muxed and the output shifted, but
+  * that would lead to LUTs before the first register.
+  */
 case class ShortBuffer[T <: Data](val dataType: HardType[T], val depth: Int)
-    extends Area {
+    extends Component {
+  require(depth >= 1)
+  val io = new Bundle {
+    val push = new Bundle {
+      val data = in(dataType())
+      val en = in Bool ()
+    }
+    val pop = master Stream (dataType)
+    val willBecomeEmpty = out Bool ()
+  }
+
   val buffer = Vec(Reg(dataType), depth)
-  val valid = Vec(Reg(Bool), depth)
+  val valid = Vec(Reg(False), depth + 1)
   valid.map(_.init(False))
+  valid(depth) := False
 
-  // TODO: we would not necessarily need a elsewhen on the last entry, might save minimal hardware is it worth it?
-  def push(data: T, data_valid: Bool) = {
-    valid.zip(buffer).foldLeft(when(False) {}) {
-      case (expr, (v, b)) =>
-        expr elsewhen (!v) {
-          b := data
-          v := data_valid
-        }
+  val newValid = Vec(Bool, depth)
+  when(io.push.en) {
+    buffer(0) := io.push.data
+    valid(0) := True
+    for (i <- 0 to depth - 2) {
+      buffer(i + 1) := buffer(i)
+      valid(i + 1) := newValid(i)
+    }
+  } otherwise {
+    valid.zip(newValid).map {
+      case (v, nv) =>
+        v := nv
     }
   }
-
-  def pop(): T = {
-    val output = cloneOf(dataType)
-    output := buffer(0)
-    valid(depth - 1) := False
-
-    for (i <- (1 to depth - 1).reverse) {
-      buffer(i - 1) := buffer(i)
-      valid(i - 1) := valid(i)
-    }
-
-    output
+  io.willBecomeEmpty := !valid(0) || (!valid(1) && io.pop.ready)
+  for (i <- newValid.range) {
+    newValid(i) := Mux(
+      !(io.pop.ready && io.pop.valid),
+      valid(i),
+      valid(i) && valid(i + 1)
+    )
   }
-
-  def empty: Bool = !valid(0)
+  io.pop.valid := valid.orR
+  val validOH = OHMasking.last(valid.asBits(0 to depth - 1))
+  io.pop.payload := MuxOH(validOH, buffer)
 }
 
 case class ValidFlagShiftReg[T <: Data](
@@ -90,10 +113,9 @@ case class HsiInterface() extends Component {
       val data = master(Stream(Bits(16 bit)))
     }
   }
-  val rx_buffer = ShortBuffer(Bits(16 bit), 4)
 
-  val do_rx = Reg(Bool()) init(False)
-  val do_tx = Reg(Bool()) init(False)
+  val do_rx = Reg(Bool()) init (False)
+  val do_tx = Reg(Bool()) init (False)
   val reg = new Area {
     val fx3 = new Area {
       val rd_n = Reg(Bool) init True
@@ -116,31 +138,16 @@ case class HsiInterface() extends Component {
     }
   }
 
-  // TODO never directly connect input: always go through short buffer on read? - or simply delay inputs by one?
-  reg.fx3.rd_n := !(do_rx && io.fx3.empty_n && rx_buffer.empty)
   val rds = History(!reg.fx3.rd_n, 3, init = False)
-  io.rx.data.valid := False
-  io.rx.data.payload := 0
+  val rx_buffer = ShortBuffer(Bits(16 bit), 4)
+  reg.fx3.rd_n := !(do_rx && io.fx3.empty_n && rx_buffer.io.willBecomeEmpty)
+  io.rx.data <> rx_buffer.io.pop
+  rx_buffer.io.push.data := io.fx3.dq.read
+  rx_buffer.io.push.en := rds(2) && io.fx3.empty_n
+
   reg.fx3.oe_n := !do_rx
   when(!io.fx3.empty_n) {
     rds.map(_.clear()) // TODO really leave this workaround in?
-  }
-  when(rds(2) && io.fx3.empty_n) {
-    // data available && data accepted
-    when(io.rx.data.ready && rx_buffer.empty) {
-      // ready and not buffering?
-      // then give it out
-      io.rx.data.payload := io.fx3.dq.read
-      io.rx.data.valid := True
-    } otherwise {
-      // otherwise, buffer it
-      rx_buffer.push(io.fx3.dq.read, True)
-    }
-  } elsewhen (io.rx.data.ready && !rx_buffer.empty) {
-    // buffer and ready to accept?
-    // then shift out one buffered element
-    io.rx.data.payload := rx_buffer.pop()
-    io.rx.data.valid := True
   }
 
   val tx_buffer = ValidFlagShiftReg(Bits(16 bits), 4)
@@ -174,17 +181,17 @@ case class HsiInterface() extends Component {
     // TODO explain why 5
     // TODO do lazy switching? only switch if other direction would transfer?
     // TODO should we really keep transmitting as long as retransmit is set? does _not_ doing so make sense?
-    val delay = Reg(Bits(5 bits)) init(0)
+    val delay = Reg(Bits(5 bits)) init (0)
     val ready_to_tx = (io.tx.en || needs_retransmit) && (io.tx.data.valid || needs_retransmit) && io.fx3.full_n
 
     delay := delay(0 to 3) ## B"1"
     when(!do_tx && ready_to_tx) {
       do_rx := False
-      when (delay(4)) {
+      when(delay(4)) {
         do_tx := delay(4)
         delay := 0
       }
-    } elsewhen(!do_rx && !(ready_to_tx)) {
+    } elsewhen (!do_rx && !(ready_to_tx)) {
       do_tx := False
       when(delay(4)) {
         do_rx := True
@@ -196,9 +203,9 @@ case class HsiInterface() extends Component {
   }
 
   val pktend = new Area {
-    val autoArmed = Reg(Bool) init(False)
-    val manualArmed = Reg(Bool) init(False)
-    val timeout = Reg(UInt(16 bits)) init(0)
+    val autoArmed = Reg(Bool) init (False)
+    val manualArmed = Reg(Bool) init (False)
+    val timeout = Reg(UInt(16 bits)) init (0)
     val pktendRequest = History(io.tx.pktend, 2)
     reg.fx3.pktend_n := True
     io.tx.pktend_done := False
@@ -208,7 +215,7 @@ case class HsiInterface() extends Component {
       when(!reg.fx3.wr_n) { autoArmed := True }
       when(pktendRequest(0) && !pktendRequest(1)) { manualArmed := True }
       timeout := 0
-    } elsewhen(manualArmed || (autoArmed && (io.tx.pktend_timeout =/= 0) && (timeout === io.tx.pktend_timeout))) {
+    } elsewhen (manualArmed || (autoArmed && (io.tx.pktend_timeout =/= 0) && (timeout === io.tx.pktend_timeout))) {
       autoArmed := False
       manualArmed := False
       timeout := 0

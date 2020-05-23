@@ -171,8 +171,8 @@ class HsiSim extends FunSuite {
       scoreboard.check()
     }
   }
-  test("write, full backpressure") {
-    dut.doSim("write, full backpressure") { dut =>
+  test("host writes fpga, full backpressure") {
+    dut.doSim("host writes fpga, full backpressure") { dut =>
       val toSend = 200
 
       SimTimeout(toSend * 5 * 10)
@@ -201,6 +201,37 @@ class HsiSim extends FunSuite {
       scoreboard.check()
     }
   }
+  test("host writes fpga, full throughput") {
+    dut.doSim("host writes fpga, full throughput") { dut =>
+      val toSend = 200
+
+      SimTimeout(toSend * 5 * 10)
+      val scoreboard = ScoreboardInOrder[Int]()
+      val fx3 = FX3SimTx(dut.io.fx3, dut.clockDomain) { () =>
+        if (scoreboard.matches + scoreboard.ref.length < toSend) {
+          val dataValue = scoreboard.matches + scoreboard.ref.length + 10
+          scoreboard.pushRef(dataValue)
+          (true, dataValue)
+        } else {
+          (false, 0)
+        }
+      }
+      dut.io.rx.data.ready #= true
+      StreamMonitor(dut.io.rx.data, dut.clockDomain) { payload =>
+        scoreboard.pushDut(payload.toInt)
+      }
+
+      fx3.next_block_size = () => { toSend }
+      dut.io.tx.en #= false
+
+      dut.clockDomain.forkStimulus(10)
+      dut.clockDomain.waitActiveEdgeWhere(
+        scoreboard.matches >= toSend
+      )
+      scoreboard.check()
+    }
+  }
+
   test("write, no extra delay") {
     dut.doSim("write, no delay") { dut =>
       val toSend = 200
