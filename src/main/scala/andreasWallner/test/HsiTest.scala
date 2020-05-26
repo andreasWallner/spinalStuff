@@ -10,6 +10,8 @@ case class HsiLoopbackTest() extends Component {
     val fx3 = master(FX3())
     val activity = out Bool
     val mode = in Bits(4 bit)
+
+    val toggle1Hz = out(Reg(Bool))
   }
 
   val hsiTxEn = RegInit(False)
@@ -37,4 +39,10 @@ case class HsiLoopbackTest() extends Component {
     hsiTxEn := False
   }
   io.activity := fifo.io.occupancy =/= 0
+
+  val timeout1Hz = Timeout(1 sec)
+  when(timeout1Hz) {
+    io.toggle1Hz := !io.toggle1Hz
+    timeout1Hz.clear()
+  }
 }

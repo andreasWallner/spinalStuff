@@ -56,7 +56,7 @@ case class ShortBuffer[T <: Data](val dataType: HardType[T], val depth: Int)
   when(io.push.en) {
     buffer(0) := io.push.data
     valid(0) := True
-    for (i <- 0 to depth - 2) {
+    for (i <- 0 until depth - 1) {
       buffer(i + 1) := buffer(i)
       valid(i + 1) := newValid(i)
     }
@@ -75,7 +75,7 @@ case class ShortBuffer[T <: Data](val dataType: HardType[T], val depth: Int)
     )
   }
   io.pop.valid := valid.orR
-  val validOH = OHMasking.last(valid.asBits(0 to depth - 1))
+  val validOH = OHMasking.last(valid.asBits(0 until depth))
   io.pop.payload := MuxOH(validOH, buffer)
 }
 

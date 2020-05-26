@@ -12,6 +12,7 @@ import scala.collection.mutable
 
 class HsiLoopbackTestSim extends FunSuite {
   val dut = SimConfig.withWave
+    .withConfig(SpinalConfig(defaultClockDomainFrequency = FixedFrequency(100 MHz)))
     .workspacePath("/c/work/tmp/sim")
     .compile(HsiLoopbackTest())
 
