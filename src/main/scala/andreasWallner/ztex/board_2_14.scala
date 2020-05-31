@@ -30,17 +30,17 @@ case class InterfaceTestTop() extends Component {
     val switches = in Bits (4 bit)
   }
 
-  val mmce = MMCME2_BASE(
+  val mmcm = MMCME2_BASE(
     CLKIN1_PERIOD = 1.0e9 / 104.0e6,
     CLKFBOUT_MULT_F = 10.0,
     CLKOUT0_DIVIDE_F = 10.0
   )
-  val clk_bufd = BUFG.on(mmce.CLKOUT0)
-  val rstSynced = ResetBridge.on(Array(!mmce.LOCKED, io.reset), clk_bufd)
-  mmce.CLKIN1 := io.ifclk // no buffer since ifclk PIN is an MRCC I/O
-  mmce.CLKFBIN := BUFG.on(mmce.CLKFBOUT)
-  mmce.RST := False
-  mmce.PWRDWN := False
+  val clk_bufd = BUFG.on(mmcm.CLKOUT0)
+  val rstSynced = ResetBridge.on(Array(!mmcm.LOCKED, io.reset), clk_bufd)
+  mmcm.CLKIN1 := io.ifclk // no buffer since ifclk PIN is an MRCC I/O
+  mmcm.CLKFBIN := BUFG.on(mmcm.CLKFBOUT)
+  mmcm.RST := False
+  mmcm.PWRDWN := False
 
   val ifclk_domain =
     ClockDomain(

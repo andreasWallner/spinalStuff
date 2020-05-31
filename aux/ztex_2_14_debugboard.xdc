@@ -199,7 +199,7 @@ set_property IOSTANDARD LVCMOS33 [get_ports {io_*}]
 
 # TODO investigate - copied from board SDK, but disables all checks on the output/input
 # timings, making timing constraints above useless?
-set_false_path -from [get_clocks *mmce_CLKOUT0] -to [get_clocks ]
+set_false_path -from [get_clocks *mmcm_CLKOUT0] -to [get_clocks ]
 
 set_property BITSTREAM.CONFIG.CONFIGRATE 66 [current_design]  
 set_property BITSTREAM.CONFIG.SPI_32BIT_ADDR No [current_design]
