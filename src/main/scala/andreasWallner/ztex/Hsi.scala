@@ -138,42 +138,48 @@ case class HsiInterface() extends Component {
     }
   }
 
-  val rds = History(!reg.fx3.rd_n, 3, init = False)
-  val rx_buffer = ShortBuffer(Bits(16 bit), 4)
-  reg.fx3.rd_n := !(do_rx && io.fx3.empty_n && rx_buffer.io.willBecomeEmpty)
-  io.rx.data <> rx_buffer.io.pop
-  rx_buffer.io.push.data := io.fx3.dq.read
-  rx_buffer.io.push.en := rds(2) && io.fx3.empty_n
-
   reg.fx3.oe_n := !do_rx
-  when(!io.fx3.empty_n) {
-    rds.map(_.clear()) // TODO really leave this workaround in?
+
+  val rx = new Area {
+    val rds = History(!reg.fx3.rd_n, 3, init = False)
+    val buffer = ShortBuffer(Bits(16 bit), 4)
+    reg.fx3.rd_n := !(do_rx && io.fx3.empty_n && buffer.io.willBecomeEmpty)
+    io.rx.data <> buffer.io.pop
+    buffer.io.push.data := io.fx3.dq.read
+    buffer.io.push.en := rds(2) && io.fx3.empty_n
+
+    when(!io.fx3.empty_n) {
+      rds.map(_.clear()) // TODO really leave this workaround in?
+    }
   }
 
-  val tx_buffer = ValidFlagShiftReg(Bits(16 bits), 4)
-  val retransmit = Reg(tx_buffer.valid.clone()) init (0)
-  val needs_retransmit = retransmit.orR
-  io.tx.data.ready := False
-  reg.fx3.dq.writeEnable := False
-  reg.fx3.wr_n := True
-  // TODO check generated HW - optimize code if necessary (duplicate statements like shift...)
-  when(io.fx3.full_n) {
-    when(do_tx && !needs_retransmit && io.tx.data.valid) {
-      tx_buffer.shift(io.tx.data.payload, True)
-      reg.fx3.dq.write := io.tx.data.payload
-      io.tx.data.ready := True
-      reg.fx3.wr_n := False
-      reg.fx3.dq.writeEnable := True
-    } elsewhen (do_tx && needs_retransmit) {
-      reg.fx3.dq.write := tx_buffer.shift(0, False)
-      reg.fx3.wr_n := !retransmit(0)
-      retransmit := False ## retransmit >> 1
-      reg.fx3.dq.writeEnable := True
-    } elsewhen (!needs_retransmit) {
-      reg.fx3.dq.write := tx_buffer.shift(0, False)
+
+  val tx = new Area {
+    val buffer = ValidFlagShiftReg(Bits(16 bits), 4)
+    val retransmit = Reg(buffer.valid.clone()) init (0)
+    val needs_retransmit = retransmit.orR
+    io.tx.data.ready := False
+    reg.fx3.dq.writeEnable := False
+    reg.fx3.wr_n := True
+    // TODO check generated HW - optimize code if necessary (duplicate statements like shift...)
+    when(io.fx3.full_n) {
+      when(do_tx && !needs_retransmit && io.tx.data.valid) {
+        buffer.shift(io.tx.data.payload, True)
+        reg.fx3.dq.write := io.tx.data.payload
+        io.tx.data.ready := True
+        reg.fx3.wr_n := False
+        reg.fx3.dq.writeEnable := True
+      } elsewhen (do_tx && needs_retransmit) {
+        reg.fx3.dq.write := buffer.shift(0, False)
+        reg.fx3.wr_n := !retransmit(0)
+        retransmit := False ## retransmit >> 1
+        reg.fx3.dq.writeEnable := True
+      } elsewhen (!needs_retransmit) {
+        reg.fx3.dq.write := buffer.shift(0, False)
+      }
+    } otherwise {
+      retransmit := buffer.valid
     }
-  } otherwise {
-    retransmit := tx_buffer.valid
   }
 
   val dir = new Area {
@@ -182,7 +188,7 @@ case class HsiInterface() extends Component {
     // TODO do lazy switching? only switch if other direction would transfer?
     // TODO should we really keep transmitting as long as retransmit is set? does _not_ doing so make sense?
     val delay = Reg(Bits(5 bits)) init (0)
-    val ready_to_tx = (io.tx.en || needs_retransmit) && (io.tx.data.valid || needs_retransmit) && io.fx3.full_n
+    val ready_to_tx = (io.tx.en || tx.needs_retransmit) && (io.tx.data.valid || tx.needs_retransmit) && io.fx3.full_n
 
     delay := delay(0 to 3) ## B"1"
     when(!do_tx && ready_to_tx) {
@@ -211,7 +217,7 @@ case class HsiInterface() extends Component {
     io.tx.pktend_done := False
     // reset if we write, still have to write or as long as we are full
     // start pktend auto timer when sending data
-    when(!reg.fx3.wr_n || needs_retransmit || !io.fx3.full_n) {
+    when(!reg.fx3.wr_n || tx.needs_retransmit || !io.fx3.full_n) {
       when(!reg.fx3.wr_n) { autoArmed := True }
       when(pktendRequest(0) && !pktendRequest(1)) { manualArmed := True }
       timeout := 0
