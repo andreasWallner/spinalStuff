@@ -12,7 +12,7 @@ import spinal.lib.sim.{
 import scala.collection.mutable.Queue
 import scala.util.Random
 import org.scalatest.FunSuite
-import andreasWallner.ztex._
+import andreasWallner.io.fx3.sim._
 
 class IOControlSim extends FunSuite {
   val dut = SimConfig.withWave
@@ -23,7 +23,7 @@ class IOControlSim extends FunSuite {
     dut.doSim("set all leds") { dut =>
       SimTimeout(1000)
       val q = Queue[Int](0x0100, 0x0004, 0xffff, 0xffff)
-      val fx3 = FX3SimTx(dut.io.fx3, dut.clockDomain) { () =>
+      val fx3 = SlaveFifoSimTx(dut.io.fx3, dut.clockDomain) { () =>
         if (q.nonEmpty) (true, q.dequeue()) else (false, 0)
       }
 

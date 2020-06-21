@@ -4,22 +4,23 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.io.{Gpio, Apb3Gpio2}
 import spinal.lib.bus.amba3.apb.{Apb3Config, Apb3Decoder}
-import andreasWallner.ztex.{HsiInterface, FX3, BusMaster}
+import andreasWallner.ztex.BusMaster
+import andreasWallner.io.fx3._
 import andreasWallner.misc.Xorshift
 
 case class IOControl() extends Component {
   val io = new Bundle {
-    val fx3 = master(FX3())
+    val fx3 = master(SlaveFifo())
     val led = out Bits(10 bit)
   }
-  val hsi = HsiInterface()
-  io.fx3 <> hsi.io.fx3
-  hsi.io.tx.pktend := False
-  hsi.io.tx.en := True
-  hsi.io.tx.pktend_timeout := 100
+  val sfm = SlaveFifoMaster()
+  io.fx3 <> sfm.io.fx3
+  sfm.io.tx.pktend := False
+  sfm.io.tx.en := True
+  sfm.io.tx.pktend_timeout := 100
   val bm = BusMaster()
-  bm.io.data <> hsi.io.rx.data
-  bm.io.resp <> hsi.io.tx.data
+  bm.io.data <> sfm.io.rx.data
+  bm.io.resp <> sfm.io.tx.data
 
   val gpio = Apb3Gpio2(Gpio.Parameter(width = 10), Apb3Config(4, 32))
   io.led := gpio.io.gpio.write

@@ -2,24 +2,24 @@ package andreasWallner.test
 
 import spinal.core._
 import spinal.lib._
-import andreasWallner.ztex.{HsiInterface, FX3}
+import andreasWallner.io.fx3._
 import andreasWallner.misc.Xorshift
 
-case class HsiLoopbackTest() extends Component {
+case class SlaveFifoLoopback() extends Component {
   val io = new Bundle {
-    val fx3 = master(FX3())
+    val fx3 = master(SlaveFifo())
     val activity = out Bool
     val mode = in Bits(4 bit)
 
     val toggle1Hz = out(Reg(Bool))
   }
 
-  val hsiTxEn = RegInit(False)
-  val hsi = HsiInterface()
-  io.fx3 <> hsi.io.fx3
-  hsi.io.tx.pktend := False
-  hsi.io.tx.pktend_timeout := 10000
-  hsi.io.tx.en := hsiTxEn
+  val sfmTxEn = RegInit(False)
+  val sfm = SlaveFifoMaster()
+  io.fx3 <> sfm.io.fx3
+  sfm.io.tx.pktend := False
+  sfm.io.tx.pktend_timeout := 10000
+  sfm.io.tx.en := sfmTxEn
   
   val xorshift = Xorshift()
   xorshift.io.run := io.mode(0)
@@ -27,16 +27,16 @@ case class HsiLoopbackTest() extends Component {
     dataType = Bits(16 bit),
     depth = 1024
   )
-  fifo.io.push << hsi.io.rx.data
+  fifo.io.push << sfm.io.rx.data
   val source = StreamArbiterFactory.lowerFirst.noLock.onArgs(xorshift.io.data, fifo.io.pop)
-  source >> hsi.io.tx.data
+  source >> sfm.io.tx.data
   
   val rxTimeout = Timeout(100)
-  when((hsi.io.rx.data.ready && hsi.io.rx.data.valid) || hsiTxEn || io.mode(0)) { rxTimeout.clear() }
+  when((sfm.io.rx.data.ready && sfm.io.rx.data.valid) || sfmTxEn || io.mode(0)) { rxTimeout.clear() }
   when(fifo.io.occupancy === 1022 || rxTimeout || io.mode(0) ) {
-    hsiTxEn := True
+    sfmTxEn := True
   } elsewhen(fifo.io.occupancy === 0) {
-    hsiTxEn := False
+    sfmTxEn := False
   }
   io.activity := fifo.io.occupancy =/= 0
 

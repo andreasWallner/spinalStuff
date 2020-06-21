@@ -4,7 +4,7 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.blackbox.xilinx.s7._
 import andreasWallner.blackbox.xilinx._
-import andreasWallner.test.{HsiLoopbackTest, IOControl}
+import andreasWallner.test.{SlaveFifoLoopback, IOControl}
 
 case class InterfaceTestTop() extends Component {
   val io = new Bundle {
@@ -53,7 +53,7 @@ case class InterfaceTestTop() extends Component {
   new ClockingArea(ifclk_domain) {
     val gpio = ~BufferCC(io.gpio_n)
     val switches = BufferCC(io.switches)
-    val top = HsiLoopbackTest()
+    val top = SlaveFifoLoopback()
 
     io.leds1(0 to 3) := gpio
     io.leds1(4) := top.io.activity
