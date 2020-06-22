@@ -30,18 +30,20 @@ object Pwm {
 
     // TODO ctrl register with run/disable
 
+    val run = mapper.createReadAndWrite(Bool, 0x00, 0) init (False)
+
     val prescaler = new Area {
       val set = mapper.createReadAndWrite(
         UInt(parameters.prescalerWidth bits),
-        0x00,
+        0x04,
         0
       ) init (0)
       val latched_set = Reg(UInt(parameters.prescalerWidth bits)) init (0)
 
-      val cnt = Reg(UInt(parameters.prescalerWidth bits)) init (0)
+      val cnt = Reg(UInt(parameters.prescalerWidth bits))
       val enable = cnt === latched_set
 
-      when(enable) {
+      when(enable || !run) {
         latched_set := set
         cnt := 0
       } otherwise {
@@ -54,30 +56,32 @@ object Pwm {
     }
 
     io.pwm := pre.core.io.pwm
+    pre.core.io.run := run
 
     val max_count = mapper.createReadWrite(
       UInt(parameters.coreParameters.counterWidth bits),
-      0x04,
+      0x08,
       0
     ) init (0)
     val levels =
       for (i <- 0 until parameters.coreParameters.channelCnt)
         yield mapper.createReadAndWrite(
           UInt(parameters.coreParameters.counterWidth bits),
-          0x08 + 4 * i,
+          0x0c + 4 * i,
           0
         ) init (0)
 
+    val updateValues = (pre.core.io.willOverflow && prescaler.enable) || !run
     pre.core.io.max_count := RegNextWhen(
       max_count,
-      pre.core.io.willOverflow && prescaler.enable
-    )
+      updateValues
+    ) init (0)
     for (i <- 0 until parameters.coreParameters.channelCnt)
       pre.core.io
         .levels(i) := RegNextWhen(
         levels(i),
-        pre.core.io.willOverflow && prescaler.enable
-      )
+        updateValues
+      ) init (0)
   }
 
   case class Core(parameters: Pwm.CoreParameters) extends Component {
@@ -85,13 +89,14 @@ object Pwm {
       val max_count = in UInt (parameters.counterWidth bits)
       val levels = in Vec (UInt(parameters.counterWidth bits), parameters.channelCnt)
       val pwm = out Vec (Bool, parameters.channelCnt)
+      val run = in Bool
       val willOverflow = out Bool
     }
 
     val counter = new Area {
       val value = Reg(UInt(parameters.counterWidth bits))
       io.willOverflow := False
-      when(value === io.max_count) {
+      when(value === io.max_count || !io.run) {
         value := 0
         io.willOverflow := True
       } otherwise {
@@ -100,7 +105,7 @@ object Pwm {
     }
 
     for ((pwm, level) <- io.pwm.zip(io.levels))
-      pwm := counter.value < level
+      pwm := (counter.value < level) && io.run
   }
 }
 
