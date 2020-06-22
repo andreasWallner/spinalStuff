@@ -133,7 +133,7 @@ case class IOControlTop() extends Component {
     val top = IOControl()
 
     io.leds1 := top.io.led
-    io.leds2.clearAll()
+    io.leds2 := top.io.pwmLed
     io.leds3.clearAll()
     io.led1_n := False
 
