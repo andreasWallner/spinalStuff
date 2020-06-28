@@ -10,6 +10,8 @@ case class BusMaster() extends Component {
     val data = slave(Stream(Bits(16 bit)))
     val resp = master(Stream(Bits(16 bit)))
     val apb3 = master(Apb3(Apb3Config(16, 32)))
+    val pktend = out Bool
+    val pktend_done = in Bool
   }
 
   val fsm = new StateMachine {
@@ -22,6 +24,8 @@ case class BusMaster() extends Component {
     val stateSendOpcode = new State
     val stateSendData0 = new State
     val stateSendData1 = new State
+    val stateStartFlush = new State
+    val stateWaitFlush = new State
 
     val opcode = Reg(Bits(8 bit))
     val write = Reg(Bool)
@@ -53,6 +57,9 @@ case class BusMaster() extends Component {
             is(B"x02") {
               write := False
               goto(stateAddress)
+            }
+            is(B"xFF") {
+              goto(stateStartFlush)
             }
           }
         }
@@ -129,6 +136,18 @@ case class BusMaster() extends Component {
         io.resp.payload := data(0 to 15)
         io.resp.valid := True
         when(io.resp.ready) { goto(stateIdle) }
+      }
+    
+    io.pktend := False
+    stateStartFlush
+      .whenIsActive {
+        io.pktend := True
+        goto(stateWaitFlush)
+      }
+    
+    stateWaitFlush
+      .whenIsActive {
+        when(io.pktend_done) { goto(stateIdle) }
       }
   }
 }

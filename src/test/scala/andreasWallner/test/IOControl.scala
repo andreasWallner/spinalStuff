@@ -20,15 +20,20 @@ class IOControlSim extends FunSuite {
     .compile(IOControl())
 
   test("set all leds") {
-    dut.doSim("set all leds") { dut =>
-      SimTimeout(1000)
-      val q = Queue[Int](0x0100, 0x0004, 0xffff, 0xffff)
-      val fx3 = SlaveFifoSimTx(dut.io.fx3, dut.clockDomain) { () =>
+    dut.doSim("set all leds", seed=876415070) { dut =>
+      SimTimeout(100000)
+      val q = Queue[Int](0xff00, 0x0100, 0x0004, 0xffff, 0xffff, 0x0211, 0x0004)
+      SlaveFifoSimTx(dut.io.fx3, dut.clockDomain) { () =>
         if (q.nonEmpty) (true, q.dequeue()) else (false, 0)
+      }
+      SlaveFifoSimRx(dut.io.fx3, dut.clockDomain) { payload =>
+        println(f"${simTime} ${payload}%#x")
       }
 
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdgeWhere(dut.io.led.toInt == 0x3FF)
+      dut.clockDomain.waitActiveEdgeWhere(!q.nonEmpty)
+      dut.clockDomain.waitActiveEdge(200)
     }
   }
 }

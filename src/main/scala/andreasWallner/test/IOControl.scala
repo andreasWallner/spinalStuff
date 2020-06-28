@@ -17,12 +17,13 @@ case class IOControl() extends Component {
   }
   val sfm = SlaveFifoMaster()
   io.fx3 <> sfm.io.fx3
-  sfm.io.tx.pktend := False
   sfm.io.tx.en := True
   sfm.io.tx.pktend_timeout := 100
   val bm = BusMaster()
   bm.io.data <> sfm.io.rx.data
   bm.io.resp <> sfm.io.tx.data
+  sfm.io.tx.pktend := bm.io.pktend
+  bm.io.pktend_done := sfm.io.tx.pktend_done
 
   val gpio = Apb3Gpio2(Gpio.Parameter(width = 10), Apb3Config(4, 32))
   io.led := gpio.io.gpio.write
