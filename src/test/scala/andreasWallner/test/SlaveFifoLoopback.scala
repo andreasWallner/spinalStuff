@@ -37,7 +37,7 @@ class HsiLoopbackTestSim extends FunSuite {
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches == toTransceive)
       dut.clockDomain.waitActiveEdge(100)
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
   test("test 30k") {
@@ -61,7 +61,7 @@ class HsiLoopbackTestSim extends FunSuite {
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches == toTransceive)
       dut.clockDomain.waitActiveEdge(100)
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
   test("test xorshift 30k") {

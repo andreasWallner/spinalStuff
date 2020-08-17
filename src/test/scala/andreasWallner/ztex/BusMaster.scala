@@ -183,7 +183,7 @@ class BusMasterSim extends FunSuite {
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdgeWhere(scoreboard.ref.length == 0)
       dut.clockDomain.waitActiveEdge(10)
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
 
@@ -219,7 +219,7 @@ class BusMasterSim extends FunSuite {
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdgeWhere(scoreboard.ref.length == 0)
       dut.clockDomain.waitActiveEdge(10)
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
 
@@ -266,7 +266,7 @@ class BusMasterSim extends FunSuite {
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdgeWhere(scoreboard.ref.length == 0)
       dut.clockDomain.waitActiveEdge(10)
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
 }

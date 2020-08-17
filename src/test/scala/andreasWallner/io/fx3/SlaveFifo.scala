@@ -71,7 +71,7 @@ class SlaveFifoMasterTest extends FunSuite {
       dut.clockDomain.waitActiveEdgeWhere(
         scoreboard.matches >= toSend
       )
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
   test("host writes fpga, full backpressure") {
@@ -101,7 +101,7 @@ class SlaveFifoMasterTest extends FunSuite {
       dut.clockDomain.waitActiveEdgeWhere(
         scoreboard.matches >= toSend
       )
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
   test("host writes fpga, full throughput") {
@@ -131,7 +131,7 @@ class SlaveFifoMasterTest extends FunSuite {
       dut.clockDomain.waitActiveEdgeWhere(
         scoreboard.matches >= toSend
       )
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
 
@@ -160,7 +160,7 @@ class SlaveFifoMasterTest extends FunSuite {
       dut.clockDomain.waitActiveEdgeWhere(
         scoreboard.matches >= toSend
       )
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
 
@@ -190,7 +190,7 @@ class SlaveFifoMasterTest extends FunSuite {
         scoreboard.matches >= toSend
       )
       dut.clockDomain.waitRisingEdge(40)
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
   test("read, full backpressure") {
@@ -220,7 +220,7 @@ class SlaveFifoMasterTest extends FunSuite {
         scoreboard.matches >= toSend
       })
       dut.clockDomain.waitRisingEdge(40)
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
 
@@ -269,8 +269,8 @@ class SlaveFifoMasterTest extends FunSuite {
         dut.io.tx.en #= !dut.io.tx.en.toBoolean
         dut.clockDomain.waitRisingEdge(Random.nextInt(40))
       }
-      scoreboardTx.check()
-      scoreboardRx.check()
+      scoreboardTx.checkEmptyness()
+      scoreboardRx.checkEmptyness()
     }
   }
 
@@ -308,7 +308,7 @@ class SlaveFifoMasterTest extends FunSuite {
         scoreboard.matches >= toSend
       })
       dut.clockDomain.waitRisingEdge(40)
-      scoreboard.check()
+      scoreboard.checkEmptyness()
     }
   }
   test("manual pktend") {
@@ -350,7 +350,7 @@ class SlaveFifoMasterTest extends FunSuite {
 
         dut.clockDomain.waitActiveEdgeWhere(dut.io.tx.pktend_done.toBoolean == true)
         dut.clockDomain.waitActiveEdge(10)
-        scoreboard.check()
+        scoreboard.checkEmptyness()
 
         transmitNext = true
       }
