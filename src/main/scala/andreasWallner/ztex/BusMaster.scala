@@ -5,11 +5,72 @@ import spinal.lib._
 import spinal.lib.bus.amba3.apb._
 import spinal.lib.fsm._
 
+import andreasWallner.spinaltap.Event
+
+/** Decodes commands from PC, controls bus, routes events
+ *
+ * ==Supported Commands==
+ *  - NOP
+ *  - read register
+ *  - write register
+ *  - flush
+ *
+ * ===NOP (0x00)===
+ * Added to have a way to get USB FIFOs working correctly in the
+ * beginning where the FX3 SW/HW/Connection may swallow the first
+ * frame.
+ *
+ * Example:
+ * {{{
+ * >> 0000
+ * }}}
+ *
+ * ===Write Register (0x01)===
+ * Example:
+ * {{{
+ * >> 01ss aaaa dddd dddd 
+ * << 
+ *
+ * s: 8bit source
+ * a: 16bit address
+ * d: 32bit data
+ * }}}
+ *
+ * ===Read Register (0x02)===
+ * Example:
+ * {{{
+ * >> 02ss aaaa
+ * << 02ss dddd dddd
+ *
+ * s: 8bit source
+ * a: 16bit address
+ * d: 32bit data
+ * }}}
+ *
+ * ===Flush (0x7F)===
+ * Example:
+ * {{{
+ * >> 7frr
+ * <<
+ * 
+ * r: 8bit RFU
+ * }}}
+ * 
+ * ===Event (0x80)===
+ * Any Opcode with MSB set is an async event:
+ * {{{
+ * << 80ss dddd
+ *
+ * s: 8bit source
+ * d: 16bit event data
+ * }}}
+ */
 case class BusMaster() extends Component {
   val io = new Bundle {
     val data = slave(Stream(Bits(16 bit)))
     val resp = master(Stream(Bits(16 bit)))
     val apb3 = master(Apb3(Apb3Config(16, 32)))
+    val events = slave(Stream(Event()))
     val pktend = out Bool
     val pktend_done = in Bool
   }
@@ -26,6 +87,8 @@ case class BusMaster() extends Component {
     val stateSendData1 = new State
     val stateStartFlush = new State
     val stateWaitFlush = new State
+    val stateEventOpcode = new State
+    val stateEventData = new State
 
     val opcode = Reg(Bits(8 bit))
     val write = Reg(Bool)
@@ -58,10 +121,12 @@ case class BusMaster() extends Component {
               write := False
               goto(stateAddress)
             }
-            is(B"xFF") {
+            is(B"x7F") {
               goto(stateStartFlush)
             }
           }
+        } .elsewhen(io.events.valid) {
+          goto(stateEventOpcode)
         }
       }
 
@@ -148,6 +213,23 @@ case class BusMaster() extends Component {
     stateWaitFlush
       .whenIsActive {
         when(io.pktend_done) { goto(stateIdle) }
+      }
+    
+    io.events.ready := False
+    stateEventOpcode
+      .onEntry(data(0 to 15) := io.events.payload.data)
+      .whenIsActive {
+        io.resp.payload := B"x80" ## io.events.payload.source
+        io.resp.valid := True
+        io.events.ready := True // master may not remove valid -> single cycle sufficient
+        when(io.resp.ready) { goto(stateEventData) }
+      }
+    
+    stateEventData
+      .whenIsActive {
+        io.resp.payload := data(0 to 15)
+        io.resp.valid := True
+        when(io.resp.ready) { goto(stateIdle) }
       }
   }
 }
