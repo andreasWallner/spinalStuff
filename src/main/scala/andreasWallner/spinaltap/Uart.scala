@@ -6,18 +6,18 @@ import spinal.lib.com.uart._
 import spinal.lib.bus.amba3.apb._
 import spinal.lib.fsm._
 
-case class UartModule() extends Component {
+case class UartModule(eventSourceId: Int) extends Component {
   val g = UartCtrlGenerics()
 
   val io = new Bundle {
     val uart = master(Uart())
-    val apb = slave(Apb3(Apb3UartCtrl.getApb3Config))
-    val events = master(Stream(Bits(16 bit)))
-    val data = slave(Flow(Bits(16 bit)))
+    val bus = slave(Apb3(Apb3UartCtrl.getApb3Config))
+    val events = master(Stream(Event()))
 
     val clockDivider = in UInt(g.clockDividerWidth bits)
   }
 
+  val busFactory = Apb3SlaveFactory(io.bus)
   val tx = new UartCtrlTx(g)
   val rx = new UartCtrlRx(g)
 
@@ -31,9 +31,6 @@ case class UartModule() extends Component {
     }
   }
 
-  io.apb.PREADY := False
-  io.apb.PRDATA := 0
-
   tx.io.samplingTick := clockDivider.tick
   rx.io.samplingTick := clockDivider.tick
 
@@ -45,13 +42,12 @@ case class UartModule() extends Component {
   rx.io.configFrame := frameConfig
 
   val txFifo = StreamFifo(dataType=Bits(8 bit), depth=64)
-  // queueWithAvailability? toStream on Flow?
-  val rxFifo = StreamFifo(dataType=Bits(8 bit), depth=8)
-  
-  txFifo.io.push.payload := io.data.payload(0 until 8)
-  txFifo.io.push.valid := io.data.valid
+  val txUnbuffered = busFactory.createAndDriveFlow(Bits(g.dataWidthMax bits), 0x00, 0).toStream
+  txFifo.io.push <> txUnbuffered
   txFifo.io.pop >> tx.io.write
 
+  // queueWithAvailability? toStream on Flow?
+  val rxFifo = StreamFifo(dataType=Bits(8 bit), depth=64)
   rx.io.read >> rxFifo.io.push
 
   io.uart.txd <> tx.io.txd
@@ -71,27 +67,23 @@ case class UartModule() extends Component {
     val stateLen = new State
     val stateData = new State
 
+    // TODO no state machine needed anymore
+    // TODO test that we do not skip a notification if state change happens in the cycle we are getting a ready
     stateIdle
       .whenIsActive {
-        when(rxFifo.io.pop.valid || statusChange) { goto(stateLen) }
+        when(rxFifo.io.pop.valid || statusChange) { goto(stateData) }
       }
     
-    io.events.payload := B"x0".resized
+    io.events.payload.source := eventSourceId
+    io.events.payload.data := 0
     io.events.valid := False
-    stateLen
+    rxFifo.io.pop.ready := False
+    stateData
       .whenIsActive {
-        io.events.payload := B"x1".resized
+        io.events.payload.data := (statusHistory(0) ## rxFifo.io.pop.payload).resized
         io.events.valid := True
-        when(io.events.ready) { goto(stateData) }
+        when(io.events.ready) { goto(stateIdle) }
       }
-    
-      rxFifo.io.pop.ready := False
-      stateData
-        .whenIsActive {
-          io.events.payload := (statusHistory(0) ## rxFifo.io.pop.payload).resized
-          io.events.valid := True
-          when(io.events.ready) { goto(stateIdle) }
-        }
-        .onExit(rxFifo.io.pop.ready := True, statusChange.clear())
+      .onExit(rxFifo.io.pop.ready := True, statusChange.clear())
   }
 }

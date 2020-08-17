@@ -10,9 +10,9 @@ import org.scalatest.funsuite.AnyFunSuite
 class UartModuleSim extends AnyFunSuite {
   val dut = SimConfig.withWave
     .workspacePath("/c/work/tmp/sim")
-    .compile(UartModule())
+    .compile(UartModule(1))
   
-  test("txrx") {
+  /*test("txrx") {
     dut.doSim("txrx") { dut =>
       val toSend = 5
       SimTimeout(500000)
@@ -41,5 +41,5 @@ class UartModuleSim extends AnyFunSuite {
 
       dut.clockDomain.waitActiveEdge(5000)
     }
-  }
+  }*/
 }

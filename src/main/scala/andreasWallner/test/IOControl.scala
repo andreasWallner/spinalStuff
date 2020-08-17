@@ -8,6 +8,7 @@ import andreasWallner.ztex.BusMaster
 import andreasWallner.io.fx3._
 import andreasWallner.io.pwm._
 import andreasWallner.misc.Xorshift
+import andreasWallner.spinaltap._
 
 case class IOControl() extends Component {
   val io = new Bundle {
@@ -37,11 +38,19 @@ case class IOControl() extends Component {
   )
   io.pwmLed := pwm.io.pwm.asBits
 
+  val uart = UartModule(1)
+  uart.io.clockDivider := U(20)
+  uart.io.uart.rxd := uart.io.uart.txd
+  bm.io.events <> uart.io.events
+
+  //val spi = SpiMaster
+
   val apbDecoder = Apb3Decoder(
     master = bm.io.apb3,
     slaves = List(
-      gpio.io.bus -> (0x0000, 128 Byte),
-      pwm.io.bus -> (0x100, 128 Byte)
+      gpio.io.bus -> (0x0000, 64 Byte),
+      pwm.io.bus -> (0x100, 64 Byte),
+      uart.io.bus -> (0x200, 64 Byte)
     )
   )
 }
