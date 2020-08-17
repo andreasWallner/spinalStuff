@@ -65,7 +65,7 @@ class Apb3SpiMasterSim extends AnyFunSuite {
     .compile(Apb3SpiMaster())
 
   test("simple") {
-    dut.doSim("simple", seed=181827950) { dut =>
+    dut.doSim("simple") { dut =>
       val toSend = 10
       val prescaler = 20
       SimTimeout(10 * 8 * prescaler * toSend * 4)
