@@ -56,7 +56,7 @@ class SocketArbiterSim extends AnyFunSuite {
       )
       dut.clockDomain.waitActiveEdge(50)
       for (sb <- scoreboards)
-        sb.check()
+        sb.checkEmptyness()
     }
   }
 }
