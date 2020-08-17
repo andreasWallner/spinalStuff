@@ -3,26 +3,11 @@ package andreasWallner.io.pwm
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib.bus.amba3.apb.Apb3
+import spinal.lib.bus.amba3.apb.sim.Apb3Driver
 import andreasWallner.io.pwm._
 import andreasWallner.io.pwm.sim._
 
 import org.scalatest.FunSuite
-
-case class ApbSim(apb3: Apb3, clockDomain: ClockDomain) {
-  def write(address: BigInt, value: BigInt) {
-    apb3.PSEL #= 1
-    apb3.PADDR #= address
-    apb3.PWRITE #= true
-    apb3.PWDATA #= value
-    clockDomain.waitActiveEdge()
-
-    apb3.PENABLE #= true
-    clockDomain.waitActiveEdgeWhere(apb3.PREADY.toBoolean)
-
-    apb3.PSEL #= 0
-    apb3.PENABLE #= false
-  }
-}
 
 class SlaveFifoMasterTest extends FunSuite {
   val dut = SimConfig.withWave
@@ -39,8 +24,8 @@ class SlaveFifoMasterTest extends FunSuite {
   test("foo") {
     dut.doSim("foo") { dut =>
       //SimTimeout(100000)
-
-      val apb = ApbSim(dut.io.bus, dut.clockDomain)
+      
+      val apb = Apb3Driver(dut.io.bus, dut.clockDomain)
       val decoder0 = PwmDetect(dut.io.pwm(0), 2550, dut.clockDomain) { result =>
         result match {
           case PwmCycle(5000, 20600) => 
