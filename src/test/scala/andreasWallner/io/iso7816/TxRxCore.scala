@@ -22,8 +22,8 @@ class TxRxCoreSim extends FunSuite {
     .compile(ISO7816Master())
 
   test("TX") {
-    dut.doSim("TX", seed=1) { dut =>
-      val toSend = 50
+    dut.doSim("TX") { dut =>
+      val toSend = 500
       SimTimeout(toSend * 10 * 8 * 10 * 2 * 2)
       dut.io.start.tx #= false
       dut.io.start.rx #= false
@@ -35,18 +35,15 @@ class TxRxCoreSim extends FunSuite {
         scoreboard.matches + scoreboard.ref.size < toSend
       }
       StreamMonitor(dut.io.tx, dut.clockDomain) { payload =>
-        println(f"${simTime()} ref ${payload.toInt}")
         scoreboard.pushRef(payload.toInt)
       }
       dut.io.iso.io.simulatePullup()
       ISO7816SimRx(dut.io.iso, 100) { (data, parityValid) =>
         assert(parityValid)
         if (Random.nextBoolean()) {
-          println(f"${simTime()} dut ${data}")
           scoreboard.pushDut(data)
           true
         } else {
-          println(f"${simTime()} erroring")
           false
         }
       }
@@ -62,8 +59,8 @@ class TxRxCoreSim extends FunSuite {
   }
 
   test("RX") {
-    dut.doSim("RX", seed=1203102499) { dut =>
-      val toSend = 50
+    dut.doSim("RX") { dut =>
+      val toSend = 500
       SimTimeout(toSend * 10 * 8 * 10 * 2 * 2)
       dut.io.start.tx #= false
       dut.io.start.rx #= false
@@ -73,9 +70,10 @@ class TxRxCoreSim extends FunSuite {
       FlowMonitor(dut.io.rx, dut.clockDomain) { payload =>
         scoreboard.pushDut(payload.toInt)
       }
-      val isosim = ISO7816SimTx(dut.io.iso, 100) { (data, error) =>
-        assert(!error)
-        scoreboard.pushRef(data)
+      val isosim = ISO7816SimTx(dut.io.iso, 100) { (data, error, induceError) =>
+        assert(error == induceError)
+        if (!error)
+          scoreboard.pushRef(data)
       }
 
       dut.clockDomain.forkStimulus(10)
@@ -85,9 +83,9 @@ class TxRxCoreSim extends FunSuite {
       dut.io.start.rx #= false
 
       for (_ <- 1 to toSend)
-        isosim.txByte(Random.nextInt(0x100))
+        isosim.txByte(Random.nextInt(0x100), Random.nextBoolean())
 
-      dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches == toSend)
+      dut.clockDomain.waitActiveEdgeWhere(scoreboard.dut.size == 0 && scoreboard.ref.size == 0)
       scoreboard.checkEmptyness()
     }
   }

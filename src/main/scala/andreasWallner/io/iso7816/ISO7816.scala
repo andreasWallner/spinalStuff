@@ -17,6 +17,10 @@ case class ISO7816() extends Bundle with IMasterSlave {
   }
 }
 
+case class ISO7816MasterConfig() extends Bundle {
+  val character_repetition = new Bool
+}
+
 case class ISO7816Master() extends Component {
   val io = new Bundle {
     val iso = master(ISO7816())

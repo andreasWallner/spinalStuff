@@ -29,7 +29,6 @@ case class ISO7816SimRx(iso: ISO7816, baudrate: Double)(
     waitUntil(
       iso.io.writeEnable.toBoolean && !iso.io.write.toBoolean
     )
-    println(f"${simTime()} seen start")
     sleep(baudrateLong / 2)
     for (idx <- 0 to 7) {
       sleep(baudrateLong)
@@ -48,13 +47,13 @@ case class ISO7816SimRx(iso: ISO7816, baudrate: Double)(
 }
 
 case class ISO7816SimTx(iso: ISO7816, baudrate: Double)(
-    txCallback: (Int, Boolean) => Unit
+    txCallback: (Int, Boolean, Boolean) => Unit
 ) {
   var baudrateLong = baudrate.asInstanceOf[Long]
 
-  def txByte(data: Int): Boolean = {
+  def txByte(data: Int, induceError: Boolean = false): Boolean = {
     val bitsPull = data << 1
-    var parity = (0 to 7).map(i => (data & (1 << i)) != 0).reduce((last, bit) => last ^ bit)
+    var parity = (0 to 7).map(i => (data & (1 << i)) != 0).reduce((last, bit) => last ^ bit) ^ induceError
     for (idx <- 0 to 8) {
       iso.io.drive((bitsPull & (1 << idx)) != 0)
       sleep(baudrateLong)
@@ -64,7 +63,7 @@ case class ISO7816SimTx(iso: ISO7816, baudrate: Double)(
     iso.io.highz()
     sleep(baudrateLong)
     val error = !iso.io.read.toBoolean
-    txCallback(data, error)
+    txCallback(data, error, induceError)
     sleep(2 * baudrateLong)
 
     error

@@ -22,7 +22,6 @@ package object sim {
     def simulatePullup() = {
       val state = new SimDriverState
       DriverStates.m += (tri -> state)
-      println(state)
 
       forkSensitive {
         assert(
