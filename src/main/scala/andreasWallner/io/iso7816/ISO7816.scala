@@ -18,12 +18,14 @@ case class ISO7816() extends Bundle with IMasterSlave {
 }
 
 case class ISO7816MasterConfig() extends Bundle {
-  val character_repetition = new Bool
+  val characterRepetition = Bool()
+  val cgt = UInt(8 bit) // in ETUs - 1 // TODO: size correctly,
 }
 
 case class ISO7816Master() extends Component {
   val io = new Bundle {
     val iso = master(ISO7816())
+    val config = in(ISO7816MasterConfig())
     val state = new Bundle {
       val tx_active = out Bool
       val rx_active = out Bool
@@ -50,6 +52,7 @@ case class ISO7816Master() extends Component {
   val rx_error_bit_strb = False
   val timing = new Area {
     val en = False
+    val resetCgt = False
 
     val etu = False
     val rx_sample = False
@@ -64,6 +67,14 @@ case class ISO7816Master() extends Component {
       cnt := cnt - 1
     } otherwise {
       cnt := cnt - 1
+    }
+
+    val cgtCnt = Reg(UInt(8 bits))
+    val cgtOver = cgtCnt === 0
+    when(resetCgt) {
+      cgtCnt := io.config.cgt - 1
+    } elsewhen (etu && !cgtOver) {
+      cgtCnt := cgtCnt - 1
     }
   }
 
@@ -99,8 +110,11 @@ case class ISO7816Master() extends Component {
 
     // moment 0 - 9
     Tx.onEntry(
-        data := True ## io.tx.payload ## False, // marker, data & startbit
-        parity := False
+        {
+          data := True ## io.tx.payload ## False // marker, data & startbit
+          parity := False
+          timing.resetCgt := True
+        }
       )
       .whenIsActive {
         timing.en := True
@@ -131,7 +145,7 @@ case class ISO7816Master() extends Component {
       timing.en := True
       io.state.tx_active := False
       when(rx_error_bit_strb) {
-        when(io.iso.io.read) {
+        when(io.iso.io.read || !io.config.characterRepetition) {
           io.tx.ready := True
           goto(TxStop)
         } otherwise { goto(TxErrorStop) }
@@ -149,7 +163,7 @@ case class ISO7816Master() extends Component {
     TxStop.whenIsActive {
       timing.en := True
       io.state.tx_active := True
-      when(timing.etu) {
+      when(timing.etu && timing.cgtOver) {
         when(io.tx.valid) { goto(Tx) } otherwise { goto(Idle) }
       }
     }
@@ -180,7 +194,7 @@ case class ISO7816Master() extends Component {
       timing.en := True
       io.state.rx_active := True
       when(timing.rx_sample) {
-        when(parity) {
+        when(parity || !io.config.characterRepetition) {
           io.rx.valid := True
           goto(RxStop)
         } otherwise { goto(RxError) }
