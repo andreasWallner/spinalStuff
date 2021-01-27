@@ -14,46 +14,54 @@ class SpiMasterSim extends AnyFunSuite {
   val dut = SimConfig.withWave
     .compile(SpiMaster())
 
-  test("loopback") {
-    dut.doSim("loopback") { dut =>
-      dut.io.spi.miso #= false
-      dut.io.config.prescaler #= 100
-      dut.io.config.spiType.cpol #= true
-      dut.io.config.spiType.cpha #= true
-      dut.io.txData.valid #= true
-      dut.io.txData.payload.last #= true
-      dut.io.txData.payload.fragment #= 0x55
-      dut.io.start #= false
+  List((true, true), (true, false), (false, true), (false, false)).foreach {
+    case (cpol: Boolean, cpha: Boolean) =>
+      val name = f"loopback cpol=$cpol cpha=$cpha"
+      test(name) {
+        dut.doSim(name, seed = 1) { dut =>
+          dut.io.spi.miso #= false
+          dut.io.config.prescaler #= 100
+          dut.io.config.spiType.cpol #= cpol
+          dut.io.config.spiType.cpha #= cpha
+          dut.io.txData.valid #= true
+          dut.io.txData.payload.last #= true
+          dut.io.txData.payload.fragment #= 0x55
+          dut.io.start #= false
 
-      dut.clockDomain.onActiveEdges {
-        dut.io.spi.miso #= dut.io.spi.mosi.toBoolean
-      }
+          dut.clockDomain.onActiveEdges {
+            dut.io.spi.miso #= dut.io.spi.mosi.toBoolean
+          }
 
-      val toSend = 5
-      val scoreboard = ScoreboardInOrder[Int]()
-      val driver = StreamDriver(dut.io.txData, dut.clockDomain) { payload =>
-        val last = (scoreboard.matches + scoreboard.ref.length >= toSend - 1)
-        val valid = (scoreboard.matches + scoreboard.ref.length > toSend - 1)
-        val nextVal = Random.nextInt() & ((1 << 8) - 1)
-        payload.fragment #= nextVal
-        payload.last #= last
-        scoreboard.pushRef(nextVal)
-        !valid
-      }
-      driver.delay = 0
-      driver.transactionDelay = () => { 0 }
-      FlowMonitor(dut.io.rxData, dut.clockDomain) { payload =>
-        scoreboard.pushDut(payload.toInt)
-      }
+          val toSend = 5
+          val scoreboard = ScoreboardInOrder[Int]()
+          val driver = StreamDriver(dut.io.txData, dut.clockDomain) { payload =>
+            payload.fragment.randomize()
+            payload.last #= (scoreboard.matches + scoreboard.ref.length >= toSend - 2)
+            !(scoreboard.matches + scoreboard.ref.length > toSend - 2)
+          }
+          StreamMonitor(dut.io.txData, dut.clockDomain) { payload =>
+            println(f"@${simTime()} ref ${payload.fragment.toInt} 0x${payload.fragment.toInt}%x")
+            scoreboard.pushRef(payload.fragment.toInt)
+          }
+          driver.delay = 0
+          driver.transactionDelay = () => {
+            0
+          }
+          FlowMonitor(dut.io.rxData, dut.clockDomain) { payload =>
+            println(f"@${simTime()} dut ${payload.toInt} 0x${payload.toInt}%x")
+            scoreboard.pushDut(payload.toInt)
+          }
 
-      dut.clockDomain.forkStimulus(10)
-      dut.clockDomain.waitActiveEdge(100)
-      dut.io.start #= true
-      dut.clockDomain.waitActiveEdge()
-      dut.io.start #= false
-      dut.clockDomain.waitActiveEdge(10000)
-      scoreboard.checkEmptyness()
-    }
+          dut.clockDomain.forkStimulus(10)
+          dut.clockDomain.waitActiveEdge(100)
+          dut.io.start #= true
+          dut.clockDomain.waitActiveEdge()
+          dut.io.start #= false
+          dut.clockDomain.waitActiveEdge(10000)
+          scoreboard.checkEmptyness()
+          assert(scoreboard.matches == toSend)
+        }
+      }
   }
 }
 
