@@ -7,10 +7,12 @@ import spinal.lib.bus.amba4.axilite.{
   AxiLite4Ax,
   AxiLite4W,
   AxiLite4B,
-  AxiLite4R
+  AxiLite4R,
+  AxiLite4Config
 }
 import spinal.lib.bus.amba4.axi.{Axi4, Axi4Ax, Axi4W, Axi4B, Axi4R, Axi4Config}
 import spinal.lib.IMasterSlave
+import scala.collection.mutable.Map
 
 object XilinxSupportFactory {
   def makeSupport(bundle: IMasterSlave): Option[BusSupport] =

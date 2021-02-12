@@ -2,7 +2,6 @@ package andreasWallner.xilinx
 
 import spinal.core._
 import scala.collection.mutable.StringBuilder
-import spinal.lib.bus.amba4.axilite.AxiLite4
 
 case class PortMap(logicalPort: String, physicalPort: Data)
 
@@ -29,7 +28,7 @@ object VivadoIpify {
     val out = new java.io.FileWriter("component.xml")
     val builder = new StringBuilder()
 
-    genComponentXml(that, builder, "is", "user", "v1.0")
+    genComponentXml(that, builder, "andreasWallner", "user", "v1.0")
     out.write(builder.toString)
     out.flush()
     out.close()

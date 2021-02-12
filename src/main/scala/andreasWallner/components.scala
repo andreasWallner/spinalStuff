@@ -1,6 +1,8 @@
 package andreasWallner
 
 import spinal.core._
+import spinal.lib._
+import spinal.lib.io._
 import andreasWallner.basics.{AxiLite4Pwm, PwmGenerics}
 import andreasWallner._
 import andreasWallner.xilinx._
