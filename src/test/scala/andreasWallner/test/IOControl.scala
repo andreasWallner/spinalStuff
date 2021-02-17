@@ -4,17 +4,18 @@ import spinal.core._
 import spinal.sim._
 import spinal.core.sim._
 import spinal.lib.sim.{
+  ScoreboardInOrder,
   StreamDriver,
   StreamMonitor,
-  StreamReadyRandomizer,
-  ScoreboardInOrder
+  StreamReadyRandomizer
 }
+
 import scala.collection.mutable.Queue
 import scala.util.Random
-import org.scalatest.FunSuite
+import org.scalatest.funsuite.AnyFunSuite
 import andreasWallner.io.fx3.sim._
 
-class IOControlSim extends FunSuite {
+class IOControlSim extends AnyFunSuite {
   val dut = SimConfig.withWave
     .compile(IOControl())
 
@@ -31,7 +32,7 @@ class IOControlSim extends FunSuite {
 
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdgeWhere(dut.io.led.toInt == 0x3FF)
-      dut.clockDomain.waitActiveEdgeWhere(!q.nonEmpty)
+      dut.clockDomain.waitActiveEdgeWhere(q.isEmpty)
       dut.clockDomain.waitActiveEdge(200)
     }
   }
@@ -48,7 +49,7 @@ class IOControlSim extends FunSuite {
       }
 
       dut.clockDomain.forkStimulus(10)
-      dut.clockDomain.waitActiveEdgeWhere(dut.io.fx3.oe_n.toBoolean == false)
+      dut.clockDomain.waitActiveEdgeWhere(!dut.io.fx3.oe_n.toBoolean)
       dut.clockDomain.waitActiveEdge(2000)
     }
   }

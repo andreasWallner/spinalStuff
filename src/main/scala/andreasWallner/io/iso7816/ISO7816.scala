@@ -22,6 +22,213 @@ case class ISO7816MasterConfig() extends Bundle {
   val cgt = UInt(8 bit) // in ETUs - 1 // TODO: size correctly,
 }
 
+// TODO: seperate timeouts for receive and reset?
+
+object CtrlState extends SpinalEnum {
+  val Inactive, Active, Reset, ClockStop = newElement()
+}
+
+object CtrlCommand extends SpinalEnum {
+  val Idle, Deactivate, Activate, Reset, StopClock, ColdReset, WarmReset =
+    newElement()
+}
+
+case class ISO7816StateCtrl() extends Component {
+  val io = new Bundle {
+    val iso = new Bundle {
+      val vcc = out Bool
+      val rst = out Bool
+      val io = master(TriState(Bool))
+    }
+    val config = new Bundle {
+      val ta = in UInt (32 bit)
+      val tb = in UInt (32 bit)
+      val te = in UInt (32 bit)
+      val th = in UInt (32 bit)
+      val clk_offset = in UInt (32 bit)
+      val vcc_offset = in UInt (32 bit)
+    }
+    val command = slave(Flow(CtrlCommand()))
+    val start_rx = out Bool
+    val tx_done = in Bool // strobed on TX for clkstop min time
+    val inhibit_tx = out Bool
+    val state = new Bundle {
+      val driving_io = out Bool
+      val clock = out Bool
+      val busy = out Bool
+    }
+  }
+
+  val state = Reg(CtrlState()).init(CtrlState.Inactive)
+  val command = Reg(CtrlCommand()).init(CtrlCommand.Idle)
+  val active = command =/= CtrlCommand.Idle
+  io.state.busy := active
+  val timing = new Area {
+    val reset = RegNext(state) =/= state
+    val count = Reg(UInt(32 bit))
+    when(reset) {
+      count := 0
+    } elsewhen (active) {
+      count := count + 1
+    }
+    val ta_reached = count >= io.config.ta
+    val tb_reached = count >= io.config.tb
+    val te_reached = count >= io.config.te
+    val th_reached = count >= io.config.th
+    val clk_offset_reached = count >= io.config.clk_offset
+    val vcc_offset_reached = count >= io.config.vcc_offset
+  }
+
+  when(!active) {
+    timing.reset := True
+    when(io.command.valid) {
+      command := io.command.payload
+    }
+  }
+
+  switch(state) {
+    is(CtrlState.Inactive) {
+      io.iso.vcc := False
+      io.iso.rst := False
+      io.state.clock := False
+      io.state.driving_io := True
+      io.iso.io.writeEnable := True
+      io.iso.io.write := False
+    }
+    is(CtrlState.Active) {
+      io.iso.vcc := True
+      io.iso.rst := True
+      io.state.clock := True
+      io.state.driving_io := False
+      io.iso.io.writeEnable := True
+      io.iso.io.write := True
+    }
+    is(CtrlState.ClockStop) {
+      io.iso.vcc := True
+      io.iso.rst := True
+      io.state.clock := False
+      io.state.driving_io := True
+      io.iso.io.writeEnable := False
+      io.iso.io.write := True
+    }
+    is(CtrlState.Reset) {
+      io.iso.vcc := True
+      io.iso.rst := False
+      io.state.clock := True
+      io.state.driving_io := True
+      io.iso.io.writeEnable := False
+      io.iso.io.write := False
+    }
+  }
+
+  io.start_rx := False
+  io.inhibit_tx := False
+  when(active) {
+    switch(state) {
+      is(CtrlState.Inactive) {
+        switch(command) {
+          is(CtrlCommand.Activate, CtrlCommand.ColdReset) {
+            io.iso.vcc := True
+            io.state.clock := timing.vcc_offset_reached
+            io.iso.io.write := timing.ta_reached
+            io.iso.rst := timing.tb_reached
+            when(
+              timing.clk_offset_reached && timing.ta_reached && timing.tb_reached
+            ) {
+              state := CtrlState.Active
+              command := CtrlCommand.Idle
+            }
+          }
+
+          default { command := CtrlCommand.Idle }
+        }
+      }
+
+      is(CtrlState.Active) {
+        switch(command) {
+          is(CtrlCommand.Deactivate, CtrlCommand.ColdReset) {
+            io.state.driving_io := True
+            io.iso.vcc := !timing.vcc_offset_reached
+            io.state.clock := False
+            io.iso.rst := False
+            io.iso.io.writeEnable := timing.te_reached
+            io.iso.io.write := False
+            when(
+              timing.vcc_offset_reached && timing.te_reached && (command =/= CtrlCommand.ColdReset || timing.th_reached)
+            ) {
+              state := CtrlState.Inactive
+            }
+          }
+
+          is(CtrlCommand.StopClock) {
+            when(!io.tx_done) { // TODO time
+              state := CtrlState.ClockStop
+            }
+          }
+
+          is(CtrlCommand.Reset, CtrlCommand.WarmReset) {
+            io.state.driving_io := True
+            io.iso.io.writeEnable := False
+            when(timing.te_reached) {
+              state := CtrlState.Reset
+            }
+          }
+
+          default { command := CtrlCommand.Idle }
+        }
+      }
+
+      is(CtrlState.Reset) {
+        switch(command) {
+          is(CtrlCommand.Activate, CtrlCommand.WarmReset) {
+            io.iso.rst := !timing.tb_reached
+            io.iso.io.writeEnable := !timing.ta_reached
+            when(timing.ta_reached && timing.tb_reached) {
+              state := CtrlState.Active
+              command := CtrlCommand.Idle
+              io.start_rx := True
+            }
+          }
+
+          default { command := CtrlCommand.Idle }
+        }
+      }
+
+      is(CtrlState.ClockStop) {
+        switch(command) {
+          is(CtrlCommand.Deactivate, CtrlCommand.ColdReset) {
+            io.iso.vcc := !timing.vcc_offset_reached
+            io.iso.io.write := False
+            io.iso.io.writeEnable := timing.te_reached
+            when(
+              timing.vcc_offset_reached && timing.te_reached && (command =/= CtrlCommand.ColdReset || timing.th_reached)
+            ) {
+              state := CtrlState.Inactive
+            }
+          }
+
+          is(CtrlCommand.Activate) {
+            io.state.clock := True
+            when(timing.clk_offset_reached) {
+              state := CtrlState.Active
+              command := CtrlCommand.Idle
+            }
+          }
+
+          is(CtrlCommand.Reset, CtrlCommand.WarmReset) {
+            io.iso.rst := False
+            when(timing.te_reached) {
+              state := CtrlState.Reset
+            }
+          }
+
+          default { command := CtrlCommand.Idle }
+        }
+      }
+    }
+  }
+}
+
 case class ISO7816Master() extends Component {
   val io = new Bundle {
     val iso = master(ISO7816())
@@ -103,7 +310,7 @@ case class ISO7816Master() extends Component {
       timing.en := False
       when(io.start.tx && io.tx.valid) {
         goto(Tx)
-      } elsewhen (io.start.rx) {
+      } elsewhen io.start.rx {
         goto(RxWait)
       }
     }
@@ -137,7 +344,9 @@ case class ISO7816Master() extends Component {
       io.state.tx_active := True
       io.iso.io.write := parity
       io.iso.io.writeEnable := True
-      when(timing.etu) { goto(TxWaitError) }
+      when(timing.etu) {
+        goto(TxWaitError)
+      }
     }
 
     // moment 10 - 11
@@ -148,7 +357,9 @@ case class ISO7816Master() extends Component {
         when(io.iso.io.read || !io.config.characterRepetition) {
           io.tx.ready := True
           goto(TxStop)
-        } otherwise { goto(TxErrorStop) }
+        } otherwise {
+          goto(TxErrorStop)
+        }
       }
     }
 
@@ -156,7 +367,9 @@ case class ISO7816Master() extends Component {
     TxErrorStop.whenIsActive {
       timing.en := True
       io.state.tx_active := True
-      when(timing.etu) { goto(TxStop) }
+      when(timing.etu) {
+        goto(TxStop)
+      }
     }
 
     // moment 12 (no error) / 13 (error)
@@ -164,20 +377,28 @@ case class ISO7816Master() extends Component {
       timing.en := True
       io.state.tx_active := True
       when(timing.etu && timing.cgtOver) {
-        when(io.tx.valid) { goto(Tx) } otherwise { goto(Idle) }
+        when(io.tx.valid) {
+          goto(Tx)
+        } otherwise {
+          goto(Idle)
+        }
       }
     }
 
     io.rx.payload := data(1 to 8)
     RxWait.whenIsActive {
-      when(io.iso.io.read === False) { goto(RxStart) }
+      when(io.iso.io.read === False) {
+        goto(RxStart)
+      }
     }
 
     RxStart.whenIsActive {
       timing.en := True
       data := B"1000000000"
       parity := True
-      when(timing.etu) { goto(Rx) }
+      when(timing.etu) {
+        goto(Rx)
+      }
     }
 
     Rx.whenIsActive {
@@ -186,7 +407,9 @@ case class ISO7816Master() extends Component {
       when(timing.rx_sample) {
         data := io.iso.io.read ## data(1 to 9)
         parity := parity ^ io.iso.io.read
-        when(data(1)) { goto(RxParity) }
+        when(data(1)) {
+          goto(RxParity)
+        }
       }
     }
 
@@ -197,7 +420,9 @@ case class ISO7816Master() extends Component {
         when(parity || !io.config.characterRepetition) {
           io.rx.valid := True
           goto(RxStop)
-        } otherwise { goto(RxError) }
+        } otherwise {
+          goto(RxError)
+        }
       }
     }
 

@@ -1,23 +1,19 @@
 package andreasWallner.io.iso7816
 
-import spinal.core._
-import spinal.core.sim._
-import spinal.lib._
-import spinal.lib.sim.{
-  StreamDriver,
-  StreamMonitor,
-  StreamReadyRandomizer,
-  ScoreboardInOrder
-}
-import andreasWallner.sim._
 import andreasWallner.io.iso7816.sim._
+import andreasWallner.sim._
+import org.scalatest.funsuite.AnyFunSuite
+import spinal.core.sim._
+import spinal.lib.sim.{
+  FlowMonitor,
+  ScoreboardInOrder,
+  StreamDriver,
+  StreamMonitor
+}
 
-import scala.collection.mutable.Queue
 import scala.util.Random
-import org.scalatest.FunSuite
-import spinal.lib.sim.FlowMonitor
 
-class TxRxCoreSim extends FunSuite {
+class TxRxCoreSim extends AnyFunSuite {
   val dut = SimConfig.withWave
     .compile(ISO7816Master())
 
@@ -103,7 +99,7 @@ class TxRxCoreSim extends FunSuite {
         isosim.txByte(Random.nextInt(0x100), Random.nextBoolean())
 
       dut.clockDomain.waitActiveEdgeWhere(
-        scoreboard.dut.size == 0 && scoreboard.ref.size == 0
+        scoreboard.dut.isEmpty && scoreboard.ref.isEmpty
       )
       scoreboard.checkEmptyness()
     }
@@ -184,7 +180,7 @@ class TxRxCoreSim extends FunSuite {
         isosim.txByte(Random.nextInt(0x100), Random.nextBoolean())
 
       dut.clockDomain.waitActiveEdgeWhere(
-        scoreboard.dut.size == 0 && scoreboard.ref.size == 0
+        scoreboard.dut.isEmpty && scoreboard.ref.isEmpty
       )
       scoreboard.checkEmptyness()
 
