@@ -13,9 +13,9 @@ import spinal.lib.sim.{
 
 import scala.util.Random
 
-class TxRxCoreSim extends AnyFunSuite {
+class RxTxCoreSim extends AnyFunSuite {
   val dut = SimConfig.withWave
-    .compile(ISO7816Master())
+    .compile(RxTxCore())
 
   test("TX charrep") {
     // Master TX with character repetition enabled
@@ -42,7 +42,7 @@ class TxRxCoreSim extends AnyFunSuite {
       StreamMonitor(dut.io.tx, dut.clockDomain) { payload =>
         scoreboard.pushRef(payload.toInt)
       }
-      ISO7816SimRx(dut.io.iso, 100) { (data, parityValid) =>
+      ISO7816SimRx(dut.io.iso.io, 100) { (data, parityValid) =>
         assert(parityValid)
         if (Random.nextBoolean()) {
           scoreboard.pushDut(data)
@@ -83,7 +83,7 @@ class TxRxCoreSim extends AnyFunSuite {
       FlowMonitor(dut.io.rx, dut.clockDomain) { payload =>
         scoreboard.pushDut(payload.toInt)
       }
-      val isosim = ISO7816SimTx(dut.io.iso, 100) { (data, error, induceError) =>
+      val isosim = ISO7816SimTx(dut.io.iso.io, 100) { (data, error, induceError) =>
         assert(error == induceError)
         if (!error)
           scoreboard.pushRef(data)
@@ -129,7 +129,7 @@ class TxRxCoreSim extends AnyFunSuite {
       StreamMonitor(dut.io.tx, dut.clockDomain) { payload =>
         scoreboard.pushRef(payload.toInt)
       }
-      ISO7816SimRx(dut.io.iso, 100) { (data, parityValid) =>
+      ISO7816SimRx(dut.io.iso.io, 100) { (data, parityValid) =>
         assert(parityValid)
         scoreboard.pushDut(data)
         Random.nextBoolean()
@@ -165,7 +165,7 @@ class TxRxCoreSim extends AnyFunSuite {
       FlowMonitor(dut.io.rx, dut.clockDomain) { payload =>
         scoreboard.pushDut(payload.toInt)
       }
-      val isosim = ISO7816SimTx(dut.io.iso, 100) { (data, error, induceError) =>
+      val isosim = ISO7816SimTx(dut.io.iso.io, 100) { (data, error, induceError) =>
         assert(!error)
         scoreboard.pushRef(data)
       }

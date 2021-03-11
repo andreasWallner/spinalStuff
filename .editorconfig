@@ -1,0 +1,14 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 2
+indent_style = space
+insert_final_newline = true
+max_line_length = 100
+trim_trailing_whitespace = true
+
+ij_scala_type_annotation_unit_type = false
+ij_scala_type_annotation_public_member = false
+ij_scala_type_annotation_structural_type = false
