@@ -2,10 +2,9 @@ package andreasWallner.io.iso7816
 
 import spinal.core._
 import spinal.lib._
-import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config}
-import spinal.lib.bus.amba4.axilite.{AxiLite4, AxiLite4Config}
-import spinal.lib.bus.regif.{Apb3BusInterface, AxiLite4BusInterface, BusIf}
-import spinal.lib.bus.regif.RegIfDocument._
+import spinal.lib.bus.misc.BusSlaveFactory
+import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config, Apb3SlaveFactory}
+import spinal.lib.bus.amba4.axilite.{AxiLite4, AxiLite4Config, AxiLite4SlaveFactory}
 import spinal.lib.fsm._
 import spinal.lib.io.TriState
 
@@ -72,6 +71,7 @@ case class StateCtrl() extends Component {
     val tx_done = in Bool () // strobed on TX for clkstop min time
     val inhibit_tx = out Bool ()
     val state = new Bundle {
+      val state = out(CtrlState())
       val driving_io = out Bool ()
       val clock = out Bool ()
       val busy = out Bool ()
@@ -79,6 +79,7 @@ case class StateCtrl() extends Component {
   }
 
   val state = Reg(CtrlState()).init(CtrlState.Inactive)
+  io.state.state := state
   val command = Reg(CtrlCommand()).init(CtrlCommand.Idle)
   val active = command =/= CtrlCommand.Idle
   io.state.busy := active
@@ -435,7 +436,7 @@ case class RxTxCore() extends Component {
       timing.en := True
       io.state.tx_active := True
       when(timing.etu && timing.cgtOver) {
-        when(io.tx.valid) {
+        when(io.tx.valid) { // TODO use fragment and wait until data is available
           goto(Tx)
         } otherwise {
           goto(Idle)
@@ -523,6 +524,7 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
       val tx_active = out Bool ()
       val rx_active = out Bool ()
       val change_active = out Bool ()
+      val state = out(CtrlState())
     }
     val start = new Bundle {
       val tx = in Bool ()
@@ -573,6 +575,7 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   }
   control.io.tx_done := False // TODO
   io.state.change_active := control.io.state.busy
+  io.state.state := control.io.state.state
 
   clock.io.stop_clock := control.io.state.clock
   clock.io.vcc := control.io.iso.vcc
@@ -601,41 +604,32 @@ abstract class Peripheral[T <: spinal.core.Data with IMasterSlave](
 
   val factory = metaFactory(io.bus)
 
-  val frequency = factory.newReg(doc = "Core frequency")
-  val f = frequency.field(
-    32 bit,
-    RO,
-    doc = "Frequency the core is running at, 0 if unknown"
-  ) := U(clockDomain.frequency.getValue.toLong).asBits.resize(32 bit)
+  // frequency register
+  val freq = clockDomain.frequency match {
+    case f: FixedFrequency => f.getValue.toLong
+    case _ => 0
+  }
+  factory.read(U(freq, 32 bit), 0x00, 0)
+  // buffer size register
+  factory.read(U(generic.rxBufferSize, 16 bit), 0x04, 0)
+  factory.read(U(generic.txBufferSize, 16 bit), 0x04, 16)
 
-  val buffers = factory.newReg("Buffer sizes")
-  val rx_size =
-    buffers.field(16 bit, RO, doc = "Size of RX buffer") := U(
-      generic.rxBufferSize
-    ).asBits.resize(16 bit)
-  val tx_size =
-    buffers.field(16 bit, RO, doc = "Size of TX buffer") := U(
-      generic.txBufferSize
-    ).asBits.resize(16 bit)
+  // status register
+  factory.read(core.io.state.rx_active, 0x08, 0)
+  factory.read(core.io.state.tx_active, 0x08, 1)
+  factory.read(core.io.state.change_active, 0x08, 2)
+  factory.read(core.io.state.state, 0x08, 3)
+  factory.doBitsAccumulationAndClearOnRead(rxFifoIsOverflow.asBits, 0x08, 8)
+  factory.doBitsAccumulationAndClearOnRead(txFifo.io.push.isStall.asBits, 0x08, 9)
+  
+  // TODO current state (active, inactive, clockstop)
+  // TODO timeouts
 
-  val status = factory.newReg("Status of core")
-  val rx = status.field(1 bit, RO) := core.io.state.rx_active.asBits
-  val tx = status.field(1 bit, RO) := core.io.state.tx_active.asBits
-  val change = status.field(1 bit, RO) := core.io.state.change_active.asBits
-  val rx_overflow = status.field(1 bit, WC)
-  when(rxFifoIsOverflow) { rx_overflow(0) := True }
-  val tx_overflow = status.field(1 bit, WC)
-  when(txFifo.io.push.isStall) { tx_overflow(0) := True }
+  // config register
+  core.io.config.rxtx.characterRepetition := factory.createReadAndWrite(Bool, 0x0C, 0)
+  core.io.config.rxtx.cgt := factory.createReadAndWrite(UInt(core.io.config.rxtx.cgt.getWidth bit), 0x0C, 1)
 
-  val config = factory.newReg("Core settings")
-  var char_rep = core.io.config.rxtx.characterRepetition := config
-    .field(1 bit, RW)
-    .asBits(0)
-  val cgt = core.io.config.rxtx.cgt := config
-    .field(core.io.config.rxtx.cgt.getWidth bit, RW)
-    .asUInt
-
-  val start = factory.newReg(
+  /*val start = factory.newReg(
     """
        | Fields to trigger operations
        | RESET and ACTIVATE can be combined for a warm reset.
@@ -643,82 +637,42 @@ abstract class Peripheral[T <: spinal.core.Data with IMasterSlave](
        | RX can be combined with TX and ACTIVATE to automatically start
        | reception after transmission or activation is finished.
        |""".stripMargin
-  )
-  core.io.start.rx := start.field(1 bit, W1P).asBits(0)
-  core.io.start.tx := start.field(1 bit, W1P).asBits(0)
-  core.io.start.reset := start.field(1 bit, W1P).asBits(0)
-  core.io.start.deactivate := start.field(1 bit, W1P).asBits(0)
-  core.io.start.activate := start.field(1 bit, W1P).asBits(0)
-  core.io.start.stop_clock := start.field(1 bit, W1P).asBits(0)
+  )*/
+  // trigger register
+  core.io.start.rx := False
+  core.io.start.tx := False
+  core.io.start.reset := False
+  core.io.start.deactivate := False
+  core.io.start.activate := False
+  core.io.start.stop_clock := False
+  rxFifo.io.flush := False
+  txFifo.io.flush := False
+  factory.setOnSet(core.io.start.rx, 0x10, 0)
+  factory.setOnSet(core.io.start.tx, 0x10, 1)
+  factory.setOnSet(core.io.start.reset, 0x10, 2)
+  factory.setOnSet(core.io.start.deactivate, 0x10, 3)
+  factory.setOnSet(core.io.start.activate, 0x10, 4)
+  factory.setOnSet(core.io.start.stop_clock, 0x10, 5)
+  factory.setOnSet(rxFifo.io.flush, 0x10, 6)
+  factory.setOnSet(txFifo.io.flush, 0x10, 7)
 
-  val defaultClkDivider = clockDomain.frequency.getValue.toLong / 3200000
-  core.io.config.clockrate := factory
-    .newReg("")
-    .typedField(UInt(generic.core.clockPrescalerWidth bit), RW)
-    .init(defaultClkDivider)()
+  // timing config registers
+  val defaultClkDivider = freq / 3200000
+  core.io.config.clockrate := factory.createReadAndWrite(UInt(generic.core.clockPrescalerWidth bit), 0x14, 0) init (defaultClkDivider)
+  core.io.config.control.ta := factory.createReadAndWrite(UInt(32 bit), 0x18, 0) init(500 * defaultClkDivider)
+  core.io.config.control.tb := factory.createReadAndWrite(UInt(32 bit), 0x1C, 0) init(1000 * defaultClkDivider)
+  core.io.config.control.te := factory.createReadAndWrite(UInt(32 bit), 0x20, 0) init(0)
+  core.io.config.control.th := factory.createReadAndWrite(UInt(32 bit), 0x24, 0) init(0)
+  core.io.config.control.vcc_offset := factory.createReadAndWrite(UInt(32 bit), 0x28, 0) init(0)
+  core.io.config.control.clk_offset := factory.createReadAndWrite(UInt(32 bit), 0x2c, 0) init(0)
 
-  core.io.config.control.ta := factory
-    .newReg("Control timing")
-    .typedField(UInt(32 bit), RW)
-    .init(500 * defaultClkDivider)
-    .doc("I/O offset (t:sub:`a`)")()
-  core.io.config.control.tb.assignFromBits(
-    factory
-      .newReg("Control timing")
-      .field(
-        32 bit,
-        RW,
-        1000 * defaultClkDivider,
-        doc = "RST offset (t:sub:`b`)"
-      )
-  )
-  core.io.config.control.te.assignFromBits(
-    factory
-      .newReg(doc = "Control timing")
-      .field(32 bit, RW, 10, "I/O off delay (t:sub:`e`)")
-  )
-  core.io.config.control.th.assignFromBits(
-    factory
-      .newReg("Control timing")
-      .field(
-        32 bit,
-        RW,
-        clockDomain.frequency.getValue.toLong / 100000000,
-        "Off time (t:sub:`h`)"
-      )
-  )
-  core.io.config.control.vcc_offset.assignFromBits(
-    factory
-      .newReg("Control timing")
-      .field(32 bit, RW, 1000, "VCC off delay (t:sub:`VCC`)")
-  )
-  core.io.config.control.clk_offset.assignFromBits(
-    factory
-      .newReg("Control timing")
-      .field(32 bit, RW, 0, "needed?")
-  )
+  // FIFO levels register
+  factory.read(rxFifo.io.occupancy.resize(16 bit), 0x30, 0)
+  factory.read(txFifo.io.availability.resize(16 bit), 0x30, 16)
 
-  val buffer_state = factory.newReg(doc = "State of buffers")
-  buffer_state.field(16 bit, RO, doc = "Bytes available in RX FIFO") := rxFifo.io.occupancy.expand.asBits
-    .resize(16 bit)
-  buffer_state.field(16 bit, RO, doc = "Bytes free in TX FIFO") := txFifo.io.availability.expand.asBits
-    .resize(16 bit)
-
-  val rx_buffer = factory.newReg("Gateway to RX buffer")
-  rx_buffer.field(8 bit, RO, doc = "value") := rxFifo.io.pop.payload.asBits
-  rx_buffer.field(1 bit, RO, doc = "valid") := rxFifo.io.pop.valid.asBits
-  rxFifo.io.pop.ready := rx_buffer.hitRead
-
-  val tx_buffer = factory.newReg(doc = "Gateway to TX buffer")
-  txFifo.io.push.payload := tx_buffer.field(8 bit, WO, doc = "value")
-  txFifo.io.push.valid := tx_buffer.hitWrite
-
-  factory.accept(HtmlGenerator("ISO7816Module.html", "ISO7816"))
-
-  def accept(docName: String): Peripheral[T] = {
-    factory.document(docName, DocType.HTML)
-    this
-  }*/
+  // rx & tx register
+  factory.readStreamNonBlocking(rxFifo.io.pop, 0x34)
+  txFifo.io.push <> factory.createAndDriveFlow(Bits(8 bit), 0x38, 0).toStream
 }
 
 case class Apb3ISO7816Peripheral(
@@ -736,5 +690,5 @@ case class AxiLite4ISO7816Peripheral(
 ) extends Peripheral[AxiLite4](
       generics,
       AxiLite4(busConfig),
-      AxiLite4SlaveFactory(_)
+      bus => new AxiLite4SlaveFactory(bus)
     )
