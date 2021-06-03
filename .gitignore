@@ -32,6 +32,10 @@ bin/
 #User
 /*.vhd
 /*.v
+*.h
+*.html
+*.hpp
+*.xml
 *.cf
 *.json
 *.vcd
