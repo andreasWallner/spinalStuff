@@ -231,14 +231,14 @@ object forMasterSlaveInterfaces {
 }
 
 object XilinxNamer {
-  def apply(comp: Component): Component = {
+  def apply(comp: Component, noClockSpeed:Boolean=false): Component = {
     var masterCnt = 0
     var slaveCnt = 0
 
     def doIt: Unit = {
       val ios = comp.getGroupedIO(true)
 
-      name_clockDomain(comp.clockDomain)
+      name_clockDomain(comp.clockDomain, noClockSpeed)
 
       forMasterSlaveInterfaces(comp) { (intf: IMasterSlave, idx: Int) =>
         XilinxSupportFactory.makeSupport(intf) match {
@@ -254,12 +254,12 @@ object XilinxNamer {
     comp
   }
 
-  def name_clockDomain(cd: ClockDomain): Unit = {
+  def name_clockDomain(cd: ClockDomain, noClockSpeed:Boolean): Unit = {
     // val postfix = if(cd.name != "") "_" + cd.name else ""
     cd.clock.setName(
       "ACLK"
         + (cd.frequency match {
-        case f: FixedFrequency => Helper.engineeringNotation(f.getValue.toBigDecimal, "Hz")
+        case f: FixedFrequency if(!noClockSpeed) => Helper.engineeringNotation(f.getValue.toBigDecimal, "Hz")
         case _ => ""
       })
     )
