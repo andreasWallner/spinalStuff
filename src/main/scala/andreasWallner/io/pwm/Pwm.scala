@@ -5,6 +5,14 @@ import spinal.lib._
 import spinal.lib.bus.misc.BusSlaveFactory
 import spinal.lib.bus.amba3.apb._
 
+import spinal.lib.bus.amba3.ahblite.{AhbLite3, AhbLite3Config}
+import spinal.lib.bus.misc.SizeMapping
+import spinal.lib.bus.regif._
+
+object Test extends SpinalEnum {
+  val e1, e2, e3, e4 = newElement()
+}
+
 object Pwm {
   case class CoreParameters(
       counterWidth: Int = 32,
@@ -15,6 +23,37 @@ object Pwm {
       coreParameters: CoreParameters = CoreParameters(),
       prescalerWidth: Int = 32
   )
+
+  class RegIfCtrl[T <: spinal.core.Data with IMasterSlave](
+      parameters: Pwm.PeripheralParameters = Pwm.PeripheralParameters(),
+      busType: HardType[T],
+      generator: T => BusIf
+  ) extends Component {
+    val io = new Bundle {
+      val bus = slave(busType())
+      //val pwm = out Vec(Bool, 8)
+      val run = out Bool()
+    }
+
+    val factory = generator(io.bus)
+    
+    val ctrl = factory.newReg(doc="Control")
+    io.run := ctrl.typedField(Bool(), AccessType.RW)(SymbolName("run"))
+      .doc("State of the PWM core")
+      .value(0, "stop", "stopped")
+      .value(1, "run", "running")
+      .apply()
+    val x = ctrl.typedField(Test(), AccessType.RW).align(4).apply()
+
+    val conf = factory.newReg(doc="Prescaler")
+    val prescaler = conf.typedField(UInt(parameters.prescalerWidth bits), AccessType.RW).apply()
+
+    val levels = 
+      for(i <- 0 until parameters.coreParameters.channelCnt)
+        yield factory.newReg(doc="Reg")(SymbolName(f"level${i}")).typedField(UInt(parameters.coreParameters.counterWidth bits), AccessType.RW)(SymbolName("level")).apply()
+    
+    def registerBanks(): List[BusIf] = List(factory)
+  }
 
   abstract class Ctrl[T <: spinal.core.Data with IMasterSlave](
       parameters: Pwm.PeripheralParameters,
@@ -117,3 +156,12 @@ case class Apb3Pwm(
       Apb3(busConfig),
       Apb3SlaveFactory(_)
     ) {}
+
+case class RegIfAhbLite3Pwm(
+    parameter: Pwm.PeripheralParameters = Pwm.PeripheralParameters(),
+    busConfig: AhbLite3Config = AhbLite3Config(12, 32)
+) extends Pwm.RegIfCtrl[AhbLite3](
+      parameter,
+      AhbLite3(busConfig),
+      BusInterface(_, SizeMapping(0x0, 0x10))
+    )
