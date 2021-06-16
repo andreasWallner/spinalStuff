@@ -1,5 +1,6 @@
 package andreasWallner.io.pwm
 
+import andreasWallner.spinaltap.ISpinalTAPModule
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.misc.BusSlaveFactory
@@ -16,11 +17,11 @@ object Pwm {
       prescalerWidth: Int = 32
   )
 
-  abstract class Ctrl[T <: spinal.core.Data with IMasterSlave](
+  class Ctrl[T <: spinal.core.Data with IMasterSlave](
       parameters: Pwm.PeripheralParameters,
       busType: HardType[T],
       factory: T => BusSlaveFactory
-  ) extends Component {
+  ) extends Component with ISpinalTAPModule[T] {
     val io = new Bundle {
       val bus = slave(busType())
       val pwm = out Vec (Bool, parameters.coreParameters.channelCnt)
@@ -82,6 +83,8 @@ object Pwm {
         levels(i),
         updateValues
       ) init (0)
+
+    override def bus() = io.bus
   }
 
   case class Core(parameters: Pwm.CoreParameters) extends Component {
@@ -112,7 +115,7 @@ object Pwm {
 case class Apb3Pwm(
     parameter: Pwm.PeripheralParameters = Pwm.PeripheralParameters(),
     busConfig: Apb3Config = Apb3Config(12, 32)
-) extends Pwm.Ctrl[Apb3](
+) extends Pwm.Ctrl[Apb3] (
       parameter,
       Apb3(busConfig),
       Apb3SlaveFactory(_)

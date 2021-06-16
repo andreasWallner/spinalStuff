@@ -2,9 +2,15 @@ package andreasWallner.spinaltap
 
 import andreasWallner.io.iomux.{IOMuxGenerics, IOMuxPeripheral}
 import andreasWallner.io.iso7816.{Apb3ISO7816Peripheral, ISO7816Master}
+import andreasWallner.io.pwm.{Apb3Pwm, Pwm}
 import spinal.core._
 import spinal.lib._
-import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config, Apb3Decoder, Apb3SlaveFactory}
+import spinal.lib.bus.amba3.apb.{
+  Apb3,
+  Apb3Config,
+  Apb3Decoder,
+  Apb3SlaveFactory
+}
 import spinal.lib.bus.amba4.axilite.{AxiLite4, AxiLite4SlaveFactory}
 import spinal.lib.bus.misc.{BusSlaveFactory, SizeMapping}
 import spinal.lib.io.TriStateArray
@@ -37,6 +43,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
 
     val port0 = master(TriStateArray(5))
     val port1 = master(TriStateArray(5))
+    val pwm = out Vec (Bool(), 3)
 
     val dac = new Bundle {
       val output0 = out UInt (10 bit)
@@ -61,6 +68,14 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   )
   mux.io.muxeds(0) <> io.port0
   mux.io.muxeds(1) <> io.port1
+
+  val pwm = new Pwm.Ctrl[T](
+    Pwm.PeripheralParameters(Pwm.CoreParameters(channelCnt = 3)),
+    busType(),
+    metaFactory
+  )
+  pwm.io.pwm <> io.pwm
+
   val moduleInstances =
     for ((f, idx) <- moduleFactories.zipWithIndex)
       yield {
@@ -73,7 +88,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   val interconnect =
     interconnectFactory(
       io.bus,
-      List[ISpinalTAPModule[T]](mux) ++ moduleInstances,
+      List[ISpinalTAPModule[T]](pwm, mux) ++ moduleInstances,
       moduleAddressSpace
     )
   // TODO logic analyzer
@@ -86,8 +101,10 @@ object ApbSpinalTap {
       modules: List[ISpinalTAPModule[Apb3]],
       moduleAddressSpace: BigInt
   ): Component = {
-    val moduleMapping = for((m, idx) <- modules.zipWithIndex) yield
-      m.bus() -> SizeMapping(moduleAddressSpace * idx, moduleAddressSpace)
+    val moduleMapping =
+      for ((m, idx) <- modules.zipWithIndex)
+        yield m
+          .bus() -> SizeMapping(moduleAddressSpace * idx, moduleAddressSpace)
     Apb3Decoder(
       master = bus,
       slaves = moduleMapping
@@ -98,9 +115,7 @@ object ApbSpinalTap {
 class ApbSpinalTap
     extends SpinalTap[Apb3](
       Apb3(12, 32),
-      List(
-        (mf, am) => Apb3ISO7816Peripheral(busConfig=Apb3Config(12, 32))
-      ),
+      List((mf, am) => Apb3ISO7816Peripheral(busConfig = Apb3Config(12, 32))),
       new Apb3SlaveFactory(_, 0),
       256 Byte,
       ApbSpinalTap.makeInterconnect
