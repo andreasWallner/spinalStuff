@@ -44,11 +44,11 @@ object Apb3PwmModule {
 object ApbSpinalTap {
   def main(args: Array[String]): Unit = {
     val report = SpinalConfig(
-      defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = HIGH),
+      defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = LOW),
       defaultClockDomainFrequency = FixedFrequency(100 MHz),
       device = Device.XILINX
     ).generateVerilog(
-      XilinxNamer(new ApbSpinalTap())
+      XilinxNamer(XilinxInOutWrapper(new ApbSpinalTap()))
     );
   }
 }

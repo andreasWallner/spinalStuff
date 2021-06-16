@@ -124,37 +124,32 @@ case class AxiLite4Support(axilite: AxiLite4) extends BusSupport {
 }
 
 case class Apb3Support(apb3: Apb3) extends BusSupport {
+  def dirPrefix = if (apb3.isMasterInterface) "M" else "S"
+
   def name(idx: Integer): String = {
-    val dirPrefix = if (apb3.isMasterInterface) "M" else "S"
-    val idxPrefix = f"$idx%02d"
+    val idxPrefix = f"$idx%02d_APB"
     dirPrefix + idxPrefix + "_"
   }
 
   def rename(idx: Integer): Unit = {
     val prefix = name(idx)
 
-    apb3.PADDR.setName(prefix + "paddr")
-    apb3.PENABLE.setName(prefix + "penable")
-    apb3.PRDATA.setName(prefix + "prdata")
-    apb3.PREADY.setName(prefix + "pready")
-    apb3.PSEL.setName(prefix + "psel")
-    apb3.PSLVERROR.setName(prefix + "pslverror")
-    apb3.PWDATA.setName(prefix + "pwdata")
-    apb3.PWRITE.setName(prefix + "pwrite")
+    apb3.PADDR.setName(prefix + "PADDR")
+    apb3.PENABLE.setName(prefix + "PENABLE")
+    apb3.PRDATA.setName(prefix + "PRDATA")
+    apb3.PREADY.setName(prefix + "PREADY")
+    apb3.PSEL.setName(prefix + "PSEL")
+    apb3.PSLVERROR.setName(prefix + "PSLVERR")
+    apb3.PWDATA.setName(prefix + "PWDATA")
+    apb3.PWRITE.setName(prefix + "PWRITE")
   }
 
   def addAttributes(idx: Integer): Unit = {
-    def name = f"apb$idx"
+    def name = f"APB_${dirPrefix}${idx}"
     def attr = "X_INTERFACE_INFO"
     def info = "xilinx.com:interface:apb:1.0 " + name + " "
-    apb3.PADDR.addAttribute(attr, info + "PADDR")
-    apb3.PENABLE.addAttribute(attr, info + "PENABLE")
-    apb3.PRDATA.addAttribute(attr, info + "PRDATA")
-    apb3.PREADY.addAttribute(attr, info + "PREADY")
-    apb3.PSEL.addAttribute(attr, info + "PSEL")
-    apb3.PSLVERROR.addAttribute(attr, info + "PSLVERROR")
-    apb3.PWDATA.addAttribute(attr, info + "PWDATA")
-    apb3.PWRITE.addAttribute(attr, info + "PWRITE")
+    for(mapping <- portMaps())
+      mapping.physicalPort.addAttribute(attr, info + mapping.logicalPort)
   }
 
   override def portMaps() = List(
@@ -163,7 +158,7 @@ case class Apb3Support(apb3: Apb3) extends BusSupport {
     PortMap("PRDATA", apb3.PRDATA),
     PortMap("PREADY", apb3.PREADY),
     PortMap("PSEL", apb3.PSEL),
-    PortMap("PSLVERROR", apb3.PSLVERROR),
+    PortMap("PSLVERR", apb3.PSLVERROR),
     PortMap("PWDATA", apb3.PWDATA),
     PortMap("PWRITE", apb3.PWRITE)
   )
