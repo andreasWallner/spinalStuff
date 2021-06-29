@@ -31,6 +31,7 @@ trait ISpinalTAPCommModule[T <: spinal.core.Data with IMasterSlave]
 
 abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     busType: HardType[T],
+    internalBus: HardType[T],
     moduleFactories: List[
       (T => BusSlaveFactory, Long) => ISpinalTAPCommModule[T]
     ],
@@ -63,7 +64,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   val moduleCnt = moduleFactories.size
   val mux = new IOMuxPeripheral[T](
     IOMuxGenerics(moduleCnt, 2, 5),
-    busType(),
+    internalBus(),
     metaFactory
   )
   mux.io.muxeds(0) <> io.port0
@@ -71,7 +72,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
 
   val pwm = new Pwm.Ctrl[T](
     Pwm.PeripheralParameters(Pwm.CoreParameters(channelCnt = 3)),
-    busType(),
+    internalBus(),
     metaFactory
   )
   pwm.io.pwm <> io.pwm
@@ -104,7 +105,7 @@ object ApbSpinalTap {
     val moduleMapping =
       for ((m, idx) <- modules.zipWithIndex)
         yield m
-          .bus() -> SizeMapping(moduleAddressSpace * idx, moduleAddressSpace)
+          .bus() -> SizeMapping(0x43c00000 + moduleAddressSpace * idx, moduleAddressSpace)
     Apb3Decoder(
       master = bus,
       slaves = moduleMapping
@@ -114,8 +115,9 @@ object ApbSpinalTap {
 
 class ApbSpinalTap
     extends SpinalTap[Apb3](
-      Apb3(12, 32),
-      List((mf, am) => Apb3ISO7816Peripheral(busConfig = Apb3Config(12, 32))),
+      Apb3(32, 32),
+      Apb3(9, 32),
+      List((mf, am) => Apb3ISO7816Peripheral(busConfig = Apb3Config(9, 32))),
       new Apb3SlaveFactory(_, 0),
       256 Byte,
       ApbSpinalTap.makeInterconnect
