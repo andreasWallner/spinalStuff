@@ -1,11 +1,12 @@
-package andreasWallner.ztex
+package andreasWallner.spinaltap
 
+import andreasWallner.ztex.SocketArbiter
 import spinal.core._
 import spinal.sim._
 import spinal.core.sim._
 import spinal.lib.sim._
-
 import org.scalatest.funsuite.AnyFunSuite
+
 import scala.collection.mutable.Queue
 import scala.util.Random
 import scala.math.min
@@ -13,7 +14,6 @@ import scala.math.min
 class SocketArbiterSim extends AnyFunSuite {
   val socketCnt = 3
   val dut = SimConfig.withWave
-    .workspacePath("/c/work/tmp/sim")
     .compile(SocketArbiter(socketCnt))
 
   test("write registers") {

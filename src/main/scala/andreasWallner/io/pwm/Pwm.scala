@@ -21,7 +21,8 @@ object Pwm {
       parameters: Pwm.PeripheralParameters,
       busType: HardType[T],
       factory: T => BusSlaveFactory
-  ) extends Component with ISpinalTAPModule[T] {
+  ) extends Component
+      with ISpinalTAPModule[T] {
     val io = new Bundle {
       val bus = slave(busType())
       val pwm = out Vec (Bool, parameters.coreParameters.channelCnt)
@@ -59,7 +60,7 @@ object Pwm {
     io.pwm := pre.core.io.pwm
     pre.core.io.run := run
 
-    val max_count = mapper.createReadWrite(
+    val max_count = mapper.createReadAndWrite(
       UInt(parameters.coreParameters.counterWidth bits),
       0x08,
       0
@@ -115,7 +116,7 @@ object Pwm {
 case class Apb3Pwm(
     parameter: Pwm.PeripheralParameters = Pwm.PeripheralParameters(),
     busConfig: Apb3Config = Apb3Config(12, 32)
-) extends Pwm.Ctrl[Apb3] (
+) extends Pwm.Ctrl[Apb3](
       parameter,
       Apb3(busConfig),
       Apb3SlaveFactory(_)
