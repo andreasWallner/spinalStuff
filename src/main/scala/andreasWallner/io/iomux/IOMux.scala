@@ -4,12 +4,16 @@ import andreasWallner.spinaltap.ISpinalTAPModule
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.misc.BusSlaveFactory
-import spinal.lib.io.TriState
 import spinal.lib.io.TriStateArray
 
 import scala.language.postfixOps
 
-case class IOMuxGenerics(inCnt: Int, outCnt: Int, lineCnt: Int) {
+case class IOMuxGenerics(
+    inCnt: Int,
+    outCnt: Int,
+    lineCnt: Int,
+    syncSteps: Int = 2
+) {
   def selWidth = log2Up(inCnt)
 }
 
@@ -28,10 +32,14 @@ case class IOMux(generics: IOMuxGenerics) extends Component {
   for (a <- io.all)
     a.read.clearAll()
 
+  val synched = Vec(Bits(generics.lineCnt bits), generics.outCnt)
+  for ((muxed, sync) <- io.muxeds.zip(synched))
+    sync := Delay(muxed.read, generics.syncSteps)
+
   for ((out, outIdx) <- io.all.zipWithIndex) {
-    for ((muxed, inIdx) <- io.muxeds.zip(io.sels)) {
+    for ((muxed, inIdx) <- synched.zip(io.sels)) {
       when(inIdx === U(outIdx)) {
-        out.read := muxed.read
+        out.read := muxed
       }
     }
   }
@@ -53,13 +61,12 @@ class IOMuxPeripheral[T <: spinal.core.Data with IMasterSlave](
   core.io.muxeds <> io.muxeds
 
   val mapper = factory(io.bus)
-  for (idx <- 1 until generics.outCnt) {
-    core.io.sels(idx) := mapper.createReadAndWrite(
+  for ((sel, idx) <- core.io.sels.zipWithIndex)
+    sel := mapper.createReadAndWrite(
       UInt(generics.selWidth bits),
       0x04 * idx / 2,
       16 * (idx % 2)
     )
-  }
 
   def bus() = io.bus
 }
