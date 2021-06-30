@@ -1,18 +1,17 @@
 package andreasWallner.io.spi
 
-import spinal.core._
-import spinal.sim._
-import spinal.core.sim._
-import spinal.lib.sim._
-import spinal.lib.bus.amba3.apb.sim.Apb3Driver
-import scala.collection.mutable.Queue
-import scala.util.Random
-
 import org.scalatest.funsuite.AnyFunSuite
+import spinal.core._
+import spinal.core.sim._
+import spinal.lib.bus.amba3.apb.sim.Apb3Driver
+import spinal.lib.sim._
+
+import scala.language.postfixOps
+import scala.util.Random
 
 class SpiMasterSim extends AnyFunSuite {
   val dut = SimConfig.withWave
-    .compile(SpiMaster())
+    .compile(SpiMaster.Core())
 
   List((true, true), (true, false), (false, true), (false, false)).foreach {
     case (cpol: Boolean, cpha: Boolean) =>

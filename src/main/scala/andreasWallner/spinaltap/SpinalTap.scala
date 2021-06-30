@@ -3,6 +3,7 @@ package andreasWallner.spinaltap
 import andreasWallner.io.Gpio
 import andreasWallner.io.iomux.IOMux
 import andreasWallner.io.pwm.Pwm
+import andreasWallner.io.spi.SpiMaster
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Decoder, Apb3SlaveFactory}
@@ -145,7 +146,7 @@ class ApbSpinalTap
           ),
         (bt, mf, _) =>
           new Wrapped.Spi[Apb3](
-            andreasWallner.io.spi.PeripheralGenerics(),
+            SpiMaster.PeripheralParameter(),
             bt,
             mf
           )

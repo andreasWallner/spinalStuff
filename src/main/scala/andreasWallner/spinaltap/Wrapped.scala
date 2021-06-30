@@ -3,7 +3,7 @@ package andreasWallner.spinaltap
 import andreasWallner.io.Gpio
 import andreasWallner.io.iomux.IOMux
 import andreasWallner.io.pwm.Pwm
-import andreasWallner.io.spi.SpiMasterPeripheral
+import andreasWallner.io.spi.SpiMaster
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.misc.BusSlaveFactory
@@ -40,10 +40,10 @@ object Wrapped {
   }
 
   class Spi[T <: spinal.core.Data with IMasterSlave](
-      p: andreasWallner.io.spi.PeripheralGenerics,
+      p: SpiMaster.PeripheralParameter,
       busType: HardType[T],
       factory: T => BusSlaveFactory
-  ) extends SpiMasterPeripheral(p, busType, factory)
+  ) extends SpiMaster.Ctrl(p, busType, factory)
       with ISpinalTAPCommModule[T] {
 
     override def bus() = io.bus
