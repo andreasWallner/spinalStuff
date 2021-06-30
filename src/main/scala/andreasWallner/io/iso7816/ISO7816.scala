@@ -592,8 +592,7 @@ abstract class Peripheral[T <: spinal.core.Data with IMasterSlave](
     generic: PeripheralGenerics,
     busType: HardType[T],
     metaFactory: T => BusSlaveFactory
-) extends Component
-    with ISpinalTAPCommModule[T] {
+) extends Component {
   val io = new Bundle {
     val iso = master(ISO7816())
     val bus = slave(busType())
@@ -683,31 +682,6 @@ abstract class Peripheral[T <: spinal.core.Data with IMasterSlave](
   factory
     .createAndDriveFlow(Bits(txFifo.io.push.payload.getWidth bits), 60)
     .toStream(txFifoOverflow) <> txFifo.io.push
-
-  override def bus() = io.bus
-  override def triggerOutputs() = List()
-  override def triggerInputs() = List()
-  override def ports() = {
-    val tri = TriStateArray(5 bit)
-    tri(0) <> io.iso.io
-
-    val rstTri = tri(1)
-    rstTri.write := io.iso.rst
-    rstTri.writeEnable := True
-
-    val clkTri = tri(2)
-    clkTri.write := io.iso.clk
-    clkTri.writeEnable := True
-
-    for (i <- 3 until 5) {
-      val rfuTri = tri(i)
-      rfuTri.write := False
-      rfuTri.writeEnable := False
-    }
-
-    tri
-  }
-  override def vcc() = io.iso.vcc
 }
 
 case class Apb3ISO7816Peripheral(

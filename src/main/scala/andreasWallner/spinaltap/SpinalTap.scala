@@ -1,17 +1,11 @@
 package andreasWallner.spinaltap
 
+import andreasWallner.io.Gpio
 import andreasWallner.io.iomux.{IOMuxGenerics, IOMuxPeripheral}
-import andreasWallner.io.iso7816.{Apb3ISO7816Peripheral, ISO7816Master}
-import andreasWallner.io.pwm.{Apb3Pwm, Pwm}
+import andreasWallner.io.pwm.Pwm
 import spinal.core._
 import spinal.lib._
-import spinal.lib.bus.amba3.apb.{
-  Apb3,
-  Apb3Config,
-  Apb3Decoder,
-  Apb3SlaveFactory
-}
-import spinal.lib.bus.amba4.axilite.{AxiLite4, AxiLite4SlaveFactory}
+import spinal.lib.bus.amba3.apb.{Apb3, Apb3Decoder, Apb3SlaveFactory}
 import spinal.lib.bus.misc.{BusSlaveFactory, SizeMapping}
 import spinal.lib.io.TriStateArray
 
@@ -33,7 +27,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     busType: HardType[T],
     internalBus: HardType[T],
     moduleFactories: List[
-      (T => BusSlaveFactory, Long) => ISpinalTAPCommModule[T]
+      (HardType[T], T => BusSlaveFactory, Long) => ISpinalTAPCommModule[T]
     ],
     metaFactory: T => BusSlaveFactory,
     moduleAddressSpace: BigInt,
@@ -63,14 +57,31 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
 
   val moduleCnt = moduleFactories.size
   val mux = new IOMuxPeripheral[T](
-    IOMuxGenerics(moduleCnt, 2, 5),
+    IOMuxGenerics(1 + 2 + moduleCnt, 2, 5),
     internalBus(),
     metaFactory
   )
   mux.io.muxeds(0) <> io.port0
   mux.io.muxeds(1) <> io.port1
 
-  val pwm = new Pwm.Ctrl[T](
+  // use mux slot 0 to disable
+  mux.io.all(0).writeEnable.clearAll()
+  mux.io.all(0).write.clearAll()
+
+  val gpio0 = new Wrapped.Gpio(
+    Gpio.Parameter(width = 5, readBufferLength = 0),
+    internalBus(),
+    metaFactory
+  )
+  mux.io.all(1) <> gpio0.io.gpio
+  val gpio1 = new Wrapped.Gpio(
+    Gpio.Parameter(width = 5, readBufferLength = 0),
+    internalBus(),
+    metaFactory
+  )
+  mux.io.all(2) <> gpio1.io.gpio
+
+  val pwm = new Wrapped.Pwm[T](
     Pwm.PeripheralParameters(Pwm.CoreParameters(channelCnt = 3)),
     internalBus(),
     metaFactory
@@ -80,8 +91,13 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   val moduleInstances =
     for ((f, idx) <- moduleFactories.zipWithIndex)
       yield {
-        val module = f(metaFactory, (idx + 1) * moduleAddressSpace.longValue())
-        mux.io.all(idx) <> module.ports()
+        val module = f(
+          internalBus,
+          metaFactory,
+          (idx + 3) * moduleAddressSpace.longValue()
+        )
+        module match { case c: Component => c.setName(f"module${idx}") }
+        mux.io.all(idx + 3) <> module.ports()
         for (trigger <- module.triggerInputs())
           trigger <> False
         module
@@ -89,7 +105,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   val interconnect =
     interconnectFactory(
       io.bus,
-      List[ISpinalTAPModule[T]](pwm, mux) ++ moduleInstances,
+      List[ISpinalTAPModule[T]](pwm, gpio0, gpio1, mux) ++ moduleInstances,
       moduleAddressSpace
     )
   // TODO logic analyzer
@@ -105,7 +121,10 @@ object ApbSpinalTap {
     val moduleMapping =
       for ((m, idx) <- modules.zipWithIndex)
         yield m
-          .bus() -> SizeMapping(0x43c00000 + moduleAddressSpace * idx, moduleAddressSpace)
+          .bus() -> SizeMapping(
+          0x43c00000 + moduleAddressSpace * idx,
+          moduleAddressSpace
+        )
     Apb3Decoder(
       master = bus,
       slaves = moduleMapping
@@ -117,7 +136,20 @@ class ApbSpinalTap
     extends SpinalTap[Apb3](
       Apb3(32, 32),
       Apb3(9, 32),
-      List((mf, am) => Apb3ISO7816Peripheral(busConfig = Apb3Config(9, 32))),
+      List(
+        (bt, mf, _) =>
+          new Wrapped.Iso7816[Apb3](
+            andreasWallner.io.iso7816.PeripheralGenerics(),
+            bt,
+            mf
+          ),
+        (bt, mf, _) =>
+          new Wrapped.Spi[Apb3](
+            andreasWallner.io.spi.PeripheralGenerics(),
+            bt,
+            mf
+          )
+      ),
       new Apb3SlaveFactory(_, 0),
       256 Byte,
       ApbSpinalTap.makeInterconnect

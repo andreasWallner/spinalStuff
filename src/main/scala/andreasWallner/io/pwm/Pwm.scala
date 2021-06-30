@@ -21,8 +21,7 @@ object Pwm {
       parameters: Pwm.PeripheralParameters,
       busType: HardType[T],
       factory: T => BusSlaveFactory
-  ) extends Component
-      with ISpinalTAPModule[T] {
+  ) extends Component {
     val io = new Bundle {
       val bus = slave(busType())
       val pwm = out Vec (Bool, parameters.coreParameters.channelCnt)
@@ -84,8 +83,6 @@ object Pwm {
         levels(i),
         updateValues
       ) init (0)
-
-    override def bus() = io.bus
   }
 
   case class Core(parameters: Pwm.CoreParameters) extends Component {
