@@ -1,10 +1,11 @@
 package andreasWallner.io.pwm
 
-import andreasWallner.spinaltap.ISpinalTAPModule
 import spinal.core._
 import spinal.lib._
-import spinal.lib.bus.misc.BusSlaveFactory
 import spinal.lib.bus.amba3.apb._
+import spinal.lib.bus.misc.BusSlaveFactory
+
+import scala.language.postfixOps
 
 object Pwm {
   case class CoreParameters(
@@ -31,15 +32,15 @@ object Pwm {
 
     // TODO ctrl register with run/disable
 
-    val run = mapper.createReadAndWrite(Bool, 0x00, 0) init (False)
+    val run = mapper.createReadAndWrite(Bool, 0x00, 0) init False
 
     val prescaler = new Area {
       val set = mapper.createReadAndWrite(
         UInt(parameters.prescalerWidth bits),
         0x04,
         0
-      ) init (0)
-      val latched_set = Reg(UInt(parameters.prescalerWidth bits)) init (0)
+      ) init 0
+      val latched_set = Reg(UInt(parameters.prescalerWidth bits)) init 0
 
       val cnt = Reg(UInt(parameters.prescalerWidth bits))
       val enable = cnt === latched_set
@@ -63,26 +64,26 @@ object Pwm {
       UInt(parameters.coreParameters.counterWidth bits),
       0x08,
       0
-    ) init (0)
+    ) init 0
     val levels =
       for (i <- 0 until parameters.coreParameters.channelCnt)
         yield mapper.createReadAndWrite(
           UInt(parameters.coreParameters.counterWidth bits),
           0x0c + 4 * i,
           0
-        ) init (0)
+        ) init 0
 
     val updateValues = (pre.core.io.willOverflow && prescaler.enable) || !run
     pre.core.io.max_count := RegNextWhen(
       max_count,
       updateValues
-    ) init (0)
+    ) init 0
     for (i <- 0 until parameters.coreParameters.channelCnt)
       pre.core.io
         .levels(i) := RegNextWhen(
         levels(i),
         updateValues
-      ) init (0)
+      ) init 0
   }
 
   case class Core(parameters: Pwm.CoreParameters) extends Component {
