@@ -1,6 +1,7 @@
 package andreasWallner.spinaltap
 
 import andreasWallner.io.Gpio
+import andreasWallner.io.iomux.IOMux
 import andreasWallner.io.pwm.Pwm
 import andreasWallner.io.spi.SpiMasterPeripheral
 import spinal.core._
@@ -11,6 +12,15 @@ import spinal.lib.io.TriStateArray
 import scala.language.postfixOps
 
 object Wrapped {
+  class IOMux[T <: spinal.core.Data with IMasterSlave](
+      p: IOMux.Parameter,
+      busType: HardType[T],
+      metaFactory: T => BusSlaveFactory
+  ) extends IOMux.Ctrl[T](p, busType, metaFactory)
+      with ISpinalTAPModule[T] {
+    override def bus() = io.bus
+  }
+
   class Gpio[T <: spinal.core.Data with IMasterSlave](
       p: Gpio.Parameter,
       busType: HardType[T],

@@ -1,7 +1,7 @@
 package andreasWallner.spinaltap
 
 import andreasWallner.io.Gpio
-import andreasWallner.io.iomux.{IOMuxGenerics, IOMuxPeripheral}
+import andreasWallner.io.iomux.IOMux
 import andreasWallner.io.pwm.Pwm
 import spinal.core._
 import spinal.lib._
@@ -56,8 +56,8 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   io.dac.strobe.clear()
 
   val moduleCnt = moduleFactories.size
-  val mux = new IOMuxPeripheral[T](
-    IOMuxGenerics(1 + 2 + moduleCnt, 2, 5),
+  val mux = new Wrapped.IOMux[T](
+    IOMux.Parameter(1 + 2 + moduleCnt, 2, 5),
     internalBus(),
     metaFactory
   )
@@ -96,7 +96,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
           metaFactory,
           (idx + 3) * moduleAddressSpace.longValue()
         )
-        module match { case c: Component => c.setName(f"module${idx}") }
+        module match { case c: Component => c.setName(f"module$idx") }
         mux.io.all(idx + 3) <> module.ports()
         for (trigger <- module.triggerInputs())
           trigger <> False
