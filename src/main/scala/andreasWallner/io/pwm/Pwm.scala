@@ -14,18 +14,18 @@ object Pwm {
   )
 
   case class PeripheralParameters(
-      coreParameters: CoreParameters = CoreParameters(),
+      core: CoreParameters = CoreParameters(),
       prescalerWidth: Int = 32
   )
 
   class Ctrl[T <: spinal.core.Data with IMasterSlave](
-      parameters: Pwm.PeripheralParameters,
+      p: Pwm.PeripheralParameters,
       busType: HardType[T],
       factory: T => BusSlaveFactory
   ) extends Component {
     val io = new Bundle {
       val bus = slave(busType())
-      val pwm = out Vec (Bool, parameters.coreParameters.channelCnt)
+      val pwm = out Vec (Bool, p.core.channelCnt)
     }
 
     val mapper = factory(io.bus)
@@ -36,13 +36,13 @@ object Pwm {
 
     val prescaler = new Area {
       val set = mapper.createReadAndWrite(
-        UInt(parameters.prescalerWidth bits),
+        UInt(p.prescalerWidth bits),
         0x04,
         0
       ) init 0
-      val latched_set = Reg(UInt(parameters.prescalerWidth bits)) init 0
+      val latched_set = Reg(UInt(p.prescalerWidth bits)) init 0
 
-      val cnt = Reg(UInt(parameters.prescalerWidth bits))
+      val cnt = Reg(UInt(p.prescalerWidth bits))
       val enable = cnt === latched_set
 
       when(enable || !run) {
@@ -54,21 +54,21 @@ object Pwm {
     }
 
     val pre = new ClockEnableArea(prescaler.enable) {
-      val core = Pwm.Core(parameters.coreParameters)
+      val core = Pwm.Core(p.core)
     }
 
     io.pwm := pre.core.io.pwm
     pre.core.io.run := run
 
     val max_count = mapper.createReadAndWrite(
-      UInt(parameters.coreParameters.counterWidth bits),
+      UInt(p.core.counterWidth bits),
       0x08,
       0
     ) init 0
     val levels =
-      for (i <- 0 until parameters.coreParameters.channelCnt)
+      for (i <- 0 until p.core.channelCnt)
         yield mapper.createReadAndWrite(
-          UInt(parameters.coreParameters.counterWidth bits),
+          UInt(p.core.counterWidth bits),
           0x0c + 4 * i,
           0
         ) init 0
@@ -78,7 +78,7 @@ object Pwm {
       max_count,
       updateValues
     ) init 0
-    for (i <- 0 until parameters.coreParameters.channelCnt)
+    for (i <- 0 until p.core.channelCnt)
       pre.core.io
         .levels(i) := RegNextWhen(
         levels(i),
