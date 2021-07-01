@@ -588,7 +588,7 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   // TODO: timeouts
 }
 
-abstract class Peripheral[T <: spinal.core.Data with IMasterSlave](
+class Peripheral[T <: spinal.core.Data with IMasterSlave](
     generic: PeripheralGenerics,
     busType: HardType[T],
     metaFactory: T => BusSlaveFactory

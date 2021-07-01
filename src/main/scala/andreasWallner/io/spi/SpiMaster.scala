@@ -140,7 +140,7 @@ object SpiMaster {
     io.rxData.payload := fsm.rxWord
   }
 
-  abstract class Ctrl[T <: spinal.core.Data with IMasterSlave](
+  class Ctrl[T <: spinal.core.Data with IMasterSlave](
       p: PeripheralParameter,
       busType: HardType[T],
       metaFactory: T => BusSlaveFactory

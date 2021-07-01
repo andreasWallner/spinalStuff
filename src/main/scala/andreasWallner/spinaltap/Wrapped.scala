@@ -40,27 +40,34 @@ object Wrapped {
   }
 
   class Spi[T <: spinal.core.Data with IMasterSlave](
-      p: SpiMaster.PeripheralParameter,
-      busType: HardType[T],
-      factory: T => BusSlaveFactory
-  ) extends SpiMaster.Ctrl(p, busType, factory)
-      with ISpinalTAPCommModule[T] {
+      name: String,
+      p: SpiMaster.PeripheralParameter
+  ) extends ISpinalTAPCommModule[T] {
+    private var module: SpiMaster.Ctrl[T] = null
 
-    override def bus() = io.bus
+    override def init(
+        busType: HardType[T],
+        metaFactory: T => BusSlaveFactory
+    ): Unit = {
+      module = new SpiMaster.Ctrl[T](p, busType, metaFactory)
+      module.setName(name)
+    }
+
+    override def bus() = module.io.bus
     override def triggerInputs() = List()
     override def triggerOutputs() = List()
     override def vcc() = True
 
     override def ports() = {
       val tri = TriStateArray(5)
-      tri(0).write := io.spi.mosi
+      tri(0).write := module.io.spi.mosi
       tri(0).writeEnable := True
 
-      io.spi.miso := tri(1).read
+      module.io.spi.miso := tri(1).read
       tri(1).write := False
       tri(1).writeEnable := False
 
-      tri(2).write := io.spi.sclk
+      tri(2).write := module.io.spi.sclk
       tri(2).writeEnable := True
 
       for (i <- 3 until 5) {
@@ -73,25 +80,33 @@ object Wrapped {
   }
 
   class Iso7816[T <: spinal.core.Data with IMasterSlave](
-      p: andreasWallner.io.iso7816.PeripheralGenerics,
-      busType: HardType[T],
-      metaFactory: T => BusSlaveFactory
-  ) extends andreasWallner.io.iso7816.Peripheral[T](p, busType, metaFactory)
-      with ISpinalTAPCommModule[T] {
+      name: String,
+      p: andreasWallner.io.iso7816.PeripheralGenerics
+  ) extends ISpinalTAPCommModule[T] {
+    private var module: andreasWallner.io.iso7816.Peripheral[T] = null
 
-    override def bus() = io.bus
+    override def init(
+        busType: HardType[T],
+        metaFactory: T => BusSlaveFactory
+    ): Unit = {
+      module =
+        new andreasWallner.io.iso7816.Peripheral[T](p, busType, metaFactory)
+      module.setName(name)
+    }
+
+    override def bus() = module.io.bus
     override def triggerOutputs() = List()
     override def triggerInputs() = List()
     override def ports() = {
       val tri = TriStateArray(5 bit)
-      tri(0) <> io.iso.io
+      tri(0) <> module.io.iso.io
 
       val rstTri = tri(1)
-      rstTri.write := io.iso.rst
+      rstTri.write := module.io.iso.rst
       rstTri.writeEnable := True
 
       val clkTri = tri(2)
-      clkTri.write := io.iso.clk
+      clkTri.write := module.io.iso.clk
       clkTri.writeEnable := True
 
       for (i <- 3 until 5) {
@@ -102,6 +117,6 @@ object Wrapped {
 
       tri
     }
-    override def vcc() = io.iso.vcc
+    override def vcc() = module.io.iso.vcc
   }
 }
