@@ -3,7 +3,12 @@ package andreasWallner.io
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config, Apb3SlaveFactory}
-import spinal.lib.bus.bmb.{Bmb, BmbAccessCapabilities, BmbParameter, BmbSlaveFactory}
+import spinal.lib.bus.bmb.{
+  Bmb,
+  BmbAccessCapabilities,
+  BmbParameter,
+  BmbSlaveFactory
+}
 import spinal.lib.bus.misc.BusSlaveFactory
 import spinal.lib.io.TriStateArray
 
@@ -16,8 +21,8 @@ object Gpio {
       var input: Seq[Int] = null, //List of pin id which can be inputs (null mean all)
       var output: Seq[Int] = null, //List of pin id which can be outputs (null mean all)
       interrupt: Seq[Int] = Nil, //List of pin id which can be used as interrupt source
-      readBufferLength: Int = 2
-  ) //Number of syncronisation stages
+      readBufferLength: Int = 2 //Number of syncronisation stages
+  )
 
   class Ctrl[T <: spinal.core.Data with IMasterSlave](
       p: Gpio.Parameter,
