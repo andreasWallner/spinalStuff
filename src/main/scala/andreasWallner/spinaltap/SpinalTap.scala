@@ -131,7 +131,7 @@ object ApbSpinalTap {
 class ApbSpinalTap
     extends SpinalTap[Apb3](
       Apb3(32, 32),
-      Apb3(9, 32),
+      Apb3(8, 32),
       List(
         new Wrapped.Iso7816[Apb3](
           "ISO7816",
