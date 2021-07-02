@@ -1,5 +1,6 @@
 package andreasWallner.io.spi
 
+import spinal.core.ClockDomain.FixedFrequency
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config, Apb3SlaveFactory}
@@ -161,7 +162,11 @@ object SpiMaster {
     // info registers
     factory.read(U(0), 0x0, 0)
 
-    factory.read(U(clockDomain.frequency.getValue.toLong), 0x04, 0)
+    val frequency = clockDomain.frequency match {
+      case FixedFrequency(value) => value.toLong
+      case _                     => 0L
+    }
+    factory.read(U(frequency), 0x04, 0)
 
     factory.read(U(p.rxBufferSize), 0x08, 0)
     factory.read(U(p.txBufferSize), 0x08, 16)
