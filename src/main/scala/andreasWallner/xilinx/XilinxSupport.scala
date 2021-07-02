@@ -148,7 +148,7 @@ case class Apb3Support(apb3: Apb3) extends BusSupport {
     def name = f"APB_${dirPrefix}${idx}"
     def attr = "X_INTERFACE_INFO"
     def info = "xilinx.com:interface:apb:1.0 " + name + " "
-    for(mapping <- portMaps())
+    for (mapping <- portMaps())
       mapping.physicalPort.addAttribute(attr, info + mapping.logicalPort)
   }
 
@@ -356,6 +356,19 @@ object XilinxNamer {
         "POLARITY " + (if (cd.config.resetActiveLevel == HIGH) "ACTIVE_HIGH"
                        else "ACTIVE_LOW")
       )
+    }
+    if (cd.hasClockEnableSignal) {
+      cd.clockEnable.addAttribute(
+        "X_INTERFACE_INFO",
+        s"xilinx.com:signal:clockenable:1.0 ${cd.clockEnable.getName()} CE"
+      )
+      cd.clockEnable
+        .addAttribute(
+          "X_INTERFACE_PARAMETER",
+          "POLARITY " + (if (cd.config.clockEnableActiveLevel == HIGH)
+                           "ACTIVE_HIGH"
+                         else "ACTIVE_LOW")
+        )
     }
   }
 }
