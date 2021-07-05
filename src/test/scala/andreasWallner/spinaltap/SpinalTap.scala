@@ -7,8 +7,8 @@ import spinal.lib.sim._
 import org.scalatest.funsuite.AnyFunSuite
 import spinal.lib.bus.amba3.apb.sim.Apb3Driver
 
-class SpinalTap extends AnyFunSuite {
-  val dut = SimConfig.compile(new ApbSpinalTap())
+class SpinalTapTest extends AnyFunSuite {
+  val dut = SimConfig.withWave.compile(new ApbSpinalTap())
 
   test("try write register") {
     dut.doSim("try write register") { dut =>
