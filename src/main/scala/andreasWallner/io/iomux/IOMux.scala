@@ -65,7 +65,7 @@ object IOMux {
     for ((sel, idx) <- core.io.sels.zipWithIndex)
       sel := mapper.createReadAndWrite(
         UInt(generics.selWidth bits),
-        0x04 * idx / 4,
+        0x04 * (idx / 4),
         8 * (idx % 4)
       ) init 0
 
