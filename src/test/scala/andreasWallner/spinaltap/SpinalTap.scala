@@ -8,7 +8,7 @@ import org.scalatest.funsuite.AnyFunSuite
 import spinal.lib.bus.amba3.apb.sim.Apb3Driver
 
 class SpinalTap extends AnyFunSuite {
-  val dut = SimConfig.withWave.compile(new ApbSpinalTap())
+  val dut = SimConfig.compile(new ApbSpinalTap())
 
   test("try write register") {
     dut.doSim("try write register") { dut =>
@@ -18,11 +18,20 @@ class SpinalTap extends AnyFunSuite {
 
       driver.write(0x43c00300, 0x201)
 
+      driver.write(0x43c00104, 0)
       driver.write(0x43c00108, 0xff)
-      driver.write(0x43c00104, 0xff)
+      driver.write(0x43c00204, 0)
+      driver.write(0x43c00208, 0xff)
 
-      driver.write(0x43c00208, 0x55)
-      driver.write(0x43c00204, 0xff)
+      driver.write(0x43c00104, 1)
+      driver.write(0x43c00104, 0)
+      driver.write(0x43c00104, 1)
+      driver.write(0x43c00104, 0)
+
+      driver.write(0x43c00204, 1)
+      driver.write(0x43c00204, 0)
+      driver.write(0x43c00204, 1)
+      driver.write(0x43c00204, 0)
 
       dut.clockDomain.waitActiveEdge(10)
 
