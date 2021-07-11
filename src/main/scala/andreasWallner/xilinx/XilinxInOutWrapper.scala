@@ -4,11 +4,14 @@ import spinal.core._
 import spinal.lib.blackbox.xilinx.s7.IOBUF
 import spinal.lib.io._
 
+import scala.annotation.tailrec
 import scala.collection.mutable
+import scala.language.postfixOps
 
 object XilinxInOutWrapper {
   def apply[T <: Component](c: T): T = {
     val dataParents = mutable.LinkedHashMap[Data, Int]()
+    @tailrec
     def add(that: Data): Unit = {
       if (that.parent != null) {
         dataParents(that.parent) = dataParents.getOrElseUpdate(that.parent, 0) + 1
@@ -44,46 +47,42 @@ object XilinxInOutWrapper {
     c.rework {
       for ((dataParent, count) <- dataParents) {
         dataParent match {
-          case bundle: TriState[_] if bundle.writeEnable.isOutput => {
+          case bundle: TriState[_] if bundle.writeEnable.isOutput =>
             (bundle.write.flatten zip bundle.read.flatten).foreach {
               case (dw: Data, dr: Data) =>
                 val name = flattenedName(bundle, dw, "_write")
                 val (t, i, o, _) = makeBuffers(widthOf(dw), name)
-                t.setAllTo(bundle.writeEnable)
+                t.setAllTo(!bundle.writeEnable)
                 i := dw.asBits
                 dr.assignFromBits(o)
             }
             bundle.setAsDirectionLess.unsetName().allowDirectionLessIo
-          }
-          case bundle: TriStateOutput[_] if bundle.isOutput => {
+          case bundle: TriStateOutput[_] if bundle.isOutput =>
             bundle.write.flatten.foreach {
-              case dw: Data =>
+              dw: Data =>
                 val name = flattenedName(bundle, dw, "_write")
                 val (t, i, _, _) = makeBuffers(widthOf(dw), name)
-                t.setAllTo(bundle.writeEnable)
+                t.setAllTo(!bundle.writeEnable)
                 i := dw.asBits
             }
             bundle.setAsDirectionLess.unsetName().allowDirectionLessIo
-          }
-          case bundle: ReadableOpenDrain[_] if bundle.isMasterInterface => {
+          case bundle: ReadableOpenDrain[_] if bundle.isMasterInterface =>
             (bundle.write.flatten zip bundle.read.flatten).foreach {
               case (dw: Data, dr: Data) =>
                 val name = flattenedName(bundle, dw, "_write")
                 val (t, i, o, _) = makeBuffers(widthOf(dw), name)
-                t := ~dw.asBits
+                t := dw.asBits
                 i.clearAll()
                 dr.assignFromBits(o)
             }
             bundle.setAsDirectionLess.unsetName().allowDirectionLessIo
-          }
-          case bundle: TriStateArray if bundle.writeEnable.isOutput => {
+          case bundle: TriStateArray if bundle.writeEnable.isOutput =>
             val name = bundle.getName()
             val (t, i, o, _) = makeBuffers(bundle.width, name)
-            t := bundle.writeEnable
+            t := ~bundle.writeEnable
             i := bundle.write
             bundle.read := o
             bundle.setAsDirectionLess.unsetName().allowDirectionLessIo
-          }
           case _ =>
         }
       }
