@@ -27,7 +27,11 @@ case class Spi() extends Bundle with IMasterSlave {
 }
 
 object SpiMaster {
-  case class CoreParameter(prescalerWidth: Int = 30, datawidth: Int = 8) {}
+  case class CoreParameter(
+      prescalerWidth: Int = 30,
+      datawidth: Int = 8,
+      wordGuardClocksWidth: Int = 4
+  ) {}
 
   case class PeripheralParameter(
       rxBufferSize: Int = 256,
@@ -41,6 +45,7 @@ object SpiMaster {
   case class CoreConfig(p: CoreParameter) extends Bundle {
     val prescaler = UInt(p.prescalerWidth bits)
     val spiType = SpiType()
+    val wordGuardClocks = UInt(p.wordGuardClocksWidth bits)
   }
 
   case class Core(p: CoreParameter = CoreParameter()) extends Component {
@@ -62,26 +67,36 @@ object SpiMaster {
     }
 
     val transferring = Reg(Bool) init False
+    val lastWord = Reg(Bool)
+
     io.busy := transferring
     val timing = new Area {
       val strobe = False
       val counter = Reg(UInt(p.prescalerWidth bits))
       val stateCnt = Reg(UInt(8 bit)) // TODO: smaller size
+      val guardCnt = Reg(UInt(p.wordGuardClocksWidth bit))
+
+      val lastState = stateCnt === ((8 << 1) - 1)
+      val firstState = stateCnt === 0
 
       when(!transferring) {
         counter := 0
         stateCnt := io.config.spiType.cpha.asUInt.resized
+        guardCnt := io.config.wordGuardClocks
       } otherwise {
         when(counter === io.config.prescaler) {
           counter := 0
-          strobe := True
+          when(lastState && (guardCnt =/= 0) && !lastWord) {
+            guardCnt := guardCnt - 1
+          } otherwise {
+            strobe := True
+            guardCnt := io.config.wordGuardClocks
+          }
         } otherwise {
           counter := counter + 1
         }
       }
 
-      val lastState = stateCnt === ((8 << 1) - 1)
-      val firstState = stateCnt === 0
       when(strobe) {
         when(lastState) {
           stateCnt := 0
@@ -100,7 +115,6 @@ object SpiMaster {
       val txWord = Reg(Bits(p.datawidth bits))
       val rxWord = Reg(Bits(p.datawidth bits)) init 0
       val rxReadyNext = False
-      val lastWord = Reg(Bool)
 
       val loadNext = (timing.firstState || timing.lastState) && timing.update
 
@@ -175,7 +189,7 @@ object SpiMaster {
 
     // status registers
     factory.read(core.io.busy, 0x10, 0)
-    factory.doBitsAccumulationAndClearOnRead(
+    factory.doBitsAccumulationAndClearOnRead( // tx overflow?
       rxFifo.io.push.isStall.asBits,
       0x10,
       1
@@ -209,6 +223,13 @@ object SpiMaster {
       .createAndDriveFlow(Bits(p.core.datawidth bits), 0x24)
       .toStream
     core.io.txData <> txFifo.io.pop.addFragmentLast(txFifo.io.occupancy === 1)
+
+    // guard times
+    core.io.config.wordGuardClocks := factory.createReadAndWrite(
+      UInt(p.core.wordGuardClocksWidth bits),
+      0x28,
+      0
+    ) init 0
   }
 }
 

@@ -18,10 +18,14 @@ class SpiMasterSim extends AnyFunSuite {
       val name = f"loopback cpol=$cpol cpha=$cpha"
       test(name) {
         dut.doSim(name, seed = 1) { dut =>
+          val toSend = 5
+          val prescaler = 100
+
           dut.io.spi.miso #= false
-          dut.io.config.prescaler #= 100
+          dut.io.config.prescaler #= prescaler
           dut.io.config.spiType.cpol #= cpol
           dut.io.config.spiType.cpha #= cpha
+          dut.io.config.wordGuardClocks #= 4
           dut.io.txData.valid #= true
           dut.io.txData.payload.last #= true
           dut.io.txData.payload.fragment #= 0x55
@@ -31,7 +35,8 @@ class SpiMasterSim extends AnyFunSuite {
             dut.io.spi.miso #= dut.io.spi.mosi.toBoolean
           }
 
-          val toSend = 5
+          SimTimeout(10 * 8 * prescaler * toSend * 4)
+
           val scoreboard = ScoreboardInOrder[Int]()
           val driver = StreamDriver(dut.io.txData, dut.clockDomain) { payload =>
             payload.fragment.randomize()
@@ -56,9 +61,8 @@ class SpiMasterSim extends AnyFunSuite {
           dut.io.start #= true
           dut.clockDomain.waitActiveEdge()
           dut.io.start #= false
-          dut.clockDomain.waitActiveEdge(10000)
+          dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches == toSend)
           scoreboard.checkEmptyness()
-          assert(scoreboard.matches == toSend)
         }
       }
   }
