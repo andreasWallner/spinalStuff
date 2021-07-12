@@ -80,12 +80,12 @@ object SpiMaster {
       val firstState = stateCnt === 0
 
       when(!transferring) {
-        counter := 0
+        counter := io.config.prescaler
         stateCnt := io.config.spiType.cpha.asUInt.resized
         guardCnt := io.config.wordGuardClocks
       } otherwise {
-        when(counter === io.config.prescaler) {
-          counter := 0
+        when(counter === 0) {
+          counter := io.config.prescaler
           when(lastState && (guardCnt =/= 0) && !lastWord) {
             guardCnt := guardCnt - 1
           } otherwise {
@@ -93,7 +93,7 @@ object SpiMaster {
             guardCnt := io.config.wordGuardClocks
           }
         } otherwise {
-          counter := counter + 1
+          counter := counter - 1
         }
       }
 
