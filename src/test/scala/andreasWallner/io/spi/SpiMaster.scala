@@ -1,5 +1,6 @@
 package andreasWallner.io.spi
 
+import andreasWallner.io.spi.sim.SpiMonitor
 import org.scalatest.funsuite.AnyFunSuite
 import spinal.core._
 import spinal.core.sim._
@@ -17,7 +18,7 @@ class SpiMasterSim extends AnyFunSuite {
     case (cpol: Boolean, cpha: Boolean) =>
       val name = f"loopback cpol=$cpol cpha=$cpha"
       test(name) {
-        dut.doSim(name, seed = 1) { dut =>
+        dut.doSim(name) { dut =>
           val toSend = 5
           val prescaler = 100
 
@@ -25,11 +26,17 @@ class SpiMasterSim extends AnyFunSuite {
           dut.io.config.prescaler #= prescaler
           dut.io.config.spiType.cpol #= cpol
           dut.io.config.spiType.cpha #= cpha
-          dut.io.config.wordGuardClocks #= 4
+          dut.io.config.wordGuardClocks #= 0
+          dut.io.config.msbFirst #= false
+          dut.io.config.csAssertGuard #= 0
+          dut.io.config.csDeassertGuard #= 0
+          dut.io.config.csActiveState #= false
           dut.io.txData.valid #= true
           dut.io.txData.payload.last #= true
           dut.io.txData.payload.fragment #= 0x55
-          dut.io.start #= false
+          dut.io.trigger.assert #= false
+          dut.io.trigger.transfer #= false
+          dut.io.trigger.deassert #= false
 
           dut.clockDomain.onActiveEdges {
             dut.io.spi.miso #= dut.io.spi.mosi.toBoolean
@@ -38,14 +45,18 @@ class SpiMasterSim extends AnyFunSuite {
           SimTimeout(10 * 8 * prescaler * toSend * 4)
 
           val scoreboard = ScoreboardInOrder[Int]()
+          val monitorScoreboard = ScoreboardInOrder[Int]()
           val driver = StreamDriver(dut.io.txData, dut.clockDomain) { payload =>
             payload.fragment.randomize()
             payload.last #= (scoreboard.matches + scoreboard.ref.length >= toSend - 2)
             !(scoreboard.matches + scoreboard.ref.length > toSend - 2)
           }
           StreamMonitor(dut.io.txData, dut.clockDomain) { payload =>
-            println(f"@${simTime()} ref ${payload.fragment.toInt} 0x${payload.fragment.toInt}%x")
+            println(
+              f"@${simTime()} ref ${payload.fragment.toInt} 0x${payload.fragment.toInt}%x"
+            )
             scoreboard.pushRef(payload.fragment.toInt)
+            monitorScoreboard.pushRef(payload.fragment.toInt)
           }
           driver.delay = 0
           driver.transactionDelay = () => {
@@ -58,11 +69,21 @@ class SpiMasterSim extends AnyFunSuite {
 
           dut.clockDomain.forkStimulus(10)
           dut.clockDomain.waitActiveEdge(100)
-          dut.io.start #= true
+
+          SpiMonitor(dut.io.spi, cpha, cpol, msbFirst = false, dut.clockDomain) { word =>
+            monitorScoreboard.pushDut(word)
+          }
+
+          dut.io.trigger.transfer #= true
+          dut.io.trigger.assert #= true
           dut.clockDomain.waitActiveEdge()
-          dut.io.start #= false
-          dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches == toSend)
+          dut.io.trigger.transfer #= false
+          dut.io.trigger.assert #= false
+
+          dut.clockDomain.waitActiveEdgeWhere(!dut.io.busy.toBoolean)
+          dut.clockDomain.waitActiveEdge(1000)
           scoreboard.checkEmptyness()
+          monitorScoreboard.checkEmptyness()
         }
       }
   }

@@ -5,10 +5,9 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config, Apb3SlaveFactory}
 import spinal.lib.bus.misc.BusSlaveFactory
+import spinal.lib.fsm.{EntryPoint, State, StateMachine}
 
 import scala.language.postfixOps
-
-// TODO CS control (bit that can be set with tx trigger) with timing control of offsets
 
 case class SpiType() extends Bundle {
   val cpol = Bool
@@ -19,9 +18,10 @@ case class Spi() extends Bundle with IMasterSlave {
   val sclk = Bool()
   val mosi = Bool()
   val miso = Bool()
+  val cs = Bool()
 
   override def asMaster(): Unit = {
-    out(sclk, mosi)
+    out(sclk, mosi, cs)
     in(miso)
   }
 }
@@ -30,7 +30,9 @@ object SpiMaster {
   case class CoreParameter(
       prescalerWidth: Int = 30,
       datawidth: Int = 8,
-      wordGuardClocksWidth: Int = 4
+      wordGuardClocksWidth: Int = 4,
+      csAssertGuardWidth: Int = 4,
+      csDeassertGuardWidth: Int = 4
   ) {}
 
   case class PeripheralParameter(
@@ -45,114 +47,196 @@ object SpiMaster {
   case class CoreConfig(p: CoreParameter) extends Bundle {
     val prescaler = UInt(p.prescalerWidth bits)
     val spiType = SpiType()
+    val msbFirst = Bool()
+    val csActiveState = Bool()
     val wordGuardClocks = UInt(p.wordGuardClocksWidth bits)
+    val csAssertGuard = UInt(p.csAssertGuardWidth bits)
+    val csDeassertGuard = UInt(p.csDeassertGuardWidth bits)
   }
 
   case class Core(p: CoreParameter = CoreParameter()) extends Component {
     val io = new Bundle {
       val spi = master(Spi())
       val config = in(CoreConfig(p))
-      val start = in Bool
-      val busy = out Bool
+      val busy = out Bool ()
       val txData = slave(Stream(Fragment(Bits(p.datawidth bit))))
       val rxData = master(Flow(Bits(p.datawidth bits)))
+      val trigger = new Bundle {
+        val assert = in Bool ()
+        val transfer = in Bool ()
+        val deassert = in Bool ()
+      }
     }
 
     val sync = new Area {
       val miso = BufferCC(io.spi.miso)
     }
-    val reg = new Area {
-      val sclk = Reg(Bool)
-      io.spi.sclk := sclk
-    }
+    val csActive = Reg(Bool()) init False
+    val clkActive = Reg(Bool()) init False
+    io.spi.sclk := RegNext(clkActive ^ io.config.spiType.cpol)
+    io.spi.cs := RegNext(csActive ^ !io.config.csActiveState)
 
-    val transferring = Reg(Bool) init False
-    val lastWord = Reg(Bool)
+    val runTiming = Bool()
+    val transferring = Bool()
+    val lastWord = Reg(Bool())
+    val lastPhase = Bool()
 
-    io.busy := transferring
     val timing = new Area {
-      val strobe = False
       val counter = Reg(UInt(p.prescalerWidth bits))
-      val stateCnt = Reg(UInt(8 bit)) // TODO: smaller size
+      val phase = Reg(Bool())
       val guardCnt = Reg(UInt(p.wordGuardClocksWidth bit))
 
-      val lastState = stateCnt === ((8 << 1) - 1)
-      val firstState = stateCnt === 0
-
-      when(!transferring) {
+      val strobe = counter === 0
+      when(!runTiming || strobe) {
         counter := io.config.prescaler
-        stateCnt := io.config.spiType.cpha.asUInt.resized
-        guardCnt := io.config.wordGuardClocks
       } otherwise {
-        when(counter === 0) {
-          counter := io.config.prescaler
-          when(lastState && (guardCnt =/= 0) && !lastWord) {
+        counter := counter - 1
+      }
+
+      when(!runTiming) {
+        guardCnt := io.config.wordGuardClocks
+        phase := False
+      } otherwise {
+        when(strobe) {
+          when(lastPhase && (guardCnt =/= 0) && !lastWord) {
             guardCnt := guardCnt - 1
           } otherwise {
-            strobe := True
             guardCnt := io.config.wordGuardClocks
           }
-        } otherwise {
-          counter := counter - 1
         }
       }
 
-      when(strobe) {
-        when(lastState) {
-          stateCnt := 0
-        } otherwise {
-          stateCnt := stateCnt + 1
-        }
+      when(transferring && strobe) {
+        phase := !phase
       }
 
-      val isSample = !stateCnt(0) ^ io.config.spiType.cpha
+      val isSample = !phase ^ io.config.spiType.cpha
       val sample = isSample && strobe
-      val update = !isSample && strobe
+      val update = (!isSample && strobe) || (transferring
+        .rise() && !io.config.spiType.cpha)
+      val lastStrobe = lastPhase && lastWord && ((sample && io.config.spiType.cpha) || (update && !io.config.spiType.cpha))
     }
-    io.txData.ready := False
-    val fsm = new Area {
 
-      val txWord = Reg(Bits(p.datawidth bits))
+    val txWord = Reg(Bits(p.datawidth + 1 bits))
+    lastPhase := (txWord >> 1) === B"1".resized
+
+    transferring := False
+    runTiming := False
+    val sm = new StateMachine {
+      val anyTrigger = io.trigger.asBits.orR
+      val didTriggerTransfer = Reg(Bool())
+      val didTriggerDeassert = Reg(Bool())
+
+      val Idle = new State with EntryPoint
+      val Assert = new State
+      val Transfer = new State
+      val Deassert = new State
+
+      Idle.whenIsActive {
+        when(anyTrigger) {
+          didTriggerTransfer := io.trigger.transfer
+          didTriggerDeassert := io.trigger.deassert
+          txWord := B"10".resized
+          lastWord := io.txData.payload.last
+          when(io.trigger.assert) {
+            goto(Assert)
+          } elsewhen (io.trigger.transfer) {
+            goto(Transfer)
+          } elsewhen (io.trigger.deassert) {
+            goto(Deassert)
+          }
+        }
+      }
+
+      Assert
+        .onEntry {
+          timing.guardCnt := io.config.csAssertGuard
+          csActive := True
+        }
+        .whenIsActive {
+          runTiming := True
+          when(timing.guardCnt === 0) {
+            when(didTriggerTransfer) {
+              goto(Transfer)
+            } elsewhen (didTriggerDeassert) {
+              goto(Deassert)
+            }
+          }
+        }
+
+      Transfer
+        .onEntry {
+          //when(io.config.msbFirst) {
+          //  txWord := B"1" ## io.txData.payload.fragment.reversed
+          //} otherwise {
+          //  txWord := B"1" ## io.txData.payload.fragment
+          //}
+          //lastWord := io.txData.payload.last
+          //io.txData.ready := True
+        }
+        .whenIsActive {
+          runTiming := True
+          transferring := True
+          when(timing.lastStrobe) {
+            when(didTriggerDeassert) {
+              goto(Deassert)
+            } otherwise {
+              goto(Idle)
+            }
+          }
+        }
+
+      Deassert
+        .onEntry {
+          timing.guardCnt := io.config.csDeassertGuard
+        }
+        .whenIsActive {
+          runTiming := True
+          when(timing.guardCnt === 0) { goto(Idle) }
+        }
+        .onExit {
+          csActive := True
+        }
+    }
+    io.busy := !(sm.isActive(sm.Idle) || sm.isActive(sm.stateBoot))
+    io.txData.ready := False
+
+    val fsm = new Area {
       val rxWord = Reg(Bits(p.datawidth bits)) init 0
       val rxReadyNext = False
 
-      val loadNext = (timing.firstState || timing.lastState) && timing.update
-
-      when(!transferring && io.start && io.txData.valid) {
-        transferring := True
-        txWord := io.txData.payload.fragment
-        lastWord := io.txData.payload.last
-        io.txData.ready := True
-      }
-
       when(transferring) {
-        when(timing.strobe && !(lastWord && timing.lastState)) {
-          reg.sclk := !reg.sclk
+        when(timing.strobe) {
+          clkActive := !clkActive
         }
         when(timing.update) {
-          txWord := txWord(0 to p.datawidth - 2) ## False
-        }
-        when(timing.sample) {
-          rxWord := rxWord(0 to p.datawidth - 2) ## sync.miso
-        }
-        when(loadNext) {
-          txWord := io.txData.payload.fragment
-          lastWord := io.txData.payload.last
-          io.txData.ready := True
-        }
-        when(timing.lastState && timing.strobe) {
-          rxReadyNext := True
-          when(lastWord) {
-            transferring := False
+          when(lastPhase) {
+            when(io.config.msbFirst) {
+              txWord := B"1" ## io.txData.payload.fragment.reversed
+            } otherwise {
+              txWord := B"1" ## io.txData.payload.fragment
+            }
+            lastWord := io.txData.payload.last
+            io.txData.ready := True
+          } otherwise {
+            txWord := txWord |>> 1
           }
         }
-      } otherwise {
-        reg.sclk := io.config.spiType.cpol
+        when(timing.sample) {
+          rxWord := sync.miso ## (rxWord >> 1)
+          when(lastPhase) {
+            rxReadyNext := True
+          }
+        }
       }
     }
     io.rxData.valid := RegNext(fsm.rxReadyNext) init False
-    io.spi.mosi := fsm.txWord(p.datawidth - 1)
-    io.rxData.payload := fsm.rxWord
+    io.spi.mosi := txWord(0)
+    when(io.config.msbFirst) { // TODO mux syntax
+      io.rxData.payload := fsm.rxWord.reversed
+    } otherwise {
+      io.rxData.payload := fsm.rxWord
+    }
   }
 
   class Ctrl[T <: spinal.core.Data with IMasterSlave](
@@ -207,10 +291,14 @@ object SpiMaster {
     )
 
     // trigger register
-    core.io.start := False
+    core.io.trigger.assert := False
+    core.io.trigger.transfer := False
+    core.io.trigger.deassert := False
     rxFifo.io.flush := False
     txFifo.io.flush := False
-    factory.setOnSet(core.io.start, 0x1c, 0)
+    factory.setOnSet(core.io.trigger.assert, 0x1c, 0)
+    factory.setOnSet(core.io.trigger.transfer, 0x1c, 1)
+    factory.setOnSet(core.io.trigger.deassert, 0x1c, 2)
     factory.setOnSet(rxFifo.io.flush, 0x1c, 31)
     factory.setOnSet(txFifo.io.flush, 0x1c, 31)
 
@@ -230,6 +318,16 @@ object SpiMaster {
       0x28,
       0
     ) init 0
+    core.io.config.csAssertGuard := factory.createReadAndWrite(
+      UInt(p.core.csAssertGuardWidth bits),
+      0x028,
+      8
+    ) init 1
+    core.io.config.csDeassertGuard := factory.createReadAndWrite(
+      UInt(p.core.csDeassertGuardWidth bits),
+      0x28,
+      16
+    ) init 1
   }
 }
 
