@@ -21,7 +21,6 @@ case class SpiMonitor(
       assert(spi.sclk.toBoolean == cpol, "SPI clock not idle when CS is asserted")
 
       val word = rxWord()
-      print(word)
       if (word.nonEmpty)
         dataCallback(word.get)
     }
@@ -41,7 +40,6 @@ case class SpiMonitor(
       if (spi.cs.toBoolean != csActive)
         return None
       val bit = spi.mosi.toBoolean
-      println(f"${simTime()} $bit")
 
       if (!cpha) {
         waitUntil(

@@ -52,9 +52,6 @@ class SpiMasterSim extends AnyFunSuite {
             !(scoreboard.matches + scoreboard.ref.length > toSend - 2)
           }
           StreamMonitor(dut.io.txData, dut.clockDomain) { payload =>
-            println(
-              f"@${simTime()} ref ${payload.fragment.toInt} 0x${payload.fragment.toInt}%x"
-            )
             scoreboard.pushRef(payload.fragment.toInt)
             monitorScoreboard.pushRef(payload.fragment.toInt)
           }
@@ -63,7 +60,6 @@ class SpiMasterSim extends AnyFunSuite {
             0
           }
           FlowMonitor(dut.io.rxData, dut.clockDomain) { payload =>
-            println(f"@${simTime()} dut ${payload.toInt} 0x${payload.toInt}%x")
             scoreboard.pushDut(payload.toInt)
           }
 
