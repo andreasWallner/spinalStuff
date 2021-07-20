@@ -86,22 +86,25 @@ object SpiMaster {
       val phase = Reg(Bool())
       val guardCnt = Reg(UInt(p.wordGuardClocksWidth bit))
 
-      val strobe = counter === 0
-      when(!runTiming || strobe) {
+      when(!runTiming || counter === 0) {
         counter := io.config.prescaler
       } otherwise {
         counter := counter - 1
       }
 
+      val strobe = False
+      val isSample = !phase ^ io.config.spiType.cpha
+
       when(!runTiming) {
         guardCnt := io.config.wordGuardClocks
         phase := False
       } otherwise {
-        when(strobe) {
-          when(lastPhase && (guardCnt =/= 0) && !lastWord) {
+        when(counter === 0) {
+          when(lastPhase && !isSample && (guardCnt =/= 0) && !lastWord) {
             guardCnt := guardCnt - 1
           } otherwise {
             guardCnt := io.config.wordGuardClocks
+            strobe := True
           }
         }
       }
@@ -110,7 +113,7 @@ object SpiMaster {
         phase := !phase
       }
 
-      val isSample = !phase ^ io.config.spiType.cpha
+
       val sample = isSample && strobe
       val update = (!isSample && strobe) || (transferring
         .rise() && !io.config.spiType.cpha)
@@ -165,15 +168,6 @@ object SpiMaster {
         }
 
       Transfer
-        .onEntry {
-          //when(io.config.msbFirst) {
-          //  txWord := B"1" ## io.txData.payload.fragment.reversed
-          //} otherwise {
-          //  txWord := B"1" ## io.txData.payload.fragment
-          //}
-          //lastWord := io.txData.payload.last
-          //io.txData.ready := True
-        }
         .whenIsActive {
           runTiming := True
           transferring := True

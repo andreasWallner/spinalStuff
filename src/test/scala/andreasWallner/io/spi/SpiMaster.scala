@@ -26,7 +26,7 @@ class SpiMasterSim extends AnyFunSuite {
           dut.io.config.prescaler #= prescaler
           dut.io.config.spiType.cpol #= cpol
           dut.io.config.spiType.cpha #= cpha
-          dut.io.config.wordGuardClocks #= 0
+          dut.io.config.wordGuardClocks #= 5
           dut.io.config.msbFirst #= false
           dut.io.config.csAssertGuard #= 0
           dut.io.config.csDeassertGuard #= 0
