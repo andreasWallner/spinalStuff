@@ -32,7 +32,7 @@ case class Spi() extends Bundle with IMasterSlave {
 
 object SpiMaster {
   case class CoreParameter(
-      prescalerWidth: Int = 30,
+      prescalerWidth: Int = 28,
       datawidth: Int = 8,
       wordGuardClocksWidth: Int = 4,
       csAssertGuardWidth: Int = 4,
