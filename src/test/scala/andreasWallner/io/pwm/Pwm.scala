@@ -16,7 +16,7 @@ class SlaveFifoMasterTest extends FunSuite {
       Apb3Pwm(
         Pwm.PeripheralParameters(
           Pwm.CoreParameters(counterWidth = 10, channelCnt = 5),
-          prescalerWidth = 30
+          dividerWidth = 30
         )
       )
     )

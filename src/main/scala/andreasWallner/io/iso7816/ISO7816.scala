@@ -29,8 +29,8 @@ case class ISO7816() extends Bundle with IMasterSlave {
 }
 
 case class CoreGenerics(
-    dataPrescalerWidth: Int = 32,
-    clockPrescalerWidth: Int = 32
+    dataDividerWidth: Int = 32,
+    clockDividerWidth: Int = 32
 ) {}
 case class PeripheralGenerics(
     rxBufferSize: Int = 256,
@@ -268,19 +268,19 @@ case class StateCtrl() extends Component {
   }
 }
 
-case class ClockGen(prescaler_width: Int = 32) extends Component {
+case class ClockGen(divider_width: Int = 32) extends Component {
   val io = new Bundle {
     val iso = new Bundle {
       val clk = out Bool ()
     }
     val stop_clock = in Bool ()
     val vcc = in Bool ()
-    val divider = in UInt (prescaler_width bit)
+    val divider = in UInt (divider_width bit)
   }
   val clk = Reg(Bool())
   io.iso.clk := clk && io.vcc
 
-  val cnt = Reg(UInt(prescaler_width bit))
+  val cnt = Reg(UInt(divider_width bit))
   when(io.stop_clock || !io.vcc) {
     when(!io.vcc) {
       clk := False
@@ -653,7 +653,7 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
 
   val defaultClkDivider = frequency / 3200000
   core.io.config.clockrate := factory.createReadAndWrite(UInt(32 bit), 20)
-  // prescaler
+  // divider
 
   core.io.config.control.ta := factory
     .createReadAndWrite(UInt(32 bits), 28)

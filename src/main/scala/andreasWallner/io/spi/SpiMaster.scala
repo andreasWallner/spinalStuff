@@ -11,7 +11,7 @@ import spinal.lib.fsm.{EntryPoint, State, StateMachine}
 import scala.collection.mutable
 import scala.language.postfixOps
 
-// TODO allow for low prescalers by accounting for delay from synchronizing, etc.
+// TODO allow for low dividers by accounting for delay from synchronizing, etc.
 
 case class SpiType() extends Bundle {
   val cpol = Bool
@@ -32,7 +32,7 @@ case class Spi() extends Bundle with IMasterSlave {
 
 object SpiMaster {
   case class CoreParameter(
-      prescalerWidth: Int = 28,
+      dividerWidth: Int = 28,
       datawidth: Int = 8,
       wordGuardClocksWidth: Int = 4,
       csAssertGuardWidth: Int = 4,
@@ -49,7 +49,7 @@ object SpiMaster {
   }
 
   case class CoreConfig(p: CoreParameter) extends Bundle {
-    val prescaler = UInt(p.prescalerWidth bits)
+    val divider = UInt(p.dividerWidth bits)
     val spiType = SpiType()
     val msbFirst = Bool()
     val csActiveState = Bool()
@@ -86,12 +86,12 @@ object SpiMaster {
     val lastPhase = Bool()
 
     val timing = new Area {
-      val counter = Reg(UInt(p.prescalerWidth bits))
+      val counter = Reg(UInt(p.dividerWidth bits))
       val phase = Reg(Bool())
       val guardCnt = Reg(UInt(p.wordGuardClocksWidth bit))
 
       when(!runTiming || counter === 0) {
-        counter := io.config.prescaler
+        counter := io.config.divider
       } otherwise {
         counter := counter - 1
       }
@@ -311,20 +311,20 @@ object SpiMaster {
       )
     )
 
-    factory.read(U(p.core.prescalerWidth), 0x0c, 0)
+    factory.read(U(p.core.dividerWidth), 0x0c, 0)
     regs += Register(
       "info3",
       0x0c,
       "Peripheral Information",
       List(
         Field(
-          "prescaler_width",
+          "divider_width",
           UInt(32 bit),
           31 downto 0,
           AccessType.RO,
-          p.core.prescalerWidth,
+          p.core.dividerWidth,
           readError = false,
-          "Width of prescaler"
+          "Width of divider"
         )
       )
     )
@@ -395,8 +395,8 @@ object SpiMaster {
     core.io.config.spiType.cpol := factory.createReadAndWrite(Bool, 0x18, 1) init False
     core.io.config.msbFirst := factory.createReadAndWrite(Bool, 0x18, 2) init False
     core.io.config.csActiveState := factory.createReadAndWrite(Bool, 0x18, 3) init False
-    core.io.config.prescaler := factory.createReadAndWrite(
-      UInt(p.core.prescalerWidth bits),
+    core.io.config.divider := factory.createReadAndWrite(
+      UInt(p.core.dividerWidth bits),
       0x18,
       4
     )
@@ -466,13 +466,13 @@ object SpiMaster {
           )
         ),
         Field(
-          "prescaler",
-          UInt(p.core.prescalerWidth bits),
-          p.core.prescalerWidth + 4 downto 4,
+          "divider",
+          UInt(p.core.dividerWidth bits),
+          p.core.dividerWidth + 4 downto 4,
           AccessType.RW,
           0,
           readError = false,
-          "Divider configuring the used SPI clock speed (clk = fsys / prescaler)"
+          "Divider configuring the used SPI clock speed (clk = fsys / divider)"
         )
       )
     )

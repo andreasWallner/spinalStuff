@@ -20,10 +20,10 @@ class SpiMasterSim extends AnyFunSuite {
       test(name) {
         dut.doSim(name) { dut =>
           val toSend = 5
-          val prescaler = 100
+          val divider = 100
 
           dut.io.spi.miso #= false
-          dut.io.config.prescaler #= prescaler
+          dut.io.config.divider #= divider
           dut.io.config.spiType.cpol #= cpol
           dut.io.config.spiType.cpha #= cpha
           dut.io.config.wordGuardClocks #= 5
@@ -42,7 +42,7 @@ class SpiMasterSim extends AnyFunSuite {
             dut.io.spi.miso #= dut.io.spi.mosi.toBoolean
           }
 
-          SimTimeout(10 * 8 * prescaler * toSend * 4)
+          SimTimeout(10 * 8 * divider * toSend * 4)
 
           val scoreboard = ScoreboardInOrder[Int]()
           val monitorScoreboard = ScoreboardInOrder[Int]()
@@ -95,8 +95,8 @@ class Apb3SpiMasterSim extends AnyFunSuite {
   test("simple") {
     dut.doSim("simple") { dut =>
       val toSend = 10
-      val prescaler = 20
-      SimTimeout(10 * 8 * prescaler * toSend * 4)
+      val divider = 20
+      SimTimeout(10 * 8 * divider * toSend * 4)
       val apb = Apb3Driver(dut.io.bus, dut.clockDomain)
       val scoreboard = ScoreboardInOrder[Int]()
 
@@ -107,7 +107,7 @@ class Apb3SpiMasterSim extends AnyFunSuite {
         dut.io.spi.miso #= dut.io.spi.mosi.toBoolean
       }
 
-      apb.write(0x18, prescaler << 2)
+      apb.write(0x18, divider << 2)
 
       apb.write(0x24, 0xde)
       apb.write(0x24, 0xad)

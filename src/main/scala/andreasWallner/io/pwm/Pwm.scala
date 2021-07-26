@@ -15,7 +15,7 @@ object Pwm {
 
   case class PeripheralParameters(
       core: CoreParameters = CoreParameters(),
-      prescalerWidth: Int = 32
+      dividerWidth: Int = 32
   )
 
   class Ctrl[T <: spinal.core.Data with IMasterSlave](
@@ -34,15 +34,15 @@ object Pwm {
 
     val run = mapper.createReadAndWrite(Bool, 0x00, 0) init False
 
-    val prescaler = new Area {
+    val divider = new Area {
       val set = mapper.createReadAndWrite(
-        UInt(p.prescalerWidth bits),
+        UInt(p.dividerWidth bits),
         0x04,
         0
       ) init 0
-      val latched_set = Reg(UInt(p.prescalerWidth bits)) init 0
+      val latched_set = Reg(UInt(p.dividerWidth bits)) init 0
 
-      val cnt = Reg(UInt(p.prescalerWidth bits))
+      val cnt = Reg(UInt(p.dividerWidth bits))
       val enable = cnt === latched_set
 
       when(enable || !run) {
@@ -53,7 +53,7 @@ object Pwm {
       }
     }
 
-    val pre = new ClockEnableArea(prescaler.enable) {
+    val pre = new ClockEnableArea(divider.enable) {
       val core = Pwm.Core(p.core)
     }
 
@@ -73,7 +73,7 @@ object Pwm {
           0
         ) init 0
 
-    val updateValues = (pre.core.io.willOverflow && prescaler.enable) || !run
+    val updateValues = (pre.core.io.willOverflow && divider.enable) || !run
     pre.core.io.max_count := RegNextWhen(
       max_count,
       updateValues

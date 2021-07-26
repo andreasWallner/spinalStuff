@@ -32,7 +32,7 @@ case class IOControl() extends Component {
   val pwm = Apb3Pwm(
     Pwm.PeripheralParameters(
       Pwm.CoreParameters(counterWidth = 32, channelCnt = 10),
-      prescalerWidth = 32
+      dividerWidth = 32
     ),
     busConfig = Apb3Config(6, 32)
   )
