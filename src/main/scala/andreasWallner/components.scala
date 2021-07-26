@@ -10,6 +10,8 @@ import andreasWallner.io.pwm._
 //import spinal.lib.bus.regif.Document.HtmlGenerator
 import andreasWallner.io.iso7816._
 
+import spinal.lib.bus.regif._
+import spinal.lib.bus.regif.generator._
 
 object AxiLite4PwmTopLevel {
   def main(args: Array[String]) {
@@ -55,3 +57,16 @@ object AxiLite4ISO7816Module {
   }
 }
 
+object Ahb3PwmTest {
+  def main(args: Array[String]) {
+    val report = SpinalConfig(
+      defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = LOW),
+      device = Device.XILINX
+    ).generateVerilog(
+      new RegIfAhbLite3Pwm(Pwm.PeripheralParameters(coreParameters=Pwm.CoreParameters(channelCnt=10)))
+    )
+    new CHeader(report.toplevel.registerBanks()(0)).overrideName("PWM").write()
+    new HTML(report.toplevel.registerBanks()(0)).overrideName("PWM").write()
+    new DetailedHTML(report.toplevel.registerBanks()(0)).overrideName("DetailedPWM").write()
+  }
+}

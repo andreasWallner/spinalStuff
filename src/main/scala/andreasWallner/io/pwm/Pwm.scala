@@ -38,19 +38,22 @@ object Pwm {
     val factory = generator(io.bus)
     
     val ctrl = factory.newReg(doc="Control")
-    io.run := ctrl.typedField(Bool(), AccessType.RW)(SymbolName("run"))
-      .doc("State of the PWM core")
-      .value(0, "stop", "stopped")
-      .value(1, "run", "running")
-      .apply()
-    val x = ctrl.typedField(Test(), AccessType.RW).align(4).apply()
+    io.run := ctrl.typed(
+      Bool(),
+      AccessType.RW,
+      doc = "State of the PWM core",
+      values = List(
+        KnownValue(0, "stop", Some("stopped")),
+        KnownValue(1, "run", Some("running")))
+    )(SymbolName("run")) // TODO warning w/o explicit name (error?) or fix it?
+    val x = ctrl.typed(Test(), AccessType.RW, alignment=4)
 
     val conf = factory.newReg(doc="Prescaler")
-    val prescaler = conf.typedField(UInt(parameters.prescalerWidth bits), AccessType.RW).apply()
+    val prescaler = conf.typed(UInt(parameters.prescalerWidth bits), AccessType.RW)
 
     val levels = 
       for(i <- 0 until parameters.coreParameters.channelCnt)
-        yield factory.newReg(doc="Reg")(SymbolName(f"level${i}")).typedField(UInt(parameters.coreParameters.counterWidth bits), AccessType.RW)(SymbolName("level")).apply()
+        yield factory.newReg(doc="Reg")(SymbolName(f"level${i}")).typed(UInt(parameters.coreParameters.counterWidth bits), AccessType.RW)(SymbolName("level"))
     
     def registerBanks(): List[BusIf] = List(factory)
   }
