@@ -1,4 +1,4 @@
-package andreasWallner.registers
+package andreasWallner.registers.datamodel
 
 import spinal.core._
 
@@ -33,9 +33,12 @@ object AccessType {
   case object NA extends AccessType // -W: reserved, R: reserved
   case object W1P extends AccessType // -W: 1/0 pulse/no effect on matching bit, R: no effect
   case object W0P extends AccessType // -W: 0/1 pulse/no effect on matching bit, R: no effect
+  case object CUSTOM extends AccessType // none of the above
 }
 
-class Section(val max: Int, val min: Int) {
+case class Section(val max: Int, val min: Int) {
+  def range: Range = max downto min
+
   override def toString(): String = {
     if (this.max == this.min) {
       s"[${this.min}]"
@@ -44,39 +47,53 @@ class Section(val max: Int, val min: Int) {
     }
   }
 }
-
 object Section {
   def apply(x: Range): Section = new Section(x.max, x.min)
   implicit def tans(x: Range) = Section(x)
 }
 
-object Value {
-  def apply(value: Long, name: String, doc: String) = new Value(value, name, Some(doc))
+trait Value {
+  def value: Long
+  def name: String
+  def doc: Option[String]
 }
-case class Value(value: Long, name: String, doc: Option[String]=None) {}
 
-case class Field(
-    name: String,
-    hardbit: Data, // HardType?
-    section: Range,
-    accType: AccessType,
-    resetValue: Long,
-    readError: Boolean,
-    doc: String,
-    values: List[Value]=List()
-) {
+trait Field {
+  def name: String
+  def doc: Option[String]
+  def datatype: HardType[Data]
+  def section: Section
+  def accessType: AccessType
+  def resetValue: Long
+  def readError: Boolean
+  def values: List[Value]
+
   def tailBitPos = section.max
 }
 
-case class Register(
-    name: String,
-    address: Long,
-    doc: String,
-    fields: List[Field]
-)
-
-trait BusRegisterModule {
-  def registers: List[Register]
+trait Element {
+  def name: String
+  def doc: Option[String]
 }
 
+trait HardElement extends Element {
+  def address: Long
+}
 
+trait Cluster extends Element {
+  def elements: List[HardElement]
+}
+
+trait Register extends HardElement {
+  def fields: List[Field]
+}
+
+trait Ram extends HardElement {
+  def size: Long
+}
+
+trait Fifo extends HardElement {}
+
+trait BusComponent {
+  def elements: List[Element]
+}

@@ -1,6 +1,7 @@
 package andreasWallner.io.spi
 
-import andreasWallner.registers._
+import andreasWallner.registers.casemodel._
+import andreasWallner.registers.datamodel.{BusComponent, AccessType}
 import spinal.core.ClockDomain.FixedFrequency
 import spinal.core._
 import spinal.lib._
@@ -241,7 +242,7 @@ object SpiMaster {
       busType: HardType[T],
       metaFactory: T => BusSlaveFactory
   ) extends Component
-      with BusRegisterModule {
+      with BusComponent {
     val io = new Bundle {
       val bus = slave(busType())
       val spi = master(Spi())
@@ -271,12 +272,12 @@ object SpiMaster {
       "Peripheral Information",
       List(
         Field(
-          "frequeny",
+          "frequency",
           UInt(32 bit),
           31 downto 0,
           AccessType.RO,
           0,
-          readError = false,
+          false,
           "Frequency the module is supplied with",
           List(Value(0, "unknown"))
         )
@@ -296,7 +297,7 @@ object SpiMaster {
           15 downto 0,
           AccessType.RO,
           p.rxBufferSize,
-          readError = false,
+          false,
           "Size of RX buffer"
         ),
         Field(
@@ -305,7 +306,7 @@ object SpiMaster {
           31 downto 16,
           AccessType.RO,
           p.txBufferSize,
-          readError = false,
+          false,
           "Size of TX buffer"
         )
       )
@@ -323,7 +324,7 @@ object SpiMaster {
           31 downto 0,
           AccessType.RO,
           p.core.dividerWidth,
-          readError = false,
+          false,
           "Width of divider"
         )
       )
@@ -349,7 +350,7 @@ object SpiMaster {
           0 downto 0,
           AccessType.RO,
           0,
-          readError = false,
+          false,
           "Shows if the module is currently working on a trigger",
           List(
             Value(0, "idle", "module is idle"),
@@ -362,7 +363,7 @@ object SpiMaster {
           1 downto 1,
           AccessType.RC,
           0,
-          readError = false,
+          false,
           "Indicates that more values where pushed into the TX buffer than it can hold, cleared on read",
           List(
             Value(0, "ok", "no overflow happened"),
@@ -375,7 +376,7 @@ object SpiMaster {
           21 downto 12,
           AccessType.RO,
           0,
-          readError = false,
+          false,
           "Number of bytes currently stored in RX FIFO"
         ),
         Field(
@@ -384,7 +385,7 @@ object SpiMaster {
           31 downto 22,
           AccessType.RO,
           0,
-          readError = false,
+          false,
           "Number of bytes currently stored in RX FIFO"
         )
       )
@@ -411,7 +412,7 @@ object SpiMaster {
           0 downto 0,
           AccessType.RW,
           0,
-          readError = false,
+          false,
           "Used phase setting",
           List(
             Value(
@@ -432,7 +433,7 @@ object SpiMaster {
           1 downto 1,
           AccessType.RW,
           0,
-          readError = false,
+          false,
           "Used clock polarity",
           List(
             Value(0, "low", "Idle clock level is low"),
@@ -445,7 +446,7 @@ object SpiMaster {
           2 downto 2,
           AccessType.RW,
           0,
-          readError = false,
+          false,
           "Bitorder for RX/TX",
           List(
             Value(0, "lsbfirst", "LS-bit is sent first"),
@@ -458,7 +459,7 @@ object SpiMaster {
           3 downto 3,
           AccessType.RW,
           0,
-          readError = false,
+          false,
           "Active state for SS line",
           List(
             Value(0, "active_low", "SS line is active low"),
@@ -471,7 +472,7 @@ object SpiMaster {
           p.core.dividerWidth + 4 downto 4,
           AccessType.RW,
           0,
-          readError = false,
+          false,
           "Divider configuring the used SPI clock speed (clk = fsys / divider)"
         )
       )
@@ -499,7 +500,7 @@ object SpiMaster {
           0 downto 0,
           AccessType.W1P,
           0,
-          readError = false,
+          false,
           "Trigger assertion of CS",
           List(
             Value(0, "noop", "No action"),
@@ -512,7 +513,7 @@ object SpiMaster {
           1 downto 1,
           AccessType.W1P,
           0,
-          readError = false,
+          false,
           "Tigger transceive of data in TX buffer",
           List(
             Value(0, "noop", "No action"),
@@ -525,7 +526,7 @@ object SpiMaster {
           2 downto 2,
           AccessType.W1P,
           0,
-          readError = false,
+          false,
           "Trigger deassertion of CS",
           List(
             Value(0, "noop", "No action"),
@@ -538,7 +539,7 @@ object SpiMaster {
           31 downto 31,
           AccessType.W1P,
           0,
-          readError = false,
+          false,
           "Flush TX/RX FIFOs",
           List(Value(0, "noop", "No action"), Value(1, "flush", "Flush FIFOs"))
         )
@@ -559,7 +560,7 @@ object SpiMaster {
           7 downto 0,
           AccessType.RO,
           0,
-          readError = false,
+          false,
           "Byte in RX buffer"
         ),
         Field(
@@ -568,7 +569,7 @@ object SpiMaster {
           31 downto 31,
           AccessType.RO,
           0,
-          readError = false,
+          false,
           "Validity of data field",
           List(
             Value(0, "invalid", "Read data value is not valid, FIFO was empty"),
@@ -594,7 +595,7 @@ object SpiMaster {
           7 downto 0,
           AccessType.WO,
           0,
-          readError = false,
+          false,
           "Enqueues data in the TX FIFO"
         )
       )
@@ -627,7 +628,7 @@ object SpiMaster {
           7 downto 0,
           AccessType.RW,
           0,
-          readError = false,
+          false,
           "Number of clock durations of pause between individual sent bytes"
         ),
         Field(
@@ -636,7 +637,7 @@ object SpiMaster {
           15 downto 8,
           AccessType.RW,
           0,
-          readError = false,
+          false,
           "Number of clock durations pause between SS assertion and transceive start"
         ),
         Field(
@@ -645,13 +646,13 @@ object SpiMaster {
           23 downto 16,
           AccessType.RW,
           0,
-          readError = false,
+          false,
           "Number of clock durations pause between transceive end and SS deassert"
         )
       )
     )
 
-    override def registers = regs.toList
+    override def elements = regs.toList
   }
 }
 
