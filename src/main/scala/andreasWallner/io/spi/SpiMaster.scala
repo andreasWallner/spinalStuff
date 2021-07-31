@@ -653,6 +653,9 @@ object SpiMaster {
     )
 
     override def elements = regs.toList
+    override def busComponentName = "SPI"
+    override def dataWidth = factory.busDataWidth
+    override def wordAddressInc = 4
   }
 }
 

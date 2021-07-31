@@ -94,6 +94,10 @@ trait Ram extends HardElement {
 
 trait Fifo extends HardElement {}
 
+// TODO still a bad name as one component could have multiple interfaces
 trait BusComponent {
   def elements: List[Element]
+  def busComponentName: String
+  def dataWidth: Long
+  def wordAddressInc: Long
 }
