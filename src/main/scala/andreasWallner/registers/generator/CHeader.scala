@@ -63,7 +63,7 @@ class CHeader(intf: BusComponent) {
     intf.elements.flatMap { case r: Register => Some(r)
     case _ => None}.foldLeft(0L) {(expectedAddress, reg) => {
       if (reg.address != expectedAddress) {
-        writer.write(s"  ${baseType} rfu_${reg.address}[${(expectedAddress - reg.address) / intf.dataWidth};\n")
+        writer.write(s"  ${baseType} rfu_${reg.address}[${(expectedAddress - reg.address) / intf.dataWidth}];\n")
       }
       writer.write(s"  ${baseType} ${reg.name.toUpperCase()};\n")
 
