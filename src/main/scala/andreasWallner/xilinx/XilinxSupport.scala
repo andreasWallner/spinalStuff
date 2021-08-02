@@ -286,7 +286,7 @@ object forMasterSlaveInterfaces {
 }
 
 object XilinxNamer {
-  def apply(comp: Component): Component = {
+  def apply[T <: Component](comp: T): T = {
     def doIt: Unit = {
       val ios = comp.getGroupedIO(true)
 
