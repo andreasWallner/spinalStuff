@@ -1,6 +1,5 @@
 package andreasWallner.io.iomux
 
-import andreasWallner.spinaltap.ISpinalTAPModule
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.misc.BusSlaveFactory
@@ -50,8 +49,7 @@ object IOMux {
       generics: Parameter,
       busType: HardType[T],
       factory: T => BusSlaveFactory
-  ) extends Component
-      with ISpinalTAPModule[T] {
+  ) extends Component {
     val io = new Bundle {
       val bus = slave(busType())
       val all = Vec(slave(TriStateArray(generics.lineCnt)), generics.inCnt)
@@ -68,7 +66,5 @@ object IOMux {
         0x04 * (idx / 4),
         8 * (idx % 4)
       ) init 0
-
-    def bus() = io.bus
   }
 }
