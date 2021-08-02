@@ -7,7 +7,8 @@ import andreasWallner.basics.{AxiLite4Pwm, PwmGenerics}
 import andreasWallner._
 import andreasWallner.xilinx._
 import andreasWallner.io.pwm._
-import andreasWallner.spinaltap.ApbSpinalTap
+import andreasWallner.registers.generator.CHeader
+import andreasWallner.registers.datamodel.BusComponent
 
 object AxiLite4PwmTopLevel {
   def main(args: Array[String]) {
@@ -48,7 +49,14 @@ object ApbSpinalTap {
       defaultClockDomainFrequency = FixedFrequency(100 MHz),
       device = Device.XILINX
     ).generateVerilog(
-      XilinxNamer(XilinxInOutWrapper(new ApbSpinalTap()))
+      XilinxNamer(XilinxInOutWrapper(new andreasWallner.spinaltap.ApbSpinalTap()))
     );
+    for (e <- report.toplevel.elements) {
+      e match {
+        case (b: BusComponent, offset: Long) => new CHeader(b).write()
+        case other => println("Not generating for " + other)
+      }
+    }
+    
   }
 }

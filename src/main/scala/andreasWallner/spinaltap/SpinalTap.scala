@@ -4,6 +4,7 @@ import andreasWallner.io.Gpio
 import andreasWallner.io.iomux.IOMux
 import andreasWallner.io.pwm.Pwm
 import andreasWallner.io.spi.SpiMaster
+import andreasWallner.registers.datamodel.{Bus, BusElement}
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Decoder, Apb3SlaveFactory}
@@ -11,8 +12,10 @@ import spinal.lib.bus.misc.{BusSlaveFactory, SizeMapping}
 import spinal.lib.io.TriStateArray
 
 import scala.language.postfixOps
+import scala.collection.mutable.MutableList
 
 trait ISpinalTAPModule[T <: spinal.core.Data with IMasterSlave] {
+  def wrapped(): Component
   def bus(): T
 }
 
@@ -33,7 +36,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     metaFactory: T => BusSlaveFactory,
     moduleAddressSpace: BigInt,
     interconnectFactory: (T, List[ISpinalTAPModule[T]], BigInt) => Component
-) extends Component {
+) extends Component with Bus {
   val io = new Bundle {
     val bus = slave(busType())
 
@@ -97,16 +100,32 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     for (trigger <- module.triggerInputs())
       trigger <> False
   }
+  val allModules = List[ISpinalTAPModule[T]](pwm, gpio0, gpio1, mux) ++ modules
   val interconnect =
     interconnectFactory(
       io.bus,
-      List[ISpinalTAPModule[T]](pwm, gpio0, gpio1, mux) ++ modules,
+      allModules,
       moduleAddressSpace
     )
   // TODO logic analyzer
   // TODO trigger mux
+
+  /*override def elements: List[(BusElement, Long)] = allModules.zipWithIndex.flatMap { _ match {
+    case (b: BusElement, idx: Int) => Some((b, 0x43c00000 + moduleAddressSpace * idx))
+  }*/
+  override def elements: List[(BusElement, Long)] = {
+    val l = MutableList[(BusElement, Long)]()
+    for((m, idx) <- allModules.zipWithIndex) {
+      m.wrapped match {
+        case b: BusElement => l += ((b, (0x43c00000 + moduleAddressSpace * idx).toLong))
+        case _ => 
+      }
+    }
+    l.toList
+  }
 }
 
+// TODO let interconnect provide list of elements
 object ApbSpinalTap {
   def makeInterconnect(
       bus: Apb3,

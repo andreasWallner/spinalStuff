@@ -4,6 +4,7 @@ import andreasWallner.io.Gpio
 import andreasWallner.io.iomux.IOMux
 import andreasWallner.io.pwm.Pwm
 import andreasWallner.io.spi.SpiMaster
+import andreasWallner.registers.datamodel.BusComponent
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.misc.BusSlaveFactory
@@ -18,6 +19,7 @@ object Wrapped {
       metaFactory: T => BusSlaveFactory
   ) extends IOMux.Ctrl[T](p, busType, metaFactory)
       with ISpinalTAPModule[T] {
+    override def wrapped() = this
     override def bus() = io.bus
   }
 
@@ -27,6 +29,7 @@ object Wrapped {
       factory: T => BusSlaveFactory
   ) extends Gpio.Ctrl[T](p, busType, factory)
       with ISpinalTAPModule[T] {
+    override def wrapped() = this
     override def bus() = io.bus
   }
 
@@ -36,6 +39,7 @@ object Wrapped {
       factory: T => BusSlaveFactory
   ) extends Pwm.Ctrl[T](p, busType, factory)
       with ISpinalTAPModule[T] {
+    override def wrapped() = this
     override def bus() = io.bus
   }
 
@@ -53,6 +57,7 @@ object Wrapped {
       module.setName(name)
     }
 
+    override def wrapped() = module
     override def bus() = module.io.bus
     override def triggerInputs() = List()
     override def triggerOutputs() = List()
@@ -94,6 +99,7 @@ object Wrapped {
       module.setName(name)
     }
 
+    override def wrapped() = module
     override def bus() = module.io.bus
     override def triggerOutputs() = List()
     override def triggerInputs() = List()
