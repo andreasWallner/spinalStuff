@@ -21,7 +21,7 @@ object Register {
 
 case class Field(
     name: String,
-    datatype: HardType[Data],
+    datatype: Data,
     section: Section,
     accessType: AccessType,
     resetValue: Long,
@@ -32,7 +32,7 @@ case class Field(
 object Field {
   def apply(
       name: String,
-      datatype: HardType[Data],
+      datatype: Data,
       section: Section,
       accessType: AccessType,
       resetValue: Long,
@@ -52,7 +52,7 @@ object Field {
     )
   def apply(
       name: String,
-      datatype: HardType[Data],
+      datatype: Data,
       section: Section,
       accessType: AccessType,
       resetValue: Long,
@@ -71,7 +71,7 @@ object Field {
     )
   def apply(
       name: String,
-      datatype: HardType[Data],
+      datatype: Data,
       section: Section,
       accessType: AccessType,
       resetValue: Long,
