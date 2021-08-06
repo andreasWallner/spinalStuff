@@ -261,7 +261,7 @@ object SpiMaster {
 
     // info registers
     val info0 = f.register(0x0, "info0")
-    info0.read(U(0), 0, "version")
+    info0.read(U(0, 32 bit), 0, "version")
 
     val info1 = f.register(0x4, "info1")
     val frequency = clockDomain.frequency match {
@@ -286,7 +286,7 @@ object SpiMaster {
 
     val info3 = f.register(0x0c, "info3")
     info3.read(
-      U(p.core.dividerWidth),
+      U(p.core.dividerWidth, 32 bit),
       0,
       "divider_width",
       "Width of frequency divider"
