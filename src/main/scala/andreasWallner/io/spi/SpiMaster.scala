@@ -1,7 +1,8 @@
 package andreasWallner.io.spi
 
-import andreasWallner.registers.casemodel._
-import andreasWallner.registers.datamodel.{BusComponent, AccessType}
+import andreasWallner.registers.{BusSlaveFactoryRecorder}
+import andreasWallner.registers.casemodel.Value
+import andreasWallner.registers.datamodel.BusComponent
 import spinal.core.ClockDomain.FixedFrequency
 import spinal.core._
 import spinal.lib._
@@ -9,7 +10,6 @@ import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config, Apb3SlaveFactory}
 import spinal.lib.bus.misc.BusSlaveFactory
 import spinal.lib.fsm.{EntryPoint, State, StateMachine}
 
-import scala.collection.mutable
 import scala.language.postfixOps
 
 // TODO allow for low dividers by accounting for delay from synchronizing, etc.
@@ -247,415 +247,222 @@ object SpiMaster {
       val bus = slave(busType())
       val spi = master(Spi())
     }
-    val regs = mutable.MutableList[Register]()
 
     val core = Core(p.core)
     core.io.spi <> io.spi
 
     val factory = metaFactory(io.bus)
+    val f = new BusSlaveFactoryRecorder(factory)
+
     val rxFifo =
       StreamFifo(Bits(p.rxBufferSizeBits), p.rxBufferSize)
     val txFifo =
       StreamFifo(Bits(p.txBufferSizeBits), p.txBufferSize)
 
     // info registers
-    factory.read(U(0), 0x0, 0)
+    val info0 = f.register(0x0, "info0")
+    info0.read(U(0), 0, "version")
 
+    val info1 = f.register(0x4, "info1")
     val frequency = clockDomain.frequency match {
       case FixedFrequency(value) => value.toLong
       case _                     => 0L
     }
-    factory.read(U(frequency, 32 bit), 0x04, 0)
-    regs += Register(
-      "info1",
-      0x4,
-      "Peripheral Information",
-      List(
-        Field(
-          "frequency",
-          UInt(32 bit),
-          31 downto 0,
-          AccessType.RO,
-          0,
-          false,
-          "Frequency the module is supplied with",
-          List(Value(0, "unknown"))
-        )
-      )
+    info1.read(
+      U(frequency, 32 bit),
+      0,
+      "frequency",
+      "Frequency the module is supplied with"
     )
 
-    factory.read(U(p.rxBufferSize, 16 bit), 0x08, 0)
-    factory.read(U(p.txBufferSize, 16 bit), 0x08, 16)
-    regs += Register(
-      "info2",
-      0x8,
-      "Peripheral Information",
-      List(
-        Field(
-          "rx_buf_size",
-          UInt(16 bit),
-          15 downto 0,
-          AccessType.RO,
-          p.rxBufferSize,
-          false,
-          "Size of RX buffer"
-        ),
-        Field(
-          "tx_buf_size",
-          UInt(16 bit),
-          31 downto 16,
-          AccessType.RO,
-          p.txBufferSize,
-          false,
-          "Size of TX buffer"
-        )
-      )
+    val info2 = f.register(0x08, "info2")
+    info2.read(U(p.rxBufferSize, 16 bit), 0, "rx_buf_size", "Size of RX buffer")
+    info2.read(
+      U(p.txBufferSize, 16 bit),
+      16,
+      "tx_buf_size",
+      "Size of TX buffer"
     )
 
-    factory.read(U(p.core.dividerWidth), 0x0c, 0)
-    regs += Register(
-      "info3",
-      0x0c,
-      "Peripheral Information",
-      List(
-        Field(
-          "divider_width",
-          UInt(32 bit),
-          31 downto 0,
-          AccessType.RO,
-          p.core.dividerWidth,
-          false,
-          "Width of divider"
-        )
-      )
+    val info3 = f.register(0x0c, "info3")
+    info3.read(
+      U(p.core.dividerWidth),
+      0,
+      "divider_width",
+      "Width of frequency divider"
     )
 
     // status registers
-    factory.read(core.io.busy, 0x10, 0)
-    factory.doBitsAccumulationAndClearOnRead( // tx overflow?
-      rxFifo.io.push.isStall.asBits,
-      0x10,
-      1
-    )
-    factory.read(rxFifo.io.occupancy, 0x10, 12)
-    factory.read(txFifo.io.occupancy, 0x10, 22)
-    regs += Register(
-      "status",
-      0x10,
-      "",
+    val status = f.register(0x10, "status")
+    status.read(
+      core.io.busy,
+      0,
+      "busy",
+      "Shows if the module is currently working on a trigger",
       List(
-        Field(
-          "busy",
-          Bool(),
-          0 downto 0,
-          AccessType.RO,
-          0,
-          false,
-          "Shows if the module is currently working on a trigger",
-          List(
-            Value(0, "idle", "module is idle"),
-            Value(1, "busy", "module is busy")
-          )
-        ),
-        Field(
-          "tx_ovfl",
-          Bool(),
-          1 downto 1,
-          AccessType.RC,
-          0,
-          false,
-          "Indicates that more values where pushed into the TX buffer than it can hold, cleared on read",
-          List(
-            Value(0, "ok", "no overflow happened"),
-            Value(1, "ovfl", "overflow happened since last read")
-          )
-        ),
-        Field(
-          "rx_occupancy",
-          UInt(16 bit),
-          21 downto 12,
-          AccessType.RO,
-          0,
-          false,
-          "Number of bytes currently stored in RX FIFO"
-        ),
-        Field(
-          "tx_occupancy",
-          UInt(16 bit),
-          31 downto 22,
-          AccessType.RO,
-          0,
-          false,
-          "Number of bytes currently stored in RX FIFO"
-        )
+        Value(0, "idle", "module is idle"),
+        Value(1, "busy", "module is busy")
       )
+    )
+    status.doBitsAccumulationAndClearOnRead( // tx overflow?
+      rxFifo.io.push.isStall.asBits,
+      1,
+      "tx_ovfl",
+      "Indicates that more values where pushed into the TX buffer than it can hold, cleared on read",
+      List(
+        Value(0, "ok", "no overflow happened"),
+        Value(1, "ovfl", "overflow happened since last read")
+      )
+    )
+    status.read(
+      rxFifo.io.occupancy,
+      12,
+      "rx_occupancy",
+      "Number of bytes currently stored in RX FIFO"
+    )
+    status.read(
+      txFifo.io.occupancy,
+      22,
+      "tx_occupancy",
+      "Number of bytes currently stored in TX FIFO"
     )
 
     // config register
-    core.io.config.spiType.cpha := factory.createReadAndWrite(Bool, 0x18, 0) init False
-    core.io.config.spiType.cpol := factory.createReadAndWrite(Bool, 0x18, 1) init False
-    core.io.config.msbFirst := factory.createReadAndWrite(Bool, 0x18, 2) init False
-    core.io.config.csActiveState := factory.createReadAndWrite(Bool, 0x18, 3) init False
-    core.io.config.divider := factory.createReadAndWrite(
-      UInt(p.core.dividerWidth bits),
-      0x18,
-      4
-    )
-    regs += Register(
-      "config",
-      0x18,
-      "Runtime peripheral configuration",
+    val config = f.register(0x18, "config", "Runtime peripheral configuration")
+    core.io.config.spiType.cpha := config.createReadAndWrite(
+      Bool,
+      0,
+      "cpha",
+      "Used phase setting",
       List(
-        Field(
-          "cpha",
-          Bool(),
-          0 downto 0,
-          AccessType.RW,
+        Value(
           0,
-          false,
-          "Used phase setting",
-          List(
-            Value(
-              0,
-              "before",
-              "Shift first data bit on CS/before first clock edge"
-            ),
-            Value(
-              1,
-              "edge",
-              "Shift first data bit with first edge, second edge samples"
-            )
-          )
+          "before",
+          "Shift first data bit on CS/before first clock edge"
         ),
-        Field(
-          "cpol",
-          Bool(),
-          1 downto 1,
-          AccessType.RW,
-          0,
-          false,
-          "Used clock polarity",
-          List(
-            Value(0, "low", "Idle clock level is low"),
-            Value(1, "high", "Idle clock level is high")
-          )
-        ),
-        Field(
-          "bitorder",
-          Bool(),
-          2 downto 2,
-          AccessType.RW,
-          0,
-          false,
-          "Bitorder for RX/TX",
-          List(
-            Value(0, "lsbfirst", "LS-bit is sent first"),
-            Value(1, "msbfirst", "MS-bit is sent first")
-          )
-        ),
-        Field(
-          "ss",
-          Bool(),
-          3 downto 3,
-          AccessType.RW,
-          0,
-          false,
-          "Active state for SS line",
-          List(
-            Value(0, "active_low", "SS line is active low"),
-            Value(1, "active_high", "SS line is active high")
-          )
-        ),
-        Field(
-          "divider",
-          UInt(p.core.dividerWidth bits),
-          p.core.dividerWidth + 4 downto 4,
-          AccessType.RW,
-          0,
-          false,
-          "Divider configuring the used SPI clock speed (clk = fsys / divider)"
+        Value(
+          1,
+          "edge",
+          "Shift first data bit with first edge, second edge samples"
         )
       )
-    )
+    ) init False
+    core.io.config.spiType.cpol := config.createReadAndWrite(
+      Bool,
+      1,
+      "cpol",
+      "Used clock polarity",
+      List(
+        Value(0, "low", "Idle clock level is low"),
+        Value(1, "high", "Idle clock level is high")
+      )
+    ) init False
+    core.io.config.msbFirst := config.createReadAndWrite(
+      Bool,
+      2,
+      "bitorder",
+      "Bitorder for RX/TX",
+      List(
+        Value(0, "lsbfirst", "LS-bit is sent first"),
+        Value(1, "msbfirst", "MS-bit is sent first")
+      )
+    ) init False
+    core.io.config.csActiveState := config.createReadAndWrite(
+      Bool,
+      3,
+      "ss",
+      "Active state for SS line",
+      List(
+        Value(0, "active_low", "SS line is active low"),
+        Value(1, "active_high", "SS line is active high")
+      )
+    ) init False
+    core.io.config.divider := config.createReadAndWrite(
+      UInt(p.core.dividerWidth bits),
+      4,
+      "divider",
+      "Divider configuring the used SPI clock speed (clk = fsys / divider)"
+    ) init 100
 
     // trigger register
+    val trigger = f.register(0x1c, "trigger")
+    val flush = Bool()
+    rxFifo.io.flush := flush
+    txFifo.io.flush := flush
+
     core.io.trigger.assert := False
     core.io.trigger.transfer := False
     core.io.trigger.deassert := False
-    rxFifo.io.flush := False
-    txFifo.io.flush := False
-    factory.setOnSet(core.io.trigger.assert, 0x1c, 0)
-    factory.setOnSet(core.io.trigger.transfer, 0x1c, 1)
-    factory.setOnSet(core.io.trigger.deassert, 0x1c, 2)
-    factory.setOnSet(rxFifo.io.flush, 0x1c, 31)
-    factory.setOnSet(txFifo.io.flush, 0x1c, 31)
-    regs += Register(
-      "trigger",
-      0x1c,
-      "Trigger actions to process",
+    flush := False
+    trigger.setOnSet(
+      core.io.trigger.assert,
+      0,
+      "assert",
+      "Trigger assertion of SS",
       List(
-        Field(
-          "assert",
-          Bool(),
-          0 downto 0,
-          AccessType.W1P,
-          0,
-          false,
-          "Trigger assertion of CS",
-          List(
-            Value(0, "noop", "No action"),
-            Value(1, "trigger", "Assert CS before other actions")
-          )
-        ),
-        Field(
-          "transceive",
-          Bool(),
-          1 downto 1,
-          AccessType.W1P,
-          0,
-          false,
-          "Tigger transceive of data in TX buffer",
-          List(
-            Value(0, "noop", "No action"),
-            Value(1, "trigger", "Transceive data after possible CS assertion")
-          )
-        ),
-        Field(
-          "deassert",
-          Bool(),
-          2 downto 2,
-          AccessType.W1P,
-          0,
-          false,
-          "Trigger deassertion of CS",
-          List(
-            Value(0, "noop", "No action"),
-            Value(1, "trigger", "Deassert CS after possible transceive of data")
-          )
-        ),
-        Field(
-          "flush",
-          Bool(),
-          31 downto 31,
-          AccessType.W1P,
-          0,
-          false,
-          "Flush TX/RX FIFOs",
-          List(Value(0, "noop", "No action"), Value(1, "flush", "Flush FIFOs"))
-        )
+        Value(0, "noop", "No action"),
+        Value(1, "trigger", "Assert SS before other actions")
       )
+    )
+    trigger.setOnSet(
+      core.io.trigger.transfer,
+      1,
+      "transceive",
+      "Tigger transceive of data in TX buffer",
+      List(
+        Value(0, "noop", "No action"),
+        Value(1, "trigger", "Transceive data after possible CS assertion")
+      )
+    )
+    trigger.setOnSet(
+      core.io.trigger.deassert,
+      2,
+      "deassert",
+      "Trigger deassertion of SS",
+      List(
+        Value(0, "noop", "No action"),
+        Value(1, "trigger", "Deassert SS after possible transceive of data")
+      )
+    )
+    trigger.setOnSet(
+      flush,
+      31,
+      "flush",
+      "Flush TX/RX FIFOs",
+      List(Value(0, "noop", "No action"), Value(1, "flush", "Flush FIFOs"))
     )
 
     // rx register
+    val rx = f.register(0x20, "rx", "Gateway to RX FIFO")
     rxFifo.io.push <> core.io.rxData.toStream
-    factory.readStreamNonBlocking(rxFifo.io.pop, 0x20, 31, 0)
-    regs += Register(
-      "rx",
-      0x20,
-      "Gateway to RX FIFO",
-      List(
-        Field(
-          "data",
-          Bits(8 bits),
-          7 downto 0,
-          AccessType.RO,
-          0,
-          false,
-          "Byte in RX buffer"
-        ),
-        Field(
-          "validity",
-          Bool(),
-          31 downto 31,
-          AccessType.RO,
-          0,
-          false,
-          "Validity of data field",
-          List(
-            Value(0, "invalid", "Read data value is not valid, FIFO was empty"),
-            Value(1, "valid", "Read data is valid")
-          )
-        )
-      )
-    )
+    rx.readStreamNonBlocking(rxFifo.io.pop, 31, 0, "data", "Byte in RX buffer")
 
     // tx register
-    txFifo.io.push <> factory
-      .createAndDriveFlow(Bits(p.core.datawidth bits), 0x24)
+    val tx = f.register(0x24, "tx", "Gateway to TX FIFO")
+    txFifo.io.push <> tx
+      .createAndDriveFlow(Bits(p.core.datawidth bits), 0, "data", "Enqueues data in the TX FIFO")
       .toStream
     core.io.txData <> txFifo.io.pop.addFragmentLast(txFifo.io.occupancy === 1)
-    regs += Register(
-      "tx",
-      0x24,
-      "Gateway to TX FIFO",
-      List(
-        Field(
-          "data",
-          Bits(8 bit),
-          7 downto 0,
-          AccessType.WO,
-          0,
-          false,
-          "Enqueues data in the TX FIFO"
-        )
-      )
-    )
 
     // guard times
-    core.io.config.wordGuardClocks := factory.createReadAndWrite(
+    val guard_times = f.register(0x28, "guard_times", "Guard times used during communication")
+    core.io.config.wordGuardClocks := guard_times.createReadAndWrite(
       UInt(p.core.wordGuardClocksWidth bits),
-      0x28,
-      0
+      0, "word", "Number of clock durations of pause between individual sent bytes"
     ) init 0
-    core.io.config.csAssertGuard := factory.createReadAndWrite(
+    core.io.config.csAssertGuard := guard_times.createReadAndWrite(
       UInt(p.core.csAssertGuardWidth bits),
-      0x028,
-      8
+      8, "assert", "Number of clock durations pause between SS assertion and transceive start"
     ) init 1
-    core.io.config.csDeassertGuard := factory.createReadAndWrite(
+    core.io.config.csDeassertGuard := guard_times.createReadAndWrite(
       UInt(p.core.csDeassertGuardWidth bits),
-      0x28,
-      16
+      16, "deassert", "Number of clock durations pause between transceive end and SS deassert"
     ) init 1
-    regs += Register(
-      "guard_times",
-      0x28,
-      "Guard times used during communication",
-      List(
-        Field(
-          "word",
-          UInt(8 bits),
-          7 downto 0,
-          AccessType.RW,
-          0,
-          false,
-          "Number of clock durations of pause between individual sent bytes"
-        ),
-        Field(
-          "assert",
-          UInt(8 bits),
-          15 downto 8,
-          AccessType.RW,
-          0,
-          false,
-          "Number of clock durations pause between SS assertion and transceive start"
-        ),
-        Field(
-          "deassert",
-          UInt(8 bits),
-          23 downto 16,
-          AccessType.RW,
-          0,
-          false,
-          "Number of clock durations pause between transceive end and SS deassert"
-        )
-      )
-    )
 
-    override def elements = regs.toList
+    override def elements = f.elements
     override def busComponentName = "SPI"
-    override def dataWidth = factory.busDataWidth
-    override def wordAddressInc = 4
+    override def dataWidth = f.dataWidth
+    override def wordAddressInc = f.wordAddressInc
   }
 }
 
