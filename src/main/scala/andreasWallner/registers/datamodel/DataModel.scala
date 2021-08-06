@@ -49,6 +49,7 @@ case class Section(val max: Int, val min: Int) {
 }
 object Section {
   def apply(x: Range): Section = new Section(x.max, x.min)
+  def apply(x: Int): Section = new Section(x, x)
   implicit def tans(x: Range) = Section(x)
 }
 
@@ -64,9 +65,9 @@ trait Field {
   def datatype: HardType[Data]
   def section: Section
   def accessType: AccessType
-  def resetValue: Long
+  def resetValue: Long // TODO Option
   def readError: Boolean
-  def values: List[Value]
+  def values: Iterable[Value]
 
   def tailBitPos = section.max
 }
@@ -81,11 +82,11 @@ trait HardElement extends Element {
 }
 
 trait Cluster extends Element {
-  def elements: List[HardElement]
+  def elements: Iterable[HardElement]
 }
 
 trait Register extends HardElement {
-  def fields: List[Field]
+  def fields: Iterable[Field]
 }
 
 trait Ram extends HardElement {
@@ -99,12 +100,12 @@ trait BusElement {
 
 // TODO still a bad name as one component could have multiple interfaces
 trait BusComponent extends BusElement {
-  def elements: List[Element]
+  def elements: Iterable[Element]
   def busComponentName: String
   def dataWidth: Long
   def wordAddressInc: Long
 }
 
 trait Bus extends BusElement {
-  def elements: List[(BusElement, Long)]
+  def elements: Iterable[(BusElement, Long)]
 }

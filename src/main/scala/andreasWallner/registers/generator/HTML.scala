@@ -55,7 +55,7 @@ class HTML(intf: BusComponent) {
         """.stripMargin)
     
     writeField(register.fields.last, writer)
-    register.fields.reverse.tail.map(field => {
+    register.fields.toList.reverse.tail.map(field => {
       writer.write("</tr><tr>")
       writeField(field, writer)
     })
