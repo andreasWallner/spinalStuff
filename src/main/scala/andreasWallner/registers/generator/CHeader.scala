@@ -87,7 +87,7 @@ class CHeader(intf: BusComponent) {
         case AccessType.NA => f"rfu_${field.section.max}"
         case _ => field.name
       }
-      writer.write(s"    ${baseType} ${name}:${widthOf(field.datatype)};\n")
+      writer.write(s"    ${baseType} ${name}:${field.section.width};\n")
     })
     writer.write(s"  } b;\n")
     writer.write(s"} ${reg.name.toLowerCase()}_t;\n\n")

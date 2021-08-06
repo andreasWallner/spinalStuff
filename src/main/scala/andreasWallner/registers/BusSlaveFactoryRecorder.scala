@@ -30,7 +30,7 @@ class RegisterRecorder(
       Field(
         name,
         that,
-        Section(bitOffset + that.getBitsWidth, bitOffset),
+        Section(bitOffset + that.getBitsWidth - 1, bitOffset),
         AccessType.RO,
         0,
         false,
@@ -53,7 +53,7 @@ class RegisterRecorder(
       Field(
         name,
         that,
-        Section(bitOffset + that.getBitsWidth, bitOffset),
+        Section(bitOffset + that.getBitsWidth - 1, bitOffset),
         AccessType.RW,
         0,
         false,
@@ -75,7 +75,7 @@ class RegisterRecorder(
       Field(
         name,
         that,
-        Section(bitOffset + that.getBitsWidth, bitOffset),
+        Section(bitOffset + that.getBitsWidth - 1, bitOffset),
         AccessType.RC,
         0,
         false,
@@ -97,7 +97,7 @@ class RegisterRecorder(
       Field(
         name,
         that,
-        Section(bitOffset + that.getBitsWidth, bitOffset),
+        Section(bitOffset + that.getBitsWidth - 1, bitOffset),
         AccessType.WO,
         0,
         false,
@@ -121,7 +121,7 @@ class RegisterRecorder(
       Field(
         name,
         that.payload,
-        Section(payloadBitOffset + that.payload.getBitsWidth, payloadBitOffset),
+        Section(payloadBitOffset + that.payload.getBitsWidth - 1, payloadBitOffset),
         AccessType.RO,
         0,
         false,
@@ -169,7 +169,7 @@ class RegisterRecorder(
       Field(
         name,
         dataType,
-        Section(dataType.getBitsWidth + bitOffset, bitOffset),
+        Section(dataType.getBitsWidth + bitOffset - 1, bitOffset),
         AccessType.WO,
         0,
         false,
@@ -194,7 +194,10 @@ class BusSlaveFactoryRecorder(factory: BusSlaveFactory) extends BusComponent {
     new RegisterRecorder(registers, address, factory)
   }
 
-  override def elements = registers.values
+  override def elements =
+    registers.values.toList.sortWith((a: Register, b: Register) =>
+      a.address < b.address
+    )
   override def busComponentName: String = ???
   override def dataWidth = factory.busDataWidth
   override def wordAddressInc: Long = factory.wordAddressInc

@@ -37,6 +37,7 @@ object AccessType {
 }
 
 case class Section(val max: Int, val min: Int) {
+  assert(max >= min, "Invalid Section size < 1")
   def range: Range = max downto min
 
   override def toString(): String = {
@@ -46,6 +47,8 @@ case class Section(val max: Int, val min: Int) {
       s"[${this.max}:${this.min}]"
     }
   }
+
+  def width: Int = max - min + 1
 }
 object Section {
   def apply(x: Range): Section = new Section(x.max, x.min)
@@ -62,7 +65,7 @@ trait Value {
 trait Field {
   def name: String
   def doc: Option[String]
-  def datatype: HardType[Data]
+  def datatype: Data
   def section: Section
   def accessType: AccessType
   def resetValue: Long // TODO Option
