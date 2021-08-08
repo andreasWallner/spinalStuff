@@ -34,7 +34,7 @@ class RegisterRecorder(
         AccessType.RO,
         0,
         false,
-        doc,
+        Option(doc),
         values
       )
     )
@@ -57,7 +57,7 @@ class RegisterRecorder(
         AccessType.RW,
         0,
         false,
-        doc,
+        Option(doc),
         values
       )
     )
@@ -79,7 +79,7 @@ class RegisterRecorder(
         AccessType.RC,
         0,
         false,
-        doc,
+        Option(doc),
         values
       )
     )
@@ -101,7 +101,7 @@ class RegisterRecorder(
         AccessType.WO,
         0,
         false,
-        doc,
+        Option(doc),
         values
       )
     )
@@ -125,7 +125,7 @@ class RegisterRecorder(
         AccessType.RO,
         0,
         false,
-        doc,
+        Option(doc),
         values
       )
     )
@@ -137,7 +137,7 @@ class RegisterRecorder(
         AccessType.RO,
         0,
         false,
-        doc,
+        None, // TODO
         List(
           Value(
             if (!validInverted) 0 else 1,
@@ -173,7 +173,7 @@ class RegisterRecorder(
         AccessType.WO,
         0,
         false,
-        doc,
+        Option(doc),
         values
       )
     )
@@ -190,7 +190,7 @@ class BusSlaveFactoryRecorder(factory: BusSlaveFactory) extends BusComponent {
       doc: String = null
   ): RegisterRecorder = {
     assert(!registers.contains(address))
-    registers(address) = Register(name, address.toLong, doc, List())
+    registers(address) = Register(name, address.toLong, Option(doc), List())
     new RegisterRecorder(registers, address, factory)
   }
 
