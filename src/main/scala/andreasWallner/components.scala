@@ -7,7 +7,7 @@ import andreasWallner.basics.{AxiLite4Pwm, PwmGenerics}
 import andreasWallner._
 import andreasWallner.xilinx._
 import andreasWallner.io.pwm._
-import andreasWallner.registers.generator.CHeader
+import andreasWallner.registers.generator.{CHeader, YAML}
 import andreasWallner.registers.datamodel.BusComponent
 
 object AxiLite4PwmTopLevel {
@@ -53,7 +53,9 @@ object ApbSpinalTap {
     );
     for (e <- report.toplevel.elements) {
       e match {
-        case (b: BusComponent, offset: Long) => new CHeader(b).write()
+        case (b: BusComponent, offset: Long) =>
+          new CHeader(b).write()
+          new YAML(b).write()
         case other => println("Not generating for " + other)
       }
     }
