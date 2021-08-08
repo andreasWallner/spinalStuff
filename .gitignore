@@ -47,3 +47,4 @@ tmp/
 # Project folder
 project
 !project/build.properties
+generated/*

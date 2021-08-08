@@ -47,7 +47,8 @@ object ApbSpinalTap {
     val report = SpinalConfig(
       defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = LOW),
       defaultClockDomainFrequency = FixedFrequency(100 MHz),
-      device = Device.XILINX
+      device = Device.XILINX,
+      targetDirectory = "generated"
     ).generateVerilog(
       XilinxNamer(XilinxInOutWrapper(new andreasWallner.spinaltap.ApbSpinalTap()))
     );
