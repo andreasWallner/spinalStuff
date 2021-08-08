@@ -1,7 +1,7 @@
 package andreasWallner.registers.generator
 
 import andreasWallner.registers.datamodel._
-import spinal.core.{GlobalData, widthOf}
+import spinal.core.GlobalData
 import java.io.{Writer, PrintWriter, File}
 
 class HTML(intf: BusComponent) {
@@ -15,7 +15,6 @@ class HTML(intf: BusComponent) {
   def write(): Unit = write(f"${GlobalData.get.phaseContext.config.targetDirectory}/${name}.html")
 
   def write(filename: String): Unit = {
-    print("<<" + filename)
     val writer = new PrintWriter(new File(filename))
     try {
       write(writer)
@@ -69,7 +68,7 @@ class HTML(intf: BusComponent) {
     |          <td class="${reserved}" >${field.section}</td>
     |          <td class="${reserved}" >${field.name}</td>
     |          <td class="${reserved}" align="center">${field.accessType}</td>
-    |          <td class="${reserved}" align="right">${formatResetValue(field.resetValue, widthOf(field.datatype))}</td>
+    |          <td class="${reserved}" align="right">${formatResetValue(field.resetValue, field.section.width)}</td>
     |          <td class="${reserved} fixWidth2" >${field.doc}</td>
     |""".stripMargin)
   }
