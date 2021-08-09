@@ -6,7 +6,7 @@ import java.io.{Writer, PrintWriter, File}
 
 // TODO register prefix
 
-class CHeader(intf: BusComponent) {
+class CHeader(intf: BusComponent, offset: Long = 0) {
   private var name = intf.busComponentName
   
   def overrideName(newName: String) = {
@@ -26,9 +26,8 @@ class CHeader(intf: BusComponent) {
   }
 
   def write(writer: Writer): Unit = {
-    writer.write(s"""
-      |#ifndef header_${name}_h
-      |#define header_${name}_h
+    writer.write(s"""#ifndef header_c_registers_${name}_h
+      |#define header_c_registers_${name}_h
       |#include <stdint.h>
       |
       |#if __cplusplus
@@ -42,8 +41,7 @@ class CHeader(intf: BusComponent) {
     writeRegisterStructs(intf, writer)
     writeFieldInfos(intf, writer)
 
-    writer.write("""
-      |#if __cplusplus
+    writer.write("""#if __cplusplus
       |}
       |#endif
       |#endif
@@ -52,7 +50,7 @@ class CHeader(intf: BusComponent) {
 
   def writeRegisterOffsets(intf: BusComponent, writer: Writer): Unit = {
     intf.elements.foreach(_ match {
-      case reg: Register => {writer.write(f"#define ${name.toUpperCase()}_${reg.name.toUpperCase()}_OFFSET 0x${reg.address}%04x\n")}
+      case reg: Register => {writer.write(f"#define ${name.toUpperCase()}_${reg.name.toUpperCase()}_OFFSET 0x${reg.address + offset}%04x\n")}
     }) // TODO use correct literal macro/postfix
     writer.write("\n")
   }
@@ -93,18 +91,12 @@ class CHeader(intf: BusComponent) {
     writer.write(s"} ${reg.name.toLowerCase()}_t;\n\n")
   }
 
-  def bitmask(section: Section): Long = {
-    val ones = java.lang.Long.MAX_VALUE
-    val rightCleared = ones << section.min
-    rightCleared & ~(ones << (section.max + 1))
-  }
-
   def writeFieldInfos(intf: BusComponent, writer: Writer): Unit = {
     for(register <- intf.elements.flatMap { _ match { case r: Register => Some(r); case _ => None}}) {
       for(field <- register.fields if field.accessType != AccessType.NA) {
         val define = s"${name}_${register.name}_${field.name}".toUpperCase
         writer.write(s"#define ${define}_Pos ${field.section.min}\n")
-        writer.write(f"#define ${define}_Msk 0x${bitmask(field.section)}%x\n") // TODO use correct literal macro/postfix
+        writer.write(f"#define ${define}_Msk 0x${field.section.bitmask}%x\n") // TODO use correct literal macro/postfix
         for(kv <- field.values)
           writer.write(f"#define ${define}_${kv.name.toUpperCase()} 0x${kv.value}%x\n")
       }

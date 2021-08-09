@@ -49,6 +49,12 @@ case class Section(val max: Int, val min: Int) {
   }
 
   def width: Int = max - min + 1
+
+  def bitmask: Long = {
+    val ones = java.lang.Long.MAX_VALUE
+    val rightCleared = ones << min
+    rightCleared & ~(ones << (max + 1))
+  }
 }
 object Section {
   def apply(x: Range): Section = new Section(x.max, x.min)
@@ -98,8 +104,7 @@ trait Ram extends HardElement {
 
 trait Fifo extends HardElement {}
 
-trait BusElement {
-}
+trait BusElement {}
 
 // TODO still a bad name as one component could have multiple interfaces
 trait BusComponent extends BusElement {
