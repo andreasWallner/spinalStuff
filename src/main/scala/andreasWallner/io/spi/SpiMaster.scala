@@ -1,14 +1,14 @@
 package andreasWallner.io.spi
 
-import andreasWallner.registers.{BusSlaveFactoryRecorder}
-import andreasWallner.registers.casemodel.Value
-import andreasWallner.registers.datamodel.BusComponent
 import spinal.core.ClockDomain.FixedFrequency
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config, Apb3SlaveFactory}
 import spinal.lib.bus.misc.BusSlaveFactory
 import spinal.lib.fsm.{EntryPoint, State, StateMachine}
+import andreasWallner.registers.BusSlaveFactoryRecorder
+import andreasWallner.registers.datamodel.BusComponent
+import andreasWallner.registers.casemodel.Value
 
 import scala.language.postfixOps
 
