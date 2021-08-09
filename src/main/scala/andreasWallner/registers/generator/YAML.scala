@@ -17,7 +17,6 @@ object StringPimper {
     }
 
     def yamlSafe = {
-      println(s)
       s.replace("\\", "\\\\").replace("\"", "\\\"")
     }
   }
@@ -91,7 +90,7 @@ class YAML(comp: BusComponent) {
     writer.write(f"""|-  !Field;1
       |   name: ${field.name.yamlSafe.quoted}
       |   doc: ${field.doc.map(_.yamlSafe.quoted) getOrElse "null"}
-      |   datatype: "${field.datatype}"
+      |   datatype: "${field.datatype.getClass.getName}"
       |   section: !Section;1
       |      min: ${field.section.min}
       |      max: ${field.section.max}
