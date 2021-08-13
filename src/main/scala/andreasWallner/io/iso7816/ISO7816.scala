@@ -582,6 +582,7 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
       val stop_clock = in Bool ()
     }
   }
+
   val rxtx = RxTxCore()
   val control = StateCtrl()
   val clock = ClockGen()
@@ -659,7 +660,7 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
     case FixedFrequency(value) => value.toLong
     case _                     => 0L
   }
-  factory.register(0x0, "info0").read(U(frequency), 0, "frequency", "Used module frequency")
+  factory.register(0x0, "info0").read(U(frequency, 32 bit), 0, "frequency", "Used module frequency")
 
   val info1 = factory.register(0x04, "info1")
   val rxBufferSize = UInt(16 bits)
@@ -750,6 +751,9 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
     .register(0x40, "tx")
     .createAndDriveFlow(Bits(txFifo.io.push.payload.getWidth bits), 0, "data")
     .toStream(txFifoOverflow) <> txFifo.io.push
+
+  core.io.config.bwt := factory.register(0x44, "config7").createReadAndWrite(UInt(32 bit), 0, "bwt")
+  core.io.config.cwt := factory.register(0x48, "config8").createReadAndWrite(UInt(32 bit), 0, "cwt")
 
   override def elements = factory.elements
   override def busComponentName = "ISO7816"
