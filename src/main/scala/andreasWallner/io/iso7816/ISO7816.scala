@@ -296,6 +296,33 @@ case class ClockGen(divider_width: Int = 32) extends Component {
   }
 }
 
+case class Timeout() extends Component {
+  val io = new Bundle {
+    val cwt = in UInt()
+    val bwt = in UInt()
+
+    val en = in Bool()
+    val activity = in Bool()
+    val c_timeout = out Bool() setAsReg
+    val b_timeout = out Bool() setAsReg
+  }
+
+  val cnt = Reg(UInt())
+  val first = Reg(Bool())
+  when(!io.en || io.activity) {
+    cnt := 0
+  } otherwise {
+    cnt := cnt + 1
+  }
+
+  first.setWhen(!io.en)
+  first.clearWhen(io.activity)
+  io.c_timeout.setWhen(cnt === io.cwt)
+  io.c_timeout.clearWhen(!io.en)
+  io.b_timeout.setWhen(cnt === io.bwt && first)
+  io.b_timeout.clearWhen(!io.en)
+}
+
 case class RxTxCore() extends Component {
   val io = new Bundle {
     val iso = new Bundle {
@@ -305,10 +332,12 @@ case class RxTxCore() extends Component {
     val state = new Bundle {
       val tx_active = out Bool ()
       val rx_active = out Bool ()
+      val activity = out Bool()
     }
-    val start = new Bundle {
+    val trigger = new Bundle {
       val tx = in Bool ()
       val rx = in Bool ()
+      val cancel = in Bool()
     }
     val tx = slave(Stream(Bits(8 bit)))
     val rx = master(Flow(Bits(8 bit)))
@@ -351,6 +380,7 @@ case class RxTxCore() extends Component {
   }
 
   io.state.tx_active := False
+  io.state.activity := False
   val fsm = new StateMachine {
     val data = Reg(Bits(10 bits))
     val parity = Reg(Bool())
@@ -371,11 +401,17 @@ case class RxTxCore() extends Component {
     val RxError = new State
     val RxErrorPost = new State
 
+    always {
+      when(io.trigger.cancel) {
+        goto(Idle)
+      }
+    }
+
     Idle.whenIsActive {
       timing.en := False
-      when(io.start.tx && io.tx.valid) {
+      when(io.trigger.tx && io.tx.valid) {
         goto(Tx)
-      } elsewhen io.start.rx {
+      } elsewhen io.trigger.rx {
         goto(RxWait)
       }
     }
@@ -453,6 +489,7 @@ case class RxTxCore() extends Component {
     io.rx.payload := data(1 to 8)
     RxWait.whenIsActive {
       when(io.iso.io.read === False) {
+        io.state.activity := True
         goto(RxStart)
       }
     }
@@ -525,6 +562,8 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
       val control = in(ControlConfig())
       val rxtx = in(RxTxConfig())
       val clockrate = in(UInt(32 bit))
+      val bwt = in UInt(32 bit)
+      val cwt = in UInt(32 bit)
     }
     val state = new Bundle {
       val tx_active = out Bool ()
@@ -543,6 +582,7 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   val rxtx = RxTxCore()
   val control = StateCtrl()
   val clock = ClockGen()
+  val timeout = Timeout()
 
   val start_non_rx = io.start.tx || io.start.deactivate
   val last_rx = RegNextWhen(io.start.rx, start_non_rx, False)
@@ -558,10 +598,16 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   rxtx.io.config := io.config.rxtx
   rxtx.io.rx <> io.rx
   rxtx.io.tx <> io.tx
-  rxtx.io.start.rx := io.start.rx
-  rxtx.io.start.tx := io.start.tx
+  rxtx.io.trigger.rx := io.start.rx
+  rxtx.io.trigger.tx := io.start.tx
   io.state.tx_active := rxtx.io.state.tx_active
   io.state.rx_active := (!start_non_rx && rxtx.io.state.rx_active) || (last_rx && control.io.start_rx)
+
+  timeout.io.bwt := io.config.bwt
+  timeout.io.cwt := io.config.cwt
+  timeout.io.en := io.state.rx_active
+  timeout.io.activity := rxtx.io.state.activity
+  rxtx.io.trigger.cancel := timeout.io.c_timeout || timeout.io.b_timeout
 
   control.io.config := io.config.control
   control.io.command.default(CtrlCommand.Idle)
