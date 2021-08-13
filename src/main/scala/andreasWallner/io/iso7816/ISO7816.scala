@@ -13,6 +13,9 @@ import spinal.lib.bus.amba4.axilite.{
 import spinal.lib.bus.misc.BusSlaveFactory
 import spinal.lib.fsm._
 import spinal.lib.io.{TriState, TriStateArray}
+import andreasWallner.registers.BusSlaveFactoryRecorder
+import andreasWallner.registers.datamodel.BusComponent
+import andreasWallner.registers.casemodel.Value
 
 import scala.language.postfixOps
 
@@ -630,15 +633,13 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   clock.io.stop_clock := control.io.state.clock
   clock.io.vcc := control.io.iso.vcc
   clock.io.divider := io.config.clockrate
-
-  // TODO: timeouts
 }
 
 class Peripheral[T <: spinal.core.Data with IMasterSlave](
     generic: PeripheralGenerics,
     busType: HardType[T],
     metaFactory: T => BusSlaveFactory
-) extends Component {
+) extends Component with BusComponent {
   val io = new Bundle {
     val iso = master(ISO7816())
     val bus = slave(busType())
@@ -652,82 +653,108 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
   val rxFifoIsOverflow = Bool()
   core.io.rx.toStream(rxFifoIsOverflow) >> rxFifo.io.push
 
-  val factory = metaFactory(io.bus)
+  val factory = new BusSlaveFactoryRecorder(metaFactory(io.bus))
 
   val frequency = clockDomain.frequency match {
     case FixedFrequency(value) => value.toLong
     case _                     => 0L
   }
-  factory.read(U(frequency), 0, 0)
+  factory.register(0x0, "info0").read(U(frequency), 0, "frequency", "Used module frequency")
 
+  val info1 = factory.register(0x04, "info1")
   val rxBufferSize = UInt(16 bits)
   rxBufferSize := generic.rxBufferSize
   val txBufferSize = UInt(16 bits)
   txBufferSize := generic.txBufferSize
-  factory.read(rxBufferSize, 4, 0)
-  factory.read(txBufferSize, 4, 16)
+  info1.read(rxBufferSize, 0, "rx_buffer_size")
+  info1.read(txBufferSize, 16, "tx_buffer_size")
 
-  factory.read(core.io.state.rx_active, 8, 0)
-  factory.read(core.io.state.tx_active, 8, 1)
-  factory.read(core.io.state.change_active, 8, 2)
-  factory.doBitsAccumulationAndClearOnRead(rxFifoIsOverflow.asBits, 8, 3)
-  factory.doBitsAccumulationAndClearOnRead(txFifo.io.push.isStall.asBits, 8, 4)
+  val state = factory.register(0x08, "state")
+  state.read(core.io.state.rx_active, 0, "rx_active")
+  state.read(core.io.state.tx_active, 1, "tx_active")
+  state.read(core.io.state.change_active, 2, "change_active")
+  state.doBitsAccumulationAndClearOnRead(rxFifoIsOverflow.asBits, 3, "rx_ovfl")
+  state.doBitsAccumulationAndClearOnRead(txFifo.io.push.isStall.asBits, 4, "tx_ovfl")
 
-  core.io.config.rxtx.characterRepetition := factory.createReadAndWrite(
+  val config = factory.register(0x0c, "config")
+  core.io.config.rxtx.characterRepetition := config.createReadAndWrite(
     Bool(),
-    12,
-    0
+    0,
+    "charrep",
+    "Character repetition setting",
+    List(
+      Value(0, "dis", "disabled"),
+      Value(1, "en", "enabled")
+    )
   )
-  core.io.config.rxtx.cgt := factory.createReadAndWrite(
+  core.io.config.rxtx.cgt := config.createReadAndWrite(
     UInt(core.io.config.rxtx.cgt.getWidth bits),
-    12,
-    1
+    1,
+    "cgt",
+    "character guard time in module clocks"
   )
 
+  val trigger = factory.register(0x10, "trigger")
   core.io.start.rx := False
   core.io.start.tx := False
   core.io.start.reset := False
   core.io.start.deactivate := False
   core.io.start.activate := False
   core.io.start.stop_clock := False
-  factory.setOnSet(core.io.start.rx, 16, 0)
-  factory.setOnSet(core.io.start.tx, 16, 1)
-  factory.setOnSet(core.io.start.reset, 16, 2)
-  factory.setOnSet(core.io.start.deactivate, 16, 3)
-  factory.setOnSet(core.io.start.activate, 16, 4)
-  factory.setOnSet(core.io.start.stop_clock, 16, 5)
+  trigger.setOnSet(core.io.start.rx, 0, "rx")
+  trigger.setOnSet(core.io.start.tx, 1, "tx")
+  trigger.setOnSet(core.io.start.reset, 2, "reset")
+  trigger.setOnSet(core.io.start.deactivate, 3, "deactivate")
+  trigger.setOnSet(core.io.start.activate, 4, "activate")
+  trigger.setOnSet(core.io.start.stop_clock, 5, "stop_clock")
 
+  val config0 = factory.register(0x14, "config0")
   val defaultClkDivider = frequency / 3200000
-  core.io.config.clockrate := factory.createReadAndWrite(UInt(32 bit), 20)
+  core.io.config.clockrate := config0.createReadAndWrite(UInt(32 bit), 0, "divider")
   // divider
 
   core.io.config.control.ta := factory
-    .createReadAndWrite(UInt(32 bits), 28)
+    .register(0x18, "config1")
+    .createReadAndWrite(UInt(32 bits), 0, "ta")
     .init(500 * defaultClkDivider)
   core.io.config.control.tb := factory
-    .createReadAndWrite(UInt(32 bits), 32)
+    .register(0x1c, "config2")
+    .createReadAndWrite(UInt(32 bits), 0, "tb")
     .init(1000 * defaultClkDivider)
   core.io.config.control.te := factory
-    .createReadAndWrite(UInt(32 bits), 36)
+    .register(0x20, "config3")
+    .createReadAndWrite(UInt(32 bits), 0, "te")
     .init(0)
   core.io.config.control.th := factory
-    .createReadAndWrite(UInt(32 bits), 40)
+    .register(0x24, "config4")
+    .createReadAndWrite(UInt(32 bits), 0, "th")
     .init(frequency / 100000000)
   core.io.config.control.vcc_offset := factory
-    .createReadAndWrite(UInt(32 bits), 44)
+    .register(0x28, "config5")
+    .createReadAndWrite(UInt(32 bits), 0, "vcc_offset")
     .init(0)
   core.io.config.control.clk_offset := factory
-    .createReadAndWrite(UInt(32 bits), 48)
+    .register(0x2c, "config6")
+    .createReadAndWrite(UInt(32 bits), 0, "clk_offset")
     .init(0)
 
-  factory.read(rxFifo.io.occupancy.resize(16 bit), 52, 0)
-  factory.read(txFifo.io.availability.resize(16 bits), 52, 16)
+  val buffers = factory.register(0x30, "buffers")
+  buffers.read(rxFifo.io.occupancy.resize(16 bit), 0, "rx_occupancy")
+  buffers.read(txFifo.io.availability.resize(16 bits), 16, "tx_available")
 
   val txFifoOverflow = Bool()
-  factory.readStreamNonBlocking(rxFifo.io.pop, 56)
   factory
-    .createAndDriveFlow(Bits(txFifo.io.push.payload.getWidth bits), 60)
+    .register(0x3c, "rx")
+    .readStreamNonBlocking(rxFifo.io.pop, 31, 0, "data")
+  factory
+    .register(0x40, "tx")
+    .createAndDriveFlow(Bits(txFifo.io.push.payload.getWidth bits), 0, "data")
     .toStream(txFifoOverflow) <> txFifo.io.push
+
+  override def elements = factory.elements
+  override def busComponentName = "ISO7816"
+  override def dataWidth = factory.dataWidth
+  override def wordAddressInc = factory.wordAddressInc
 }
 
 case class Apb3ISO7816Peripheral(
