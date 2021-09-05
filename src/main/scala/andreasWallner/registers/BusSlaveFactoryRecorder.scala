@@ -194,6 +194,8 @@ class BusSlaveFactoryRecorder(factory: BusSlaveFactory) extends BusComponent {
     new RegisterRecorder(registers, address, factory)
   }
 
+  def f = factory
+
   override def elements =
     registers.values.toList.sortWith((a: Register, b: Register) =>
       a.address < b.address
