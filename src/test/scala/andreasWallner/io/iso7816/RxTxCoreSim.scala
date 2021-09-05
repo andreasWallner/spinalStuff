@@ -27,8 +27,8 @@ class RxTxCoreSim extends AnyFunSuite {
       SimTimeout(toSend * 10 * 8 * 10 * 2 * 2)
       dut.io.config.characterRepetition #= true
       dut.io.config.cgt #= 11
-      dut.io.start.tx #= false
-      dut.io.start.rx #= false
+      dut.io.trigger.tx #= false
+      dut.io.trigger.rx #= false
       dut.clockDomain.forkStimulus(10)
 
       dut.io.iso.io.simulatePullup()
@@ -53,9 +53,9 @@ class RxTxCoreSim extends AnyFunSuite {
       }
 
       dut.clockDomain.waitActiveEdgeWhere(dut.io.tx.valid.toBoolean)
-      dut.io.start.tx #= true
+      dut.io.trigger.tx #= true
       dut.clockDomain.waitActiveEdge(1)
-      dut.io.start.tx #= false
+      dut.io.trigger.tx #= false
       dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches == toSend)
       scoreboard.checkEmptyness()
       assert(scoreboard.matches == toSend)
@@ -73,8 +73,8 @@ class RxTxCoreSim extends AnyFunSuite {
       SimTimeout(toSend * 10 * 8 * 10 * 2 * 2)
       dut.io.config.characterRepetition #= true
       dut.io.config.cgt #= 11
-      dut.io.start.tx #= false
-      dut.io.start.rx #= false
+      dut.io.trigger.tx #= false
+      dut.io.trigger.rx #= false
 
       dut.io.iso.io.simulatePullup()
       dut.io.iso.io.prohibitAnyConcurrentDrivers()
@@ -91,9 +91,9 @@ class RxTxCoreSim extends AnyFunSuite {
 
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdge(10)
-      dut.io.start.rx #= true
+      dut.io.trigger.rx #= true
       dut.clockDomain.waitActiveEdge(1)
-      dut.io.start.rx #= false
+      dut.io.trigger.rx #= false
 
       for (_ <- 1 to toSend)
         isosim.txByte(Random.nextInt(0x100), Random.nextBoolean())
@@ -115,8 +115,8 @@ class RxTxCoreSim extends AnyFunSuite {
       SimTimeout(toSend * 10 * 8 * 10 * 2 * 2)
       dut.io.config.characterRepetition #= false
       dut.io.config.cgt #= 14 // increase to make sure TX does not interfere with unexpected error
-      dut.io.start.tx #= false
-      dut.io.start.rx #= false
+      dut.io.trigger.tx #= false
+      dut.io.trigger.rx #= false
       dut.clockDomain.forkStimulus(10)
 
       dut.io.iso.io.simulatePullup()
@@ -136,9 +136,9 @@ class RxTxCoreSim extends AnyFunSuite {
       }
 
       dut.clockDomain.waitActiveEdgeWhere(dut.io.tx.valid.toBoolean)
-      dut.io.start.tx #= true
+      dut.io.trigger.tx #= true
       dut.clockDomain.waitActiveEdge(1)
-      dut.io.start.tx #= false
+      dut.io.trigger.tx #= false
       dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches == toSend)
       scoreboard.checkEmptyness()
       assert(scoreboard.matches == toSend)
@@ -155,8 +155,8 @@ class RxTxCoreSim extends AnyFunSuite {
       SimTimeout(toSend * 10 * 8 * 10 * 2 * 2)
       dut.io.config.characterRepetition #= false
       dut.io.config.cgt #= 14 // increase to make sure TX does not interfere with unexpected error
-      dut.io.start.tx #= false
-      dut.io.start.rx #= false
+      dut.io.trigger.tx #= false
+      dut.io.trigger.rx #= false
       dut.clockDomain.forkStimulus(10)
 
       dut.io.iso.io.simulatePullup()
@@ -172,9 +172,9 @@ class RxTxCoreSim extends AnyFunSuite {
 
       dut.clockDomain.forkStimulus(10)
       dut.clockDomain.waitActiveEdge(10)
-      dut.io.start.rx #= true
+      dut.io.trigger.rx #= true
       dut.clockDomain.waitActiveEdge(1)
-      dut.io.start.rx #= false
+      dut.io.trigger.rx #= false
 
       for (_ <- 1 to toSend)
         isosim.txByte(Random.nextInt(0x100), Random.nextBoolean())
@@ -183,7 +183,6 @@ class RxTxCoreSim extends AnyFunSuite {
         scoreboard.dut.isEmpty && scoreboard.ref.isEmpty
       )
       scoreboard.checkEmptyness()
-
     }
   }
 

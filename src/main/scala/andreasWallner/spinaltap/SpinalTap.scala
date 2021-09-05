@@ -159,6 +159,6 @@ class ApbSpinalTap
         new Wrapped.Spi[Apb3]("SPI", SpiMaster.PeripheralParameter())
       ),
       new Apb3SlaveFactory(_, 0),
-      256 Byte,
+      0x100 Byte,
       ApbSpinalTap.makeInterconnect
     )
