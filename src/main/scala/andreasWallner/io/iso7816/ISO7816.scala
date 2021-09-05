@@ -1,3 +1,38 @@
+/* 
+
+activate
+cold reset
+
+VCC  ------------_______________---------------------------------
+CLK  --_____________________________-----------------------------
+RST  --_______________________________________________-----------
+I/O  -----____________________________________-------------------
+
+     | te |                     |clk|
+     |    vcc   |      th       |      ta    |
+                                |          tb         |
+
+warm reset
+
+VCC  -------------------------------------
+CLK  -------------------------------------
+RST  ----___________________________------
+IO   -----------___________---------------
+        |  te  |
+        |      ta         |
+        |            tb             |
+
+deactivate
+
+VCC  -----------------------___________
+CLK  __________________________________
+RST  --------__________________________
+IO   ---------------___________________
+             | te  |
+             |      vcc     |
+
+*/
+
 package andreasWallner.io.iso7816
 
 import andreasWallner.spinaltap.ISpinalTAPCommModule
@@ -588,8 +623,10 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   val clock = ClockGen()
   val timeout = Timeout()
 
-  val start_non_rx = io.start.tx || io.start.deactivate
-  val last_rx = RegNextWhen(io.start.rx, start_non_rx, False)
+  val start_non_rx = io.start.tx || io.start.deactivate || io.start.activate || io.start.reset || io.start.stop_clock
+  val auto_rx_primed = Reg(Bool()) init False
+  auto_rx_primed.setWhen(io.start.rx && !rxtx.io.trigger.rx)
+  auto_rx_primed.clearWhen(rxtx.io.state.rx_active || rxtx.io.trigger.cancel)
 
   io.iso.vcc := control.io.iso.vcc
   io.iso.rst := control.io.iso.rst
@@ -602,10 +639,10 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   rxtx.io.config := io.config.rxtx
   rxtx.io.rx <> io.rx
   rxtx.io.tx <> io.tx
-  rxtx.io.trigger.rx := io.start.rx
+  rxtx.io.trigger.rx := (!start_non_rx && io.start.rx) || (auto_rx_primed && (control.io.state.busy.fall() || rxtx.io.state.tx_active.fall()))
   rxtx.io.trigger.tx := io.start.tx
   io.state.tx_active := rxtx.io.state.tx_active
-  io.state.rx_active := (!start_non_rx && rxtx.io.state.rx_active) || (last_rx && control.io.start_rx)
+  io.state.rx_active := rxtx.io.state.rx_active || auto_rx_primed
 
   timeout.io.bwt := io.config.bwt
   timeout.io.cwt := io.config.cwt
@@ -631,7 +668,7 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   control.io.tx_done := False // TODO
   io.state.change_active := control.io.state.busy
 
-  clock.io.stop_clock := control.io.state.clock
+  clock.io.stop_clock := !control.io.state.clock
   clock.io.vcc := control.io.iso.vcc
   clock.io.divider := io.config.clockrate
 }
@@ -702,7 +739,8 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
   core.io.start.deactivate := False
   core.io.start.activate := False
   core.io.start.stop_clock := False
-  trigger.setOnSet(core.io.start.rx, 0, "rx")
+  factory.f.setOnSet(core.io.start.rx, 0x10, 0)
+  //trigger.setOnSet(core.io.start.rx, 0, "rx")
   trigger.setOnSet(core.io.start.tx, 1, "tx")
   trigger.setOnSet(core.io.start.reset, 2, "reset")
   trigger.setOnSet(core.io.start.deactivate, 3, "deactivate")
