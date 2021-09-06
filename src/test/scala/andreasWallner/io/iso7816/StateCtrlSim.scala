@@ -32,7 +32,7 @@ class TestInactiveState extends AnyFunSuite {
       dut.clockDomain.waitActiveEdge(5)
 
       send_command(dut, CtrlCommand.Activate)
-      dut.clockDomain.waitActiveEdge(4000)
+      dut.clockDomain.waitActiveEdge(400)
 
       verify_active(dut)
     }
