@@ -637,7 +637,7 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   io.iso.clk := clock.io.iso.clk
   rxtx.io.iso.io.read := io.iso.io.read
   control.io.iso.io.read := io.iso.io.read
-  io.iso.io.write := control.io.state.driving_io ? rxtx.io.iso.io.write | control.io.iso.io.write
+  io.iso.io.write := control.io.state.driving_io ? control.io.iso.io.write | rxtx.io.iso.io.write
   io.iso.io.writeEnable := control.io.state.driving_io ? control.io.iso.io.writeEnable | rxtx.io.iso.io.writeEnable
 
   rxtx.io.config := io.config.rxtx
