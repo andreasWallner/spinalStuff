@@ -526,6 +526,7 @@ case class RxTxCore() extends Component {
 
     io.rx.payload := data(1 to 8)
     RxWait.whenIsActive {
+      io.state.rx_active := True
       when(io.iso.io.read === False) {
         io.state.activity := True
         goto(RxStart)
@@ -533,6 +534,7 @@ case class RxTxCore() extends Component {
     }
 
     RxStart.whenIsActive {
+      io.state.rx_active := True
       timing.en := True
       data := B"1000000000"
       parity := True
@@ -568,6 +570,7 @@ case class RxTxCore() extends Component {
 
     RxStop.whenIsActive {
       timing.en := True
+      io.state.rx_active := True
       when(timing.rx_sample) {
         goto(RxWait)
       }
@@ -584,6 +587,7 @@ case class RxTxCore() extends Component {
     }
 
     RxErrorPost.whenIsActive {
+      io.state.rx_active := True
       io.iso.io.write := True
       io.iso.io.writeEnable := True
       goto(RxWait)
@@ -646,7 +650,7 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
 
   timeout.io.bwt := io.config.bwt
   timeout.io.cwt := io.config.cwt
-  timeout.io.en := io.state.rx_active
+  timeout.io.en := rxtx.io.state.rx_active
   timeout.io.activity := rxtx.io.state.activity
   rxtx.io.trigger.cancel := timeout.io.c_timeout || timeout.io.b_timeout
 
