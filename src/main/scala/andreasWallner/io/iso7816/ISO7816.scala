@@ -184,6 +184,9 @@ case class StateCtrl() extends Component {
       io.iso.io.write := False
     }
   }
+  // TODO extend duration of driving for one cycle and disable writeEnable
+  // so that we do not produce a spike because write and writeEnable go low
+  // in the same cycle
 
   io.start_rx := False
   io.inhibit_tx := False
