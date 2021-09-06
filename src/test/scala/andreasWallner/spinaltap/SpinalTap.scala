@@ -14,14 +14,14 @@ class SpinalTapTest extends AnyFunSuite {
     dut.doSim("configure and run ISO communication") { dut =>
       SimTimeout(100000)
       val driver = Apb3Driver(dut.io.bus, dut.clockDomain)
-      println(dut.io.port0);
-      //dut.io.port0(0).read #= true // IO
+      dut.io.port0.read #= 0x7 // IO
+      dut.io.port1.read #= 0x7
       dut.clockDomain.forkStimulus(10)
 
       val isobase = 0x43c00400;
       val muxbase = 0x43c00300;
 
-      driver.write(muxbase, 0x201)
+      driver.write(muxbase, 0x304)
 
       driver.write(isobase + 0x14, 50)
       driver.write(isobase + 0x44, 2000)

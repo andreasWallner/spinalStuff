@@ -345,7 +345,7 @@ case class Timeout() extends Component {
     val b_timeout = out Bool() setAsReg
   }
 
-  val cnt = Reg(UInt())
+  val cnt = Reg(UInt(32 bit))
   val first = Reg(Bool())
   when(!io.en || io.activity) {
     cnt := 0
