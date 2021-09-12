@@ -87,6 +87,7 @@ case class ControlConfig() extends Bundle {
 
 case class RxTxConfig() extends Bundle {
   val characterRepetition = Bool()
+  val baudrateDivider = UInt(32 bit) // TODO: make it configurable?
   val cgt = UInt(8 bit) // in ETUs - 1 // TODO: size correctly,
 }
 
@@ -399,12 +400,12 @@ case class RxTxCore() extends Component {
     val etu = False
     val rx_sample = False
 
-    val cnt = Reg(UInt(5 bit))
+    val cnt = Reg(UInt(32 bit))
     when(cnt === 0 || !en) {
-      cnt := 9
+      cnt := io.config.baudrateDivider
       etu := en
       rx_error_bit_strb := en
-    } elsewhen (cnt === 4) {
+    } elsewhen (cnt === io.config.baudrateDivider >> 1) {
       rx_sample := True
       cnt := cnt - 1
     } otherwise {
@@ -721,8 +722,8 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
   state.doBitsAccumulationAndClearOnRead(rxFifoIsOverflow.asBits, 3, "rx_ovfl")
   state.doBitsAccumulationAndClearOnRead(txFifo.io.push.isStall.asBits, 4, "tx_ovfl")
 
-  val config = factory.register(0x0c, "config")
-  core.io.config.rxtx.characterRepetition := config.createReadAndWrite(
+  val config1 = factory.register(0x0c, "config1")
+  core.io.config.rxtx.characterRepetition := config1.createReadAndWrite(
     Bool(),
     0,
     "charrep",
@@ -732,12 +733,21 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
       Value(1, "en", "enabled")
     )
   )
-  core.io.config.rxtx.cgt := config.createReadAndWrite(
+  core.io.config.rxtx.cgt := config1.createReadAndWrite(
     UInt(core.io.config.rxtx.cgt.getWidth bits),
     1,
     "cgt",
     "character guard time in module clocks"
   )
+  val config2 = factory.register(0x4c, "config2")
+  core.io.config.rxtx.baudrateDivider := config2
+    .createReadAndWrite(
+      UInt(32 bit),
+      0,
+      "baudrate",
+      "divider for baudrate, baudrate = fmodule / divider" // TODO more useful description not mixing up baudrate and divider
+    )
+    .init(frequency / 9600)
 
   val trigger = factory.register(0x10, "trigger")
   core.io.start.rx := False

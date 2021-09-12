@@ -26,6 +26,7 @@ class RxTxCoreSim extends AnyFunSuite {
       val toSend = 500
       SimTimeout(toSend * 10 * 8 * 10 * 2 * 2)
       dut.io.config.characterRepetition #= true
+      dut.io.config.baudrateDivider #= 9
       dut.io.config.cgt #= 11
       dut.io.trigger.tx #= false
       dut.io.trigger.rx #= false
@@ -72,6 +73,7 @@ class RxTxCoreSim extends AnyFunSuite {
       val toSend = 500
       SimTimeout(toSend * 10 * 8 * 10 * 2 * 2)
       dut.io.config.characterRepetition #= true
+      dut.io.config.baudrateDivider #= 9
       dut.io.config.cgt #= 11
       dut.io.trigger.tx #= false
       dut.io.trigger.rx #= false
@@ -114,6 +116,7 @@ class RxTxCoreSim extends AnyFunSuite {
       val toSend = 500
       SimTimeout(toSend * 10 * 8 * 10 * 2 * 2)
       dut.io.config.characterRepetition #= false
+      dut.io.config.baudrateDivider #= 9
       dut.io.config.cgt #= 14 // increase to make sure TX does not interfere with unexpected error
       dut.io.trigger.tx #= false
       dut.io.trigger.rx #= false
@@ -154,6 +157,7 @@ class RxTxCoreSim extends AnyFunSuite {
       val toSend = 500
       SimTimeout(toSend * 10 * 8 * 10 * 2 * 2)
       dut.io.config.characterRepetition #= false
+      dut.io.config.baudrateDivider #= 9
       dut.io.config.cgt #= 14 // increase to make sure TX does not interfere with unexpected error
       dut.io.trigger.tx #= false
       dut.io.trigger.rx #= false
