@@ -647,7 +647,8 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   rxtx.io.config := io.config.rxtx
   rxtx.io.rx <> io.rx
   rxtx.io.tx <> io.tx
-  rxtx.io.trigger.rx := (!start_non_rx && io.start.rx) || (auto_rx_primed && (control.io.state.busy.fall() || rxtx.io.state.tx_active.fall()))
+  rxtx.io.trigger.rx := (!start_non_rx && io.start.rx) || (auto_rx_primed && (control.io.state.busy
+    .fall() || rxtx.io.state.tx_active.fall()))
   rxtx.io.trigger.tx := io.start.tx
   io.state.tx_active := rxtx.io.state.tx_active
   io.state.rx_active := rxtx.io.state.rx_active || auto_rx_primed
@@ -685,7 +686,8 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
     generic: PeripheralGenerics,
     busType: HardType[T],
     metaFactory: T => BusSlaveFactory
-) extends Component with BusComponent {
+) extends Component
+    with BusComponent {
   val io = new Bundle {
     val iso = master(ISO7816())
     val bus = slave(busType())
@@ -705,7 +707,9 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
     case FixedFrequency(value) => value.toLong
     case _                     => 0L
   }
-  factory.register(0x0, "info0").read(U(frequency, 32 bit), 0, "frequency", "Used module frequency")
+  factory
+    .register(0x0, "info0")
+    .read(U(frequency, 32 bit), 0, "frequency", "Used module frequency")
 
   val info1 = factory.register(0x04, "info1")
   val rxBufferSize = UInt(16 bits)
@@ -720,7 +724,11 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
   state.read(core.io.state.tx_active, 1, "tx_active")
   state.read(core.io.state.change_active, 2, "change_active")
   state.doBitsAccumulationAndClearOnRead(rxFifoIsOverflow.asBits, 3, "rx_ovfl")
-  state.doBitsAccumulationAndClearOnRead(txFifo.io.push.isStall.asBits, 4, "tx_ovfl")
+  state.doBitsAccumulationAndClearOnRead(
+    txFifo.io.push.isStall.asBits,
+    4,
+    "tx_ovfl"
+  )
 
   val config1 = factory.register(0x0c, "config1")
   core.io.config.rxtx.characterRepetition := config1.createReadAndWrite(
