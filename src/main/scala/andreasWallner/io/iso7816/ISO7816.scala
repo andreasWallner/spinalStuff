@@ -756,8 +756,7 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
   core.io.start.deactivate := False
   core.io.start.activate := False
   core.io.start.stop_clock := False
-  factory.f.setOnSet(core.io.start.rx, 0x10, 0)
-  //trigger.setOnSet(core.io.start.rx, 0, "rx")
+  trigger.setOnSet(core.io.start.rx, 0, "rx")
   trigger.setOnSet(core.io.start.tx, 1, "tx")
   trigger.setOnSet(core.io.start.reset, 2, "reset")
   trigger.setOnSet(core.io.start.deactivate, 3, "deactivate")
