@@ -68,4 +68,35 @@ case class ISO7816SimTx(io: TriState[Bool], baudrate: Double)(
 
     error
   }
+
+  def tx(data: String): Boolean = {
+    data.grouped(2).map(Integer.parseUnsignedInt(_, 16)).foreach(x => {
+      if(txByte(x))
+        return true
+    })
+    return false
+  }
+}
+
+case class ISO7816SimClient(iso: ISO7816)(
+  clientFun: (ISO7816SimClient) => Unit
+) {
+  iso.io.simulatePullup()
+  fork {
+    clientFun(this)
+  }
+
+  def waitForReset() = {
+    waitUntil(iso.rst.toBoolean == false)
+  }
+
+  def waitForActivation() = {
+    iso.io.highz()
+    waitUntil(iso.vcc.toBoolean == true && iso.io.read.toBoolean == true && iso.rst.toBoolean == true)
+  }
+
+  def send(s: String, baudrate: Double) = {
+    val tx = ISO7816SimTx(iso.io, baudrate){(_, _, _) => {}}
+    assert(tx.tx(s) == false, "Unexpected error during TX")
+  }
 }
