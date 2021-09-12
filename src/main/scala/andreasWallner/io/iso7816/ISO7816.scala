@@ -765,8 +765,13 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
   trigger.setOnSet(core.io.start.stop_clock, 5, "stop_clock")
 
   val config0 = factory.register(0x14, "config0")
-  val defaultClkDivider = frequency / 3200000
-  core.io.config.clockrate := config0.createReadAndWrite(UInt(32 bit), 0, "divider")
+  val defaultClkDivider = frequency / 3200000 / 2
+  core.io.config.clockrate := config0.createReadAndWrite(
+    UInt(32 bit),
+    defaultClkDivider.toInt,
+    "divider",
+    "divider for clock generator, clockrate = 2 * fmodule / divider"
+  ) // TODO describe difference from baudrate divider
   // divider
 
   core.io.config.control.ta := factory
@@ -807,8 +812,22 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
     .createAndDriveFlow(Bits(txFifo.io.push.payload.getWidth bits), 0, "data")
     .toStream(txFifoOverflow) <> txFifo.io.push
 
-  core.io.config.bwt := factory.register(0x44, "config7").createReadAndWrite(UInt(32 bit), 0, "bwt")
-  core.io.config.cwt := factory.register(0x48, "config8").createReadAndWrite(UInt(32 bit), 0, "cwt")
+  core.io.config.bwt := factory
+    .register(0x44, "config7")
+    .createReadAndWrite(
+      UInt(32 bit),
+      0,
+      "bwt",
+      "bwt in fmodule cycles, set to 0 to disable"
+    )
+  core.io.config.cwt := factory
+    .register(0x48, "config8")
+    .createReadAndWrite(
+      UInt(32 bit),
+      0,
+      "cwt",
+      "cwt in fmodule cycles, set to 0 to disable"
+    )
 
   override def elements = factory.elements
   override def busComponentName = "ISO7816"
