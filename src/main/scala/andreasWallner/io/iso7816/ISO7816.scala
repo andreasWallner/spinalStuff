@@ -495,7 +495,7 @@ case class RxTxCore() extends Component {
     // moment 10 - 11
     TxWaitError.whenIsActive {
       timing.en := True
-      io.state.tx_active := False
+      io.state.tx_active := True
       when(rx_error_bit_strb) {
         when(io.iso.io.read || !io.config.characterRepetition) {
           io.tx.ready := True
@@ -515,11 +515,13 @@ case class RxTxCore() extends Component {
       }
     }
 
-    // moment 12 (no error) / 13 (error)
+    // moment 12 (no error) / 13 (error) + extra guard time
+    // skip guard time in the case the last byte was sent
+    // to immediately be able to receive a response
     TxStop.whenIsActive {
       timing.en := True
       io.state.tx_active := True
-      when(timing.etu && timing.cgtOver) {
+      when(timing.etu && (timing.cgtOver || !io.tx.valid)) {
         when(io.tx.valid) {
           goto(Tx)
         } otherwise {

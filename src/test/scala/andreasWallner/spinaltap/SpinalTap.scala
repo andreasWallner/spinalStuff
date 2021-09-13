@@ -31,15 +31,15 @@ class SpinalTapTest extends AnyFunSuite {
     io.iso.clk <> spinaltap.io.port0.write(2)
     io.iso.vcc <> True
 
-    for(i <- 1 to 4)
+    for (i <- 1 to 4)
       spinaltap.io.port0.read(i) := spinaltap.io.port0.write(i)
-    for(i <- 0 to 4)
+    for (i <- 0 to 4)
       spinaltap.io.port1.read(i) := False
   })
 
   test("configure and run ISO communication") {
     dut.doSim("configure and run ISO communication") { dut =>
-      SimTimeout(500000)
+      SimTimeout(1000000)
       val driver = Apb3Driver(dut.io.bus, dut.clockDomain)
       ISO7816SimClient(dut.io.iso) { client =>
         val baudrate = 50
@@ -52,8 +52,14 @@ class SpinalTapTest extends AnyFunSuite {
         sleep(100 * T)
         simLog("sending ATR")
         client.send("3B00", T)
+
+        simLog("receiving")
+        assert(client.receive(4, T) == List(0x11, 0x22, 0x33, 0x44))
+        sleep(10 * T)
+        simLog("responding")
+        client.send("9021", T)
       }
-      
+
       dut.clockDomain.forkStimulus(10)
 
       val isobase = 0x43c00400;
@@ -61,10 +67,10 @@ class SpinalTapTest extends AnyFunSuite {
 
       driver.write(muxbase, 0x403)
 
-      driver.write(isobase + 0x14, 25)   // divider
+      driver.write(isobase + 0x14, 25) // divider
       driver.write(isobase + 0x4c, 25)
-      driver.write(isobase + 0x44, 0)//40000 * 50) // bwt
-      driver.write(isobase + 0x48, 3000)//40000 * 50) // cwt
+      driver.write(isobase + 0x44, 0) //40000 * 50) // bwt
+      driver.write(isobase + 0x48, 3000) //40000 * 50) // cwt
 
       driver.write(isobase + 0x18, 50 * 100) // ta
       driver.write(isobase + 0x1c, 50 * 500) // tb
@@ -79,6 +85,21 @@ class SpinalTapTest extends AnyFunSuite {
       assert((driver.read(isobase + 0x30) & 0xffff) == 2)
       assert((driver.read(isobase + 0x3c) & 0xff) == 0x3b)
       assert((driver.read(isobase + 0x3c) & 0xff) == 0x00)
+      assert((driver.read(isobase + 0x30) & 0xffff) == 0)
+      dut.clockDomain.waitActiveEdge(10)
+
+      simLog("sending request")
+      driver.write(isobase + 0x40, 0x11)
+      driver.write(isobase + 0x40, 0x22)
+      driver.write(isobase + 0x40, 0x33)
+      driver.write(isobase + 0x40, 0x44)
+      driver.write(isobase + 0x10, 0x03) // trigger tx & rx
+
+      simLog("receiving response")
+      while (driver.read(isobase + 0x08) != 0) {}
+      assert((driver.read(isobase + 0x30) & 0xffff) == 2)
+      assert((driver.read(isobase + 0x3c) & 0xff) == 0x90)
+      assert((driver.read(isobase + 0x3c) & 0xff) == 0x21)
       assert((driver.read(isobase + 0x30) & 0xffff) == 0)
       dut.clockDomain.waitActiveEdge(10)
     }
