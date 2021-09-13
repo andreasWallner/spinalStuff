@@ -1,4 +1,4 @@
-/* 
+/*
 
 activate
 cold reset
@@ -31,7 +31,7 @@ IO   ---------------___________________
              | te  |
              |      vcc     |
 
-*/
+ */
 
 package andreasWallner.io.iso7816
 
@@ -340,13 +340,13 @@ case class ClockGen(divider_width: Int = 32) extends Component {
 
 case class Timeout() extends Component {
   val io = new Bundle {
-    val cwt = in UInt()
-    val bwt = in UInt()
+    val cwt = in UInt ()
+    val bwt = in UInt ()
 
-    val en = in Bool()
-    val activity = in Bool()
-    val c_timeout = out Bool() setAsReg
-    val b_timeout = out Bool() setAsReg
+    val en = in Bool ()
+    val activity = in Bool ()
+    val c_timeout = out Bool () setAsReg
+    val b_timeout = out Bool () setAsReg
   }
 
   val cnt = Reg(UInt(32 bit))
@@ -374,12 +374,12 @@ case class RxTxCore() extends Component {
     val state = new Bundle {
       val tx_active = out Bool ()
       val rx_active = out Bool ()
-      val activity = out Bool()
+      val activity = out Bool ()
     }
     val trigger = new Bundle {
       val tx = in Bool ()
       val rx = in Bool ()
-      val cancel = in Bool()
+      val cancel = in Bool ()
     }
     val tx = slave(Stream(Bits(8 bit)))
     val rx = master(Flow(Bits(8 bit)))
@@ -610,8 +610,8 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
       val control = in(ControlConfig())
       val rxtx = in(RxTxConfig())
       val clockrate = in(UInt(32 bit))
-      val bwt = in UInt(32 bit)
-      val cwt = in UInt(32 bit)
+      val bwt = in UInt (32 bit)
+      val cwt = in UInt (32 bit)
     }
     val state = new Bundle {
       val tx_active = out Bool ()
