@@ -117,7 +117,6 @@ case class ISO7816SimClient(iso: ISO7816)(
     )
     sleep(baudrate.toLong / 2)
     for (idx <- 0 to 7) {
-      println(f"${simTime()} $idx ${data}")
       sleep(baudrate.toLong)
       data |= (if (iso.io.write.toBoolean) 1 else 0) << idx
       parity ^= iso.io.write.toBoolean
@@ -132,7 +131,7 @@ case class ISO7816SimClient(iso: ISO7816)(
   }
 
   def receive(len: Int, baudrate: Double): List[Int] = {
-    val x = for(idx <- 0 until len) yield rxByte(baudrate)
+    val x = for (idx <- 0 until len) yield rxByte(baudrate)
     x.toList
   }
 }
