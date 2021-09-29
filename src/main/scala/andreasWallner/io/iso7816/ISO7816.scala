@@ -777,10 +777,11 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
   val defaultClkDivider = frequency / 3200000 / 2
   core.io.config.clockrate := config0.createReadAndWrite(
     UInt(32 bit),
-    defaultClkDivider.toInt,
+    0,
     "divider",
     "divider for clock generator, clockrate = 2 * fmodule / divider"
-  ) // TODO describe difference from baudrate divider
+  ) init defaultClkDivider.toInt
+  // TODO describe difference from baudrate divider
   // divider
 
   core.io.config.control.ta := factory
