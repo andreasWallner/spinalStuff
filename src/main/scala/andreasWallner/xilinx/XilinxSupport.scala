@@ -120,7 +120,13 @@ case class AxiLite4Support(axilite: AxiLite4) extends BusSupport {
   def abstractionType: SpiritAbstractionType =
     SpiritAbstractionType("xilinx.com", "interface", "aximm_rtl", "1.0")
 
-  override def addAttributes(idx: Integer): Unit = ???
+  override def addAttributes(idx: Integer): Unit = {
+    def attr = "X_INTERFACE_INFO"
+    def info = "xilinx.com:interface:aximm:1.0 " + name(idx) + " "
+    for (mapping <- portMaps())
+      mapping.physicalPort.addAttribute(attr, info + mapping.logicalPort)
+    axilite.r.ready.addAttribute("X_INTERFACE_PARAMETER", f"XIL_INTERFACENAME ${name(idx)}, DATA_WIDTH ${axilite.config.dataWidth}, PROTOCOL AXI4LITE, ADDRESS_WIDTH ${axilite.config.addressWidth}")
+  }
 }
 
 case class Apb3Support(apb3: Apb3) extends BusSupport {
