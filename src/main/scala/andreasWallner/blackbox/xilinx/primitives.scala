@@ -15,11 +15,11 @@ object FDP {
 }
 
 case class FDP() extends BlackBox {
-  val C = in Bool
-  val D = in Bool
-  val PRE = in Bool
+  val C = in Bool()
+  val D = in Bool()
+  val PRE = in Bool()
 
-  val Q = out Bool
+  val Q = out Bool()
 }
 
 object FDPE {
@@ -34,12 +34,12 @@ object FDPE {
 }
 
 case class FDPE() extends BlackBox {
-  val C = in Bool
-  val CE = in Bool
-  val D = in Bool
-  val PRE = in Bool
+  val C = in Bool()
+  val CE = in Bool()
+  val D = in Bool()
+  val PRE = in Bool()
 
-  val Q = out Bool
+  val Q = out Bool()
 }
 
 object FDC {
@@ -53,11 +53,11 @@ object FDC {
 }
 
 case class FDC() extends BlackBox {
-  val C = in Bool
-  val D = in Bool
-  val CLR = in Bool
+  val C = in Bool()
+  val D = in Bool()
+  val CLR = in Bool()
 
-  val Q = out Bool
+  val Q = out Bool()
 }
 
 object FDCE {
@@ -72,10 +72,10 @@ object FDCE {
 }
 
 case class FDCE() extends BlackBox {
-  val C = in Bool
-  val CE = in Bool
-  val D = in Bool
-  val CLR = in Bool
+  val C = in Bool()
+  val CE = in Bool()
+  val D = in Bool()
+  val CLR = in Bool()
 
-  val Q = out Bool
+  val Q = out Bool()
 }

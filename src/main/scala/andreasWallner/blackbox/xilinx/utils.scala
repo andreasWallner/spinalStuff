@@ -24,8 +24,8 @@ case class ResetBridge(
 ) extends Component {
   val io = new Bundle {
     val areset = in Bits (lines bits)
-    val clk = in Bool
-    val reset = out Bool
+    val clk = in Bool()
+    val reset = out Bool()
   }
   assert(
     flopCnt >= 2,

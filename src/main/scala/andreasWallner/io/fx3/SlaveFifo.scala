@@ -6,14 +6,14 @@ import spinal.lib.io.TriState
 
 case class SlaveFifo() extends Bundle with IMasterSlave {
   val dq = TriState(Bits(16 bit))
-  val wr_n = out Bool
-  val rd_n = out Bool
-  val oe_n = out Bool
+  val wr_n = out Bool()
+  val rd_n = out Bool()
+  val oe_n = out Bool()
 
-  val empty_n = in Bool
-  val full_n = in Bool
+  val empty_n = in Bool()
+  val full_n = in Bool()
 
-  val pktend_n = out Bool
+  val pktend_n = out Bool()
 
   def asMaster() = {
     master(dq)
@@ -103,10 +103,10 @@ case class SlaveFifoMaster() extends Component {
     val fx3 = master(SlaveFifo())
     val tx = new Bundle {
       val data = slave(Stream(Bits(16 bit)))
-      val en = in Bool
-      val pktend = in Bool
+      val en = in Bool()
+      val pktend = in Bool()
       val pktend_timeout = in UInt (16 bits)
-      val pktend_done = out Bool
+      val pktend_done = out Bool()
     }
     val rx = new Bundle {
       val data = master(Stream(Bits(16 bit)))

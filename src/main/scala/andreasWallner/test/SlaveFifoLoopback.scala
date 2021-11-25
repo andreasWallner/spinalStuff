@@ -8,7 +8,7 @@ import andreasWallner.misc.Xorshift
 case class SlaveFifoLoopback() extends Component {
   val io = new Bundle {
     val fx3 = master(SlaveFifo())
-    val activity = out Bool
+    val activity = out Bool()
     val mode = in Bits(4 bit)
 
     val toggle1Hz = out(Reg(Bool))
@@ -20,7 +20,7 @@ case class SlaveFifoLoopback() extends Component {
   sfm.io.tx.pktend := False
   sfm.io.tx.pktend_timeout := 10000
   sfm.io.tx.en := sfmTxEn
-  
+
   val xorshift = Xorshift()
   xorshift.io.run := io.mode(0)
   val fifo = StreamFifo(
@@ -30,7 +30,7 @@ case class SlaveFifoLoopback() extends Component {
   fifo.io.push << sfm.io.rx.data
   val source = StreamArbiterFactory.lowerFirst.noLock.onArgs(xorshift.io.data, fifo.io.pop)
   source >> sfm.io.tx.data
-  
+
   val rxTimeout = Timeout(100)
   when((sfm.io.rx.data.ready && sfm.io.rx.data.valid) || sfmTxEn || io.mode(0)) { rxTimeout.clear() }
   when(fifo.io.occupancy === 1022 || rxTimeout || io.mode(0) ) {

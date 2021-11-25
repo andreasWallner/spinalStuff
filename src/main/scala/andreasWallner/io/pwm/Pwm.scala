@@ -28,7 +28,7 @@ object Pwm {
   ) extends Component with BusComponent {
     val io = new Bundle {
       val bus = slave(busType())
-      val pwm = out Vec (Bool, p.core.channelCnt)
+      val pwm = out Vec (Bool(), p.core.channelCnt)
     }
 
     val factory = new BusSlaveFactoryRecorder(metaFactory(io.bus))
@@ -111,8 +111,8 @@ object Pwm {
       val max_count = in UInt (parameters.counterWidth bits)
       val levels = in Vec (UInt(parameters.counterWidth bits), parameters.channelCnt)
       val pwm = out Vec (Bool, parameters.channelCnt)
-      val run = in Bool
-      val willOverflow = out Bool
+      val run = in Bool()
+      val willOverflow = out Bool()
     }
 
     val counter = new Area {

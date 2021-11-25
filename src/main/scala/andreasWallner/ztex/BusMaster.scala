@@ -28,8 +28,8 @@ import andreasWallner.spinaltap.Event
  * ===Write Register (0x01)===
  * Example:
  * {{{
- * >> 01ss aaaa dddd dddd 
- * << 
+ * >> 01ss aaaa dddd dddd
+ * <<
  *
  * s: 8bit source
  * a: 16bit address
@@ -52,10 +52,10 @@ import andreasWallner.spinaltap.Event
  * {{{
  * >> 7frr
  * <<
- * 
+ *
  * r: 8bit RFU
  * }}}
- * 
+ *
  * ===Event (0x80)===
  * Any Opcode with MSB set is an async event:
  * {{{
@@ -71,8 +71,8 @@ case class BusMaster() extends Component {
     val resp = master(Stream(Bits(16 bit)))
     val apb3 = master(Apb3(Apb3Config(16, 32)))
     val events = slave(Stream(Event()))
-    val pktend = out Bool
-    val pktend_done = in Bool
+    val pktend = out Bool()
+    val pktend_done = in Bool()
   }
 
   val fsm = new StateMachine {
@@ -202,19 +202,19 @@ case class BusMaster() extends Component {
         io.resp.valid := True
         when(io.resp.ready) { goto(stateIdle) }
       }
-    
+
     io.pktend := False
     stateStartFlush
       .whenIsActive {
         io.pktend := True
         goto(stateWaitFlush)
       }
-    
+
     stateWaitFlush
       .whenIsActive {
         when(io.pktend_done) { goto(stateIdle) }
       }
-    
+
     io.events.ready := False
     stateEventOpcode
       .onEntry(data(0 to 15) := io.events.payload.data)
@@ -224,7 +224,7 @@ case class BusMaster() extends Component {
         io.events.ready := True // master may not remove valid -> single cycle sufficient
         when(io.resp.ready) { goto(stateEventData) }
       }
-    
+
     stateEventData
       .whenIsActive {
         io.resp.payload := data(0 to 15)

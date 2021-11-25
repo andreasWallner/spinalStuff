@@ -1,15 +1,16 @@
 name := "andreasWallner"
 version := "0.1"
 scalaVersion := "2.11.12"
-val spinalVersion = "1.4.3"
+
+val spinalVersion = "1.6.0"
+val spinalCore = "com.github.spinalhdl" % "spinalhdl-core_2.11" % spinalVersion
+val spinalLib = "com.github.spinalhdl" % "spinalhdl-lib_2.11" % spinalVersion
+val spinalIdslPlugin = compilerPlugin("com.github.spinalhdl" % "spinalhdl-lib_2.11" % spinalVersion)
 
 libraryDependencies ++= Seq(
-  "com.github.spinalhdl" % "spinalhdl-core_2.11" % spinalVersion,
-  "com.github.spinalhdl" % "spinalhdl-lib_2.11" % spinalVersion,
+  spinalCore, spinalLib, spinalIdslPlugin,
   "org.scalatest" %% "scalatest" % "3.1.1" % "test",
-  compilerPlugin("com.github.spinalhdl" % "spinalhdl-idsl-plugin_2.11" % spinalVersion)
 )
 
 logBuffered in Test := false
 fork := true
-EclipseKeys.withSource := true
