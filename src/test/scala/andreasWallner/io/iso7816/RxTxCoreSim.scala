@@ -28,6 +28,7 @@ class RxTxCoreSim extends AnyFunSuite {
       dut.io.config.characterRepetition #= true
       dut.io.config.baudrateDivider #= 9
       dut.io.config.cgt #= 11
+      dut.io.trigger.cancel #= false
       dut.io.trigger.tx #= false
       dut.io.trigger.rx #= false
       dut.clockDomain.forkStimulus(10)
@@ -75,6 +76,7 @@ class RxTxCoreSim extends AnyFunSuite {
       dut.io.config.characterRepetition #= true
       dut.io.config.baudrateDivider #= 9
       dut.io.config.cgt #= 11
+      dut.io.trigger.cancel #= false
       dut.io.trigger.tx #= false
       dut.io.trigger.rx #= false
 
@@ -118,6 +120,7 @@ class RxTxCoreSim extends AnyFunSuite {
       dut.io.config.characterRepetition #= false
       dut.io.config.baudrateDivider #= 9
       dut.io.config.cgt #= 14 // increase to make sure TX does not interfere with unexpected error
+      dut.io.trigger.cancel #= false
       dut.io.trigger.tx #= false
       dut.io.trigger.rx #= false
       dut.clockDomain.forkStimulus(10)
@@ -159,6 +162,7 @@ class RxTxCoreSim extends AnyFunSuite {
       dut.io.config.characterRepetition #= false
       dut.io.config.baudrateDivider #= 9
       dut.io.config.cgt #= 14 // increase to make sure TX does not interfere with unexpected error
+      dut.io.trigger.cancel #= false
       dut.io.trigger.tx #= false
       dut.io.trigger.rx #= false
       dut.clockDomain.forkStimulus(10)
