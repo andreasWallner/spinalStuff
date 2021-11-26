@@ -41,8 +41,8 @@ object SpiMaster {
   ) {}
 
   case class PeripheralParameter(
-      rxBufferSize: Int = 256,
-      txBufferSize: Int = 256,
+      rxBufferSize: Int = 255,
+      txBufferSize: Int = 255,
       core: CoreParameter = CoreParameter()
   ) {
     def rxBufferSizeBits = log2Up(rxBufferSize) bits

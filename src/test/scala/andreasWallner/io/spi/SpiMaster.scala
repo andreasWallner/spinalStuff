@@ -109,8 +109,10 @@ class Apb3SpiMasterSim extends AnyFunSuite {
 
       apb.write(0x18, divider << 2)
 
+      // dummy write to TX fifo to check flush
       apb.write(0x24, 0xde)
       apb.write(0x24, 0xad)
+      // flush
       apb.write(0x1c, BigInt(1) << 31)
 
       for (_ <- 1 to toSend) {
@@ -118,18 +120,21 @@ class Apb3SpiMasterSim extends AnyFunSuite {
         scoreboard.pushRef(r)
         apb.write(0x24, r)
       }
-      assert(apb.read(0x14) >> 16 == 10)
-      apb.write(0x1c, 1)
+      // check bytes are in TX FIFO
+      assert(apb.read(0x10) >> 22 == 10)
+      // trigger tx
+      apb.write(0x1c, 1 << 1)
 
+      // wait until not busy
       while ((apb.read(0x10) & 1) != 0) {}
 
-      val toRead = apb.read(0x14) & 0xffff
+      val toRead = (apb.read(0x10) >> 12) & 0xff
       for (_ <- 1 to toRead.toInt) {
         val v = apb.read(0x20)
         assert((v & (BigInt(1) << 31)) != 0)
         scoreboard.pushDut((v & 0xff).toInt)
       }
-
+      // check rx fifo is now empty
       val v = apb.read(0x20)
       assert((v & (BigInt(1) << 31)) == 0)
 
