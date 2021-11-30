@@ -64,6 +64,28 @@ class RegisterRecorder(
     factory.createReadAndWrite(that, address, bitOffset, name)
   }
 
+  def driveAndRead[T <: Data](
+    that: T,
+    bitOffset: Int,
+    name: String,
+    doc: String = null,
+    values: List[Value] = List()
+  ): T = {
+    append(
+      Field(
+        name,
+        that,
+        Section(bitOffset + that.getBitsWidth - 1, bitOffset),
+        AccessType.RW,
+        0,
+        false,
+        Option(doc),
+        values
+      )
+    )
+    factory.driveAndRead(that, address, bitOffset, name)
+  }
+
   def doBitsAccumulationAndClearOnRead(
       that: Bits,
       bitOffset: Int,

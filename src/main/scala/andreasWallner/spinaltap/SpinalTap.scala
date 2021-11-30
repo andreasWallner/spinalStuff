@@ -4,7 +4,7 @@ import andreasWallner.io.Gpio
 import andreasWallner.io.iomux.IOMux
 import andreasWallner.io.pwm.Pwm
 import andreasWallner.io.spi.SpiMaster
-import andreasWallner.registers.datamodel.{Bus, BusElement}
+import andreasWallner.registers.datamodel.{Bus, BusElement, BusComponent}
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Decoder, Apb3SlaveFactory}
@@ -110,10 +110,15 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     for((m, idx) <- allModules.zipWithIndex) {
       m.wrapped match {
         case b: BusElement => l += ((b, (0x43c00000 + moduleAddressSpace * idx).toLong))
-        case _ => 
+        case _ =>
       }
     }
     l.toList
+  }
+
+  def muxConnections: List[(Int, Option[BusComponent])] = {
+    val moduleConnections: List[(Int, Option[BusComponent])] = for ((module, idx) <- allModules.zipWithIndex) yield (idx, Some(module.wrapped.asInstanceOf[BusComponent]))
+    moduleConnections
   }
 }
 

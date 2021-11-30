@@ -8,6 +8,7 @@ import andreasWallner._
 import andreasWallner.xilinx._
 import andreasWallner.io.pwm._
 import andreasWallner.registers.generator.{CHeader, YAML, CppHeader, KvasirHeader}
+import andreasWallner.spinaltap.MuxConnections
 import andreasWallner.registers.datamodel.BusComponent
 
 object AxiLite4PwmTopLevel {
@@ -52,12 +53,14 @@ object ApbSpinalTap {
     ).generateVerilog(
       XilinxNamer(XilinxInOutWrapper(new andreasWallner.spinaltap.ApbSpinalTap()))
     );
+
+    new MuxConnections.CppHeader(report.toplevel.muxConnections, Some("spinaltap::iomux")).write(f"${GlobalData.get.phaseContext.config.targetDirectory}/iomux_connection.hpp")
     for (e <- report.toplevel.elements) {
       e match {
         case (b: BusComponent, offset: Long) =>
           new CHeader(b).write()
           new CppHeader(b, namespace=Some(s"spinaltap::${b.busComponentName.toLowerCase}::registers")).write()
-          new KvasirHeader(b, namespace=Some(s"spinaltap::register::${b.busComponentName.toLowerCase}")).write()
+          //new KvasirHeader(b, namespace=Some(s"spinaltap::register::${b.busComponentName.toLowerCase}")).write()
           new YAML(b).write()
         case other => println("Not generating for " + other)
       }

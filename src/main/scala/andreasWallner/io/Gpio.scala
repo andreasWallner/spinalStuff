@@ -9,6 +9,8 @@ import spinal.lib.bus.bmb.{
   BmbParameter,
   BmbSlaveFactory
 }
+import andreasWallner.registers.BusSlaveFactoryRecorder
+import andreasWallner.registers.datamodel.BusComponent
 import spinal.lib.bus.misc.BusSlaveFactory
 import spinal.lib.io.TriStateArray
 
@@ -27,8 +29,9 @@ object Gpio {
   class Ctrl[T <: spinal.core.Data with IMasterSlave](
       p: Gpio.Parameter,
       busType: HardType[T],
-      factory: T => BusSlaveFactory
-  ) extends Component {
+      metaFactory: T => BusSlaveFactory
+  ) extends Component
+      with BusComponent {
 
     if (p.input == null) p.input = 0 until p.width
     if (p.output == null) p.output = 0 until p.width
@@ -39,16 +42,20 @@ object Gpio {
       val interrupt = out(Bits(p.width bits))
     }
 
-    val mapper = factory(io.bus)
+    val factory = new BusSlaveFactoryRecorder(metaFactory(io.bus))
     val syncronized = Delay(io.gpio.read, p.readBufferLength)
     val last = RegNext(syncronized)
 
+    val read_reg = factory.register(0x00, "read")
+    val write_reg = factory.register(0x04, "write")
+    val en_reg = factory.register(0x08, "en")
     for (i <- 0 until p.width) {
-      if (p.input.contains(i)) mapper.read(syncronized(i), 0x00, i)
-      if (p.output.contains(i)) mapper.driveAndRead(io.gpio.write(i), 0x04, i)
+      if (p.input.contains(i)) read_reg.read(syncronized(i), i, s"I$i")
+      if (p.output.contains(i))
+        write_reg.driveAndRead(io.gpio.write(i), i, s"O$i")
       else io.gpio.write(i) := False
       if (p.output.contains(i) && p.input.contains(i))
-        mapper.driveAndRead(io.gpio.writeEnable(i), 0x08, i) init False
+        en_reg.driveAndRead(io.gpio.writeEnable(i), i, s"EN$i") init False
       else io.gpio.writeEnable(i) := Bool(p.output.contains(i))
     }
 
@@ -62,13 +69,17 @@ object Gpio {
         | (enable.rise & (syncronized & ~last))
         | (enable.fall & (~syncronized & last)))
 
+      val rise_flag = factory.register(0x20, "irq_rise")
+      val fall_flag = factory.register(0x24, "irq_fall")
+      val high_flag = factory.register(0x28, "irq_high")
+      val low_flag = factory.register(0x2C, "irq_low")
       for (i <- 0 until p.width) {
         if (p.interrupt.contains(i)) {
           io.interrupt(i) := valid(i)
-          mapper.driveAndRead(enable.rise(i), 0x20, i) init False
-          mapper.driveAndRead(enable.fall(i), 0x24, i) init False
-          mapper.driveAndRead(enable.high(i), 0x28, i) init False
-          mapper.driveAndRead(enable.low(i), 0x2C, i) init False
+          rise_flag.driveAndRead(enable.rise(i), i, s"R$i") init False
+          fall_flag.driveAndRead(enable.fall(i), i, s"F$i") init False
+          high_flag.driveAndRead(enable.high(i), i, s"H$i") init False
+          low_flag.driveAndRead(enable.low(i), i, s"L$i") init False
         } else {
           io.interrupt(i) := False
           enable.rise(i) := False
@@ -78,9 +89,12 @@ object Gpio {
         }
       }
     }
-  }
 
-  def addressWidth = 8
+    override def elements = factory.elements
+    override def dataWidth = factory.dataWidth
+    override def busComponentName = name
+    override def wordAddressInc = factory.wordAddressInc
+  }
 }
 
 case class Apb3Gpio2(
@@ -90,18 +104,4 @@ case class Apb3Gpio2(
       parameter,
       Apb3(busConfig),
       Apb3SlaveFactory(_)
-    )
-object BmbGpio2 {
-  def getBmbCapabilities(accessSource: BmbAccessCapabilities) =
-    BmbSlaveFactory.getBmbCapabilities(
-      accessSource,
-      addressWidth = Gpio.addressWidth,
-      dataWidth = 32
-    )
-}
-case class BmbGpio2(parameter: Gpio.Parameter, busConfig: BmbParameter)
-    extends Gpio.Ctrl[Bmb](
-      parameter,
-      Bmb(busConfig),
-      BmbSlaveFactory(_)
     )
