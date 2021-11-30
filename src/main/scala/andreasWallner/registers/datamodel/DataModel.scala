@@ -86,12 +86,12 @@ trait Element {
   def doc: Option[String]
 }
 
-trait HardElement extends Element {
-  def address: Long
-}
-
 trait Cluster extends Element {
   def elements: Iterable[HardElement]
+}
+
+trait HardElement extends Element {
+  def address: Long
 }
 
 trait Register extends HardElement {
