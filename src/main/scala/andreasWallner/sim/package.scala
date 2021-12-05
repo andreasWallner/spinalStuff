@@ -18,6 +18,12 @@ object DriverStates {
 }
 
 package object sim {
+  object simLog {
+    def apply(s: String) = {
+      println(f"[${Console.BLUE}${simTime()}${Console.RESET}] $s")
+    }
+  }
+
   implicit class SimTriStatePimper(tri: TriState[Bool]) {
     def simulatePullup() = {
       val state = new SimDriverState
