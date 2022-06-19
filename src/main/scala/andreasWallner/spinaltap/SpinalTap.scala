@@ -15,6 +15,8 @@ import scala.language.postfixOps
 import scala.collection.mutable.MutableList
 
 trait ISpinalTAPModule[T <: spinal.core.Data with IMasterSlave] {
+  def init(busType: HardType[T], factory: T => BusSlaveFactory)
+
   def wrapped(): Component
   def bus(): T
 }
@@ -32,7 +34,8 @@ trait ISpinalTAPCommModule[T <: spinal.core.Data with IMasterSlave]
 abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     busType: HardType[T],
     internalBus: HardType[T],
-    modules: List[ISpinalTAPCommModule[T]],
+    extraModules: List[ISpinalTAPModule[T]],
+    commModules: List[ISpinalTAPCommModule[T]],
     metaFactory: T => BusSlaveFactory,
     moduleAddressSpace: BigInt,
     interconnectFactory: (T, List[ISpinalTAPModule[T]], BigInt) => Component
@@ -59,48 +62,37 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   io.dac.sel1.clear()
   io.dac.strobe.clear()
 
-  val mux = new Wrapped.IOMux[T](
-    IOMux.Parameter(1 + 2 + modules.size, 2, 5),
-    internalBus(),
-    metaFactory
-  )
-  mux.io.muxeds(0) <> io.port0
-  mux.io.muxeds(1) <> io.port1
+  val mux = new Wrapped.IOMux[T]("mux", IOMux.Parameter(1 + 2 + commModules.size, 2, 5))
+  val gpio0 = new Wrapped.Gpio[T]("gpio0", Gpio.Parameter(width = 5, readBufferLength = 0))
+  val gpio1 = new Wrapped.Gpio[T]("gpio1", Gpio.Parameter(width = 5, readBufferLength = 0))
+  val pwm = new Wrapped.Pwm[T]("pwm", Pwm.PeripheralParameters(Pwm.CoreParameters(channelCnt = 3)))
+  val auxModules = extraModules ++ List(pwm, gpio0, gpio1, mux)
 
-  // use mux slot 0 to disable
-  mux.io.all(0).writeEnable.clearAll()
-  mux.io.all(0).write.clearAll()
-
-  val gpio0 = new Wrapped.Gpio(
-    Gpio.Parameter(width = 5, readBufferLength = 0),
-    internalBus(),
-    metaFactory
-  )
-  mux.io.all(1) <> gpio0.io.gpio
-  val gpio1 = new Wrapped.Gpio(
-    Gpio.Parameter(width = 5, readBufferLength = 0),
-    internalBus(),
-    metaFactory
-  )
-  mux.io.all(2) <> gpio1.io.gpio
-
-  val pwm = new Wrapped.Pwm[T](
-    Pwm.PeripheralParameters(Pwm.CoreParameters(channelCnt = 3)),
-    internalBus(),
-    metaFactory
-  )
-  pwm.io.pwm <> io.pwm
-
-  for ((module, idx) <- modules.zipWithIndex) {
+  for (module <- auxModules) {
     module.init(
       internalBus,
       metaFactory
     )
-    mux.io.all(idx + 3) <> module.ports()
+  }
+  mux.wrapped().io.muxeds(0) <> io.port0
+  mux.wrapped().io.muxeds(1) <> io.port1
+  // use mux slot 0 to disable
+  mux.wrapped().io.all(0).writeEnable.clearAll()
+  mux.wrapped().io.all(0).write.clearAll()
+  mux.wrapped().io.all(1) <> gpio0.wrapped().io.gpio
+  mux.wrapped().io.all(2) <> gpio1.wrapped().io.gpio
+  pwm.wrapped().io.pwm <> io.pwm
+
+  for ((module, idx) <- commModules.zipWithIndex) {
+    module.init(
+      internalBus,
+      metaFactory
+    )
+    mux.wrapped().io.all(idx + 3) <> module.ports()
     for (trigger <- module.triggerInputs())
       trigger <> False
   }
-  val allModules = List[ISpinalTAPModule[T]](pwm, gpio0, gpio1, mux) ++ modules
+  val allModules = auxModules ++ commModules
   val interconnect =
     interconnectFactory(
       io.bus,
@@ -151,6 +143,7 @@ class ApbSpinalTap
     extends SpinalTap[Apb3](
       Apb3(32, 32),
       Apb3(8, 32),
+      List(),
       List(
         new Wrapped.Iso7816[Apb3](
           "ISO7816",

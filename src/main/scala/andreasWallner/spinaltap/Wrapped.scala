@@ -14,33 +14,54 @@ import scala.language.postfixOps
 
 object Wrapped {
   class IOMux[T <: spinal.core.Data with IMasterSlave](
-      p: IOMux.Parameter,
-      busType: HardType[T],
-      metaFactory: T => BusSlaveFactory
-  ) extends IOMux.Ctrl[T](p, busType, metaFactory)
-      with ISpinalTAPModule[T] {
-    override def wrapped() = this
-    override def bus() = io.bus
+      name: String,
+      p: IOMux.Parameter
+  ) extends ISpinalTAPModule[T] {
+    private var module: IOMux.Ctrl[T] = null
+    override def init(
+        busType: HardType[T],
+        metaFactory: T => BusSlaveFactory
+    ): Unit = {
+      module = new IOMux.Ctrl[T](p, busType, metaFactory)
+      module.setName(name)
+    }
+
+    override def wrapped() = module
+    override def bus() = module.io.bus
   }
 
   class Gpio[T <: spinal.core.Data with IMasterSlave](
-      p: Gpio.Parameter,
-      busType: HardType[T],
-      factory: T => BusSlaveFactory
-  ) extends Gpio.Ctrl[T](p, busType, factory)
-      with ISpinalTAPModule[T] {
-    override def wrapped() = this
-    override def bus() = io.bus
+      name: String,
+      p: Gpio.Parameter
+  ) extends ISpinalTAPModule[T] {
+    private var module: Gpio.Ctrl[T] = null
+    override def init(
+        busType: HardType[T],
+        metaFactory: T => BusSlaveFactory
+    ): Unit = {
+      module = new Gpio.Ctrl[T](p, busType, metaFactory)
+      module.setName(name)
+    }
+
+    override def wrapped() = module
+    override def bus() = module.io.bus
   }
 
   class Pwm[T <: spinal.core.Data with IMasterSlave](
-      p: Pwm.PeripheralParameters,
-      busType: HardType[T],
-      factory: T => BusSlaveFactory
-  ) extends Pwm.Ctrl[T](p, busType, factory)
-      with ISpinalTAPModule[T] {
-    override def wrapped() = this
-    override def bus() = io.bus
+      name: String,
+      p: Pwm.PeripheralParameters
+  ) extends ISpinalTAPModule[T] {
+    private var module: Pwm.Ctrl[T] = null
+    override def init(
+        busType: HardType[T],
+        metaFactory: T => BusSlaveFactory
+    ): Unit = {
+      module = new Pwm.Ctrl[T](p, busType, metaFactory)
+      module.setName(name)
+    }
+
+    override def wrapped() = module
+    override def bus() = module.io.bus
   }
 
   class Spi[T <: spinal.core.Data with IMasterSlave](
