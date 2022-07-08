@@ -133,7 +133,7 @@ class RegisterRecorder(
       Field(
         name + "_valid",
         Bool(),
-        Section(payloadBitOffset),
+        Section(validBitOffset),
         AccessType.RO,
         0,
         false,
