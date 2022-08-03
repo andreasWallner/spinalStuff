@@ -42,7 +42,6 @@ case class OpenDrainMonitor(
 
 class SlaveFifoMasterTest extends FunSuite {
   val dut = SimConfig.withWave
-    .workspacePath("/c/work/tmp/sim")
     .compile(SlaveFifoMaster())
 
   test("host writes fpga") {
