@@ -117,7 +117,12 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   }
 
   def muxConnections: List[(Int, Option[BusComponent])] = {
-    val moduleConnections: List[(Int, Option[BusComponent])] = for ((module, idx) <- allModules.zipWithIndex) yield (idx, Some(module.wrapped.asInstanceOf[BusComponent]))
+    val moduleConnections: List[(Int, Option[BusComponent])] = for ((module, idx) <- allModules.zipWithIndex) yield (
+      idx,
+      module.wrapped() match {
+        case bc: BusComponent => Some(bc)
+        case _ => None
+      })
     moduleConnections
   }
 }
