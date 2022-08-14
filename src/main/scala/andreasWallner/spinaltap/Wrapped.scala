@@ -4,7 +4,7 @@ import andreasWallner.io.Gpio
 import andreasWallner.io.iomux.IOMux
 import andreasWallner.io.pwm.Pwm
 import andreasWallner.io.spi.SpiMaster
-import andreasWallner.registers.datamodel.BusComponent
+import andreasWallner.misc.BuildInfoPeripheral
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.misc.BusSlaveFactory
@@ -13,6 +13,23 @@ import spinal.lib.io.TriStateArray
 import scala.language.postfixOps
 
 object Wrapped {
+  class BuildInfo[T <: spinal.core.Data with IMasterSlave](
+      name: String,
+      infoData: List[String]
+  ) extends ISpinalTAPModule[T] {
+    private var module: BuildInfoPeripheral[T] = null
+    override def init(
+        busType: HardType[T],
+        metaFactory: T => BusSlaveFactory
+    ): Unit = {
+      module = new BuildInfoPeripheral[T](infoData, busType, metaFactory)
+      module.setName(name)
+    }
+
+    override def wrapped() = module
+    override def bus() = module.io.bus
+  }
+
   class IOMux[T <: spinal.core.Data with IMasterSlave](
       name: String,
       p: IOMux.Parameter
@@ -62,6 +79,7 @@ object Wrapped {
 
     override def wrapped() = module
     override def bus() = module.io.bus
+    override def otherIO() = List(module.io.pwm)
   }
 
   class Spi[T <: spinal.core.Data with IMasterSlave](
