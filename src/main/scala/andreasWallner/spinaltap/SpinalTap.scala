@@ -19,6 +19,7 @@ trait ISpinalTAPModule[T <: spinal.core.Data with IMasterSlave] {
 
   def wrapped(): Component
   def bus(): T
+  def otherIO(): List[Data] = List()
 }
 
 trait ISpinalTAPCommModule[T <: spinal.core.Data with IMasterSlave]
@@ -45,23 +46,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
 
     val port0 = master(TriStateArray(5))
     val port1 = master(TriStateArray(5))
-    val pwm = out Vec (Bool(), 3)
-
-    val dac = new Bundle {
-      val output0 = out UInt (10 bit)
-      val output1 = out UInt (10 bit)
-      val sel0 = out Bool ()
-      val sel1 = out Bool ()
-      val strobe = out Bool ()
-    }
   }
-
-  io.dac.output0.clearAll()
-  io.dac.output1.clearAll()
-  io.dac.sel0.clear()
-  io.dac.sel1.clear()
-  io.dac.strobe.clear()
-
   val mux = new Wrapped.IOMux[T]("mux", IOMux.Parameter(1 + 2 + commModules.size, 2, 5))
   val gpio0 = new Wrapped.Gpio[T]("gpio0", Gpio.Parameter(width = 5, readBufferLength = 0))
   val gpio1 = new Wrapped.Gpio[T]("gpio1", Gpio.Parameter(width = 5, readBufferLength = 0))
@@ -74,6 +59,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
       metaFactory
     )
   }
+
   mux.wrapped().io.muxeds(0) <> io.port0
   mux.wrapped().io.muxeds(1) <> io.port1
   // use mux slot 0 to disable
@@ -81,7 +67,6 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   mux.wrapped().io.all(0).write.clearAll()
   mux.wrapped().io.all(1) <> gpio0.wrapped().io.gpio
   mux.wrapped().io.all(2) <> gpio1.wrapped().io.gpio
-  pwm.wrapped().io.pwm <> io.pwm
 
   for ((module, idx) <- commModules.zipWithIndex) {
     module.init(
@@ -99,6 +84,14 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
       allModules,
       moduleAddressSpace
     )
+  for(module <- allModules) {
+    for (subIO <- module.otherIO) {
+      val topIO = cloneOf(subIO).setPartialName(module.wrapped(), subIO.getPartialName(), true)
+      topIO.copyDirectionOf(subIO)
+      for((s, t) <- (subIO.flatten zip topIO.flatten) if s.isAnalog) t.setAsAnalog()
+      topIO <> subIO
+    }
+  }
   // TODO logic analyzer
   // TODO trigger mux
 
@@ -153,7 +146,12 @@ class ApbSpinalTap
     extends SpinalTap[Apb3](
       Apb3(32, 32),
       Apb3(8, 32),
-      List(),
+      List(
+        new Wrapped.BuildInfo[Apb3](
+          name="BuildInfo",
+          List("just", "an", "example")
+        )
+      ),
       List(
         new Wrapped.Iso7816[Apb3](
           "ISO7816",

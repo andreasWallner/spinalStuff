@@ -43,6 +43,43 @@ object Apb3PwmModule {
   }
 }
 
+object Ulx3sRenamer {
+  def apply[T <: Component](c: T): T = {
+    c.addPrePopTask(() => {
+      c.clockDomain.clock.setName("clk_25mhz")
+    })
+    c
+  }
+}
+
+case class Ulx3s() extends Component {
+  val io = new Bundle {
+    val clk_25mhz = in Bool()
+    val led = out Bits(8 bit)
+    /* ... */
+  }
+  noIoPrefix()
+  val clock_domain = ClockDomain(
+    clock=io.clk_25mhz,
+    frequency=FixedFrequency(25 MHz),
+    config=ClockDomainConfig(resetKind=BOOT)
+  )
+  new ClockingArea(clock_domain) {
+    /* place all your logic here e.g. */
+    val cntr = Reg(UInt(8 bit)) init 0
+    val slower = new SlowArea(1 Hz) {
+      cntr := cntr + 1
+    }
+    io.led := cntr.asBits
+  }
+}
+
+object Foo {
+  def main(args: Array[String]): Unit = {
+    SpinalConfig().generateVerilog(Ulx3s())
+  }
+}
+
 object ApbSpinalTap {
   def main(args: Array[String]): Unit = {
     val report = SpinalConfig(
@@ -51,7 +88,7 @@ object ApbSpinalTap {
       device = Device.XILINX,
       targetDirectory = "generated"
     ).generateVerilog(
-      XilinxNamer(XilinxInOutWrapper(new andreasWallner.spinaltap.ApbSpinalTap()))
+      /*XilinxNamer(XilinxInOutWrapper*/Ulx3sRenamer(new andreasWallner.spinaltap.ApbSpinalTap())/*)*/
     );
 
     new MuxConnections.CppHeader(report.toplevel.muxConnections, Some("spinaltap::iomux")).write(f"${GlobalData.get.phaseContext.config.targetDirectory}/iomux_connection.hpp")
