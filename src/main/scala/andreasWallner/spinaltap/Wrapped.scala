@@ -5,6 +5,7 @@ import andreasWallner.io.iomux.IOMux
 import andreasWallner.io.pwm.Pwm
 import andreasWallner.io.spi.SpiMaster
 import andreasWallner.misc.BuildInfoPeripheral
+import andreasWallner.io.adc.{StrobedAdcGenerics, StrobedAdcPeripheral}
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.misc.BusSlaveFactory
@@ -80,6 +81,24 @@ object Wrapped {
     override def wrapped() = module
     override def bus() = module.io.bus
     override def otherIO() = List(module.io.pwm)
+  }
+
+  class Adc[T <: spinal.core.Data with IMasterSlave](
+      name: String,
+      p: StrobedAdcGenerics = StrobedAdcGenerics()
+  ) extends ISpinalTAPModule[T] {
+    private var module: StrobedAdcPeripheral[T] = null
+    override def init(
+        busType: HardType[T],
+        metaFactory: T => BusSlaveFactory
+    ): Unit = {
+      module = new StrobedAdcPeripheral[T](p, busType, metaFactory)
+      module.setName(name)
+    }
+
+    override def wrapped() = module
+    override def bus() = module.io.bus
+    override def otherIO() = List(module.io.adc)
   }
 
   class Spi[T <: spinal.core.Data with IMasterSlave](
