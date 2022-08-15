@@ -12,7 +12,7 @@ class RegisterRecorder(
     address: BigInt,
     factory: BusSlaveFactory
 ) {
-  private def append(field: Field) = {
+  private def append(field: Field): Unit = {
     registers(address) = registers get address match {
       case None    => Register("", address.toLong, None, List(field))
       case Some(r) => r.copy(fields = r.fields :+ field)
@@ -64,12 +64,34 @@ class RegisterRecorder(
     factory.createReadAndWrite(that, address, bitOffset, name)
   }
 
+  def write[T <: Data](
+      that: T,
+      bitOffset: Int,
+      name: String,
+      doc: String = null,
+      values: List[Value] = List()
+  ): T = {
+    append(
+      Field(
+        name,
+        that,
+        Section(bitOffset + that.getBitsWidth - 1, bitOffset),
+        AccessType.RW,
+        0,
+        false,
+        Option(doc),
+        values
+      )
+    )
+    factory.write(that, address, bitOffset, name)
+  }
+
   def driveAndRead[T <: Data](
-    that: T,
-    bitOffset: Int,
-    name: String,
-    doc: String = null,
-    values: List[Value] = List()
+      that: T,
+      bitOffset: Int,
+      name: String,
+      doc: String = null,
+      values: List[Value] = List()
   ): T = {
     append(
       Field(
@@ -143,7 +165,10 @@ class RegisterRecorder(
       Field(
         name,
         that.payload,
-        Section(payloadBitOffset + that.payload.getBitsWidth - 1, payloadBitOffset),
+        Section(
+          payloadBitOffset + that.payload.getBitsWidth - 1,
+          payloadBitOffset
+        ),
         AccessType.RO,
         0,
         false,
@@ -200,6 +225,36 @@ class RegisterRecorder(
       )
     )
     factory.createAndDriveFlow(dataType, address, bitOffset)
+  }
+
+  def onWrite(doThat: => Unit): Unit = {
+    factory.onWrite(address)(doThat)
+  }
+
+  def onRead(doThat: => Unit): Unit = {
+    factory.onRead(address)(doThat)
+  }
+
+  def nonStopWrite[T <: Data](
+      that: T,
+      bitOffset: Int,
+      name: String,
+      doc: String = null,
+      values: List[Value] = List()
+  ): T = {
+    append(
+      Field(
+        name,
+        that,
+        Section(that.getBitsWidth + bitOffset - 1, bitOffset),
+        AccessType.WO,
+        0,
+        false,
+        Option(doc),
+        values
+      )
+    )
+    factory.nonStopWrite(that, bitOffset, name)
   }
 }
 
