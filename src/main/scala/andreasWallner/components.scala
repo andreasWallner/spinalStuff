@@ -88,7 +88,7 @@ object ApbSpinalTap {
       device = Device.XILINX,
       targetDirectory = "generated"
     ).generateVerilog(
-      /*XilinxNamer(XilinxInOutWrapper*/Ulx3sRenamer(new andreasWallner.spinaltap.ApbSpinalTap())/*)*/
+      XilinxNamer/*(XilinxInOutWrapper*/(new andreasWallner.spinaltap.ApbSpinalTap())/*)*/
     );
 
     new MuxConnections.CppHeader(report.toplevel.muxConnections, Some("spinaltap::iomux")).write(f"${GlobalData.get.phaseContext.config.targetDirectory}/iomux_connection.hpp")
