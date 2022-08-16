@@ -50,7 +50,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   val mux = new Wrapped.IOMux[T]("mux", IOMux.Parameter(1 + 2 + commModules.size, 2, 5))
   val gpio0 = new Wrapped.Gpio[T]("gpio0", Gpio.Parameter(width = 5, readBufferLength = 0))
   val gpio1 = new Wrapped.Gpio[T]("gpio1", Gpio.Parameter(width = 5, readBufferLength = 0))
-  val auxModules = extraModules ++ List(pwm, gpio0, gpio1, mux)
+  val auxModules = extraModules ++ List(gpio0, gpio1, mux)
 
   for (module <- auxModules) {
     module.init(
