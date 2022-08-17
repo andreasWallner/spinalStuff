@@ -8,53 +8,68 @@ import spinal.lib.io.TriStateArray
 import scala.language.postfixOps
 
 object IOMux {
-  case class Parameter(
-      inCnt: Int,
-      outCnt: Int,
-      lineCnt: Int,
+  case class PortGenerics (
+      triCnt: Int,
+      outCnt: Int
+  )
+  case class MuxedPort(g: PortGenerics) extends Bundle with IMasterSlave {
+    val tri = TriStateArray(g.triCnt)
+    val o = Bits(g.outCnt bits)
+
+    def asMaster() = {
+      master(tri)
+      out(o)
+    }
+  }
+
+  case class Generics (
+      inPorts: Int,
+      outPorts: Int,
+      portGenerics: PortGenerics,
       syncSteps: Int = 2,
       invertOutputEnable: Boolean = false
   ) {
-    def selWidth = log2Up(inCnt)
+    def selWidth = log2Up(inPorts)
   }
 
-  case class Core(p: Parameter) extends Component {
+  case class Core(g: Generics) extends Component {
     val io = new Bundle {
-      val all = Vec(slave(TriStateArray(p.lineCnt)), p.inCnt)
-      val muxeds = Vec(master(TriStateArray(p.lineCnt)), p.outCnt)
-      val sels = in Vec (UInt(p.selWidth bits), p.outCnt)
+      val all = Vec(slave(MuxedPort(g.portGenerics)), g.inPorts)
+      val muxeds = Vec(master(MuxedPort(g.portGenerics)), g.outPorts)
+      val sels = in Vec (UInt(g.selWidth bits), g.outPorts)
     }
 
     for ((muxed, sel) <- io.muxeds.zip(io.sels)) {
-      muxed.write := RegNext(io.all(sel).write)
-      muxed.writeEnable := RegNext(io.all(sel).writeEnable ^ B(p.lineCnt bit, default -> p.invertOutputEnable))
+      muxed.tri.write := RegNext(io.all(sel).tri.write)
+      muxed.tri.writeEnable := RegNext(io.all(sel).tri.writeEnable ^ B(g.portGenerics.triCnt bit, default -> g.invertOutputEnable))
+      muxed.o := RegNext(io.all(sel).o)
     }
 
     for (a <- io.all)
-      a.read.clearAll()
+      a.tri.read.clearAll()
 
-    val synched = Vec(Bits(p.lineCnt bits), p.outCnt)
+    val synched = Vec(Bits(g.portGenerics.triCnt bits), g.outPorts)
     for ((muxed, sync) <- io.muxeds.zip(synched))
-      sync := Delay(muxed.read, p.syncSteps)
+      sync := Delay(muxed.tri.read, g.syncSteps)
 
-    for ((out, outIdx) <- io.all.zipWithIndex) {
+    for ((one, outIdx) <- io.all.zipWithIndex) {
       for ((muxed, inIdx) <- synched.zip(io.sels)) {
         when(inIdx === U(outIdx)) {
-          out.read := muxed
+          one.tri.read := muxed
         }
       }
     }
   }
 
   class Ctrl[T <: spinal.core.Data with IMasterSlave](
-      generics: Parameter,
+      generics: Generics,
       busType: HardType[T],
       factory: T => BusSlaveFactory
   ) extends Component {
     val io = new Bundle {
       val bus = slave(busType())
-      val all = Vec(slave(TriStateArray(generics.lineCnt)), generics.inCnt)
-      val muxeds = Vec(master(TriStateArray(generics.lineCnt)), generics.outCnt)
+      val all = Vec(slave(MuxedPort(generics.portGenerics)), generics.inPorts)
+      val muxeds = Vec(master(MuxedPort(generics.portGenerics)), generics.outPorts)
     }
     val core = Core(generics)
     core.io.all <> io.all

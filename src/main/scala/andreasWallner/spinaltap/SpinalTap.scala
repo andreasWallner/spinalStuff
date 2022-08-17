@@ -15,7 +15,7 @@ import scala.language.postfixOps
 import scala.collection.mutable.MutableList
 
 trait ISpinalTAPModule[T <: spinal.core.Data with IMasterSlave] {
-  def init(busType: HardType[T], factory: T => BusSlaveFactory)
+  def init(busType: HardType[T], factory: T => BusSlaveFactory): Unit
 
   def wrapped(): Component
   def bus(): T
@@ -24,7 +24,7 @@ trait ISpinalTAPModule[T <: spinal.core.Data with IMasterSlave] {
 
 trait ISpinalTAPCommModule[T <: spinal.core.Data with IMasterSlave]
     extends ISpinalTAPModule[T] {
-  def init(busType: HardType[T], factory: T => BusSlaveFactory)
+  def init(busType: HardType[T], factory: T => BusSlaveFactory): Unit
 
   def triggerInputs(): List[Bool]
   def triggerOutputs(): List[Bool]
@@ -42,15 +42,29 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     interconnectFactory: (T, List[ISpinalTAPModule[T]], BigInt) => Component,
     invertOutputEnable: Boolean = false
 ) extends Component with Bus {
+  def portWidth=5
   val io = new Bundle {
     val bus = slave(busType())
 
-    val port0 = master(TriStateArray(5))
-    val port1 = master(TriStateArray(5))
+    val port0 = master(TriStateArray(portWidth))
+    val port0_vcc_en = out(Bool())
+    val port1 = master(TriStateArray(portWidth))
+    val port1_vcc_en = out(Bool())
   }
-  val mux = new Wrapped.IOMux[T]("mux", IOMux.Parameter(1 + 2 + commModules.size, 2, 5, invertOutputEnable=invertOutputEnable))
-  val gpio0 = new Wrapped.Gpio[T]("gpio0", Gpio.Parameter(width = 5, readBufferLength = 0))
-  val gpio1 = new Wrapped.Gpio[T]("gpio1", Gpio.Parameter(width = 5, readBufferLength = 0))
+  val portGenerics = IOMux.PortGenerics(triCnt=portWidth, outCnt=1)
+  val mux = new Wrapped.IOMux[T]("mux", IOMux.Generics(
+      inPorts=1 + 2 + commModules.size,
+      outPorts=2,
+      portGenerics=portGenerics,
+      invertOutputEnable=invertOutputEnable))
+  val gpio0 = new Wrapped.Gpio[T]("gpio0", Gpio.Parameter(
+      width=portWidth+1,
+      input=(0 until portWidth).toList,
+      readBufferLength=0))
+  val gpio1 = new Wrapped.Gpio[T]("gpio1", Gpio.Parameter(
+      width=portWidth+1,
+      input=(0 until portWidth).toList,
+      readBufferLength=0))
   val auxModules = extraModules ++ List(gpio0, gpio1, mux)
 
   for (module <- auxModules) {
@@ -60,23 +74,50 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     )
   }
 
-  mux.wrapped().io.muxeds(0) <> io.port0
-  mux.wrapped().io.muxeds(1) <> io.port1
+  def gpioToPort(gpio: TriStateArray): IOMux.MuxedPort = {
+    // map GPIO module outputs to IOMux input
+    // the lower portWidth bits are I/Os and mapped
+    // to tri-state signals, remaining bits to outputs
+    val port = IOMux.MuxedPort(portGenerics)
+    // assign seperately since TriStateArray can't be sliced
+    for (i <- 0 until portWidth) {
+      port.tri(i).write := gpio(i).write
+      port.tri(i).writeEnable := gpio(i).writeEnable
+      gpio(i).read := port.tri(i).read
+    }
+    port.o(0) := gpio(portWidth).write
+    // read still needs to be connected to prevent compile
+    // errors, even though not implemented in the register file
+    // writeEnable is unused for outputs
+    gpio(portWidth).read := False
+    port
+  }
+
+  mux.wrapped().io.muxeds(0).tri <> io.port0
+  mux.wrapped().io.muxeds(1).tri <> io.port1
+  io.port0_vcc_en := mux.wrapped().io.muxeds(0).o(0)
+  io.port1_vcc_en := mux.wrapped().io.muxeds(1).o(0)
+
   // use mux slot 0 to disable
-  mux.wrapped().io.all(0).writeEnable.clearAll()
-  mux.wrapped().io.all(0).write.clearAll()
-  mux.wrapped().io.all(1) <> gpio0.wrapped().io.gpio
-  mux.wrapped().io.all(2) <> gpio1.wrapped().io.gpio
+  mux.wrapped().io.all(0).tri.writeEnable.clearAll()
+  mux.wrapped().io.all(0).tri.write.clearAll()
+  mux.wrapped().io.all(0).o.clearAll()
+
+  mux.wrapped().io.all(1) <> gpioToPort(gpio0.wrapped().io.gpio)
+  mux.wrapped().io.all(2) <> gpioToPort(gpio1.wrapped().io.gpio)
+
 
   for ((module, idx) <- commModules.zipWithIndex) {
     module.init(
       internalBus,
       metaFactory
     )
-    mux.wrapped().io.all(idx + 3) <> module.ports()
+    mux.wrapped().io.all(idx + 3).tri <> module.ports()
+    mux.wrapped().io.all(idx + 3).o(0) := module.vcc()
     for (trigger <- module.triggerInputs())
       trigger <> False
   }
+
   val allModules = auxModules ++ commModules
   val interconnect =
     interconnectFactory(

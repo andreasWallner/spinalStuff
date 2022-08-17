@@ -33,14 +33,14 @@ object Wrapped {
 
   class IOMux[T <: spinal.core.Data with IMasterSlave](
       name: String,
-      p: IOMux.Parameter
+      g: IOMux.Generics
   ) extends ISpinalTAPModule[T] {
     private var module: IOMux.Ctrl[T] = null
     override def init(
         busType: HardType[T],
         metaFactory: T => BusSlaveFactory
     ): Unit = {
-      module = new IOMux.Ctrl[T](p, busType, metaFactory)
+      module = new IOMux.Ctrl[T](g, busType, metaFactory)
       module.setName(name)
     }
 
