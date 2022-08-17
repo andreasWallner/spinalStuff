@@ -1,4 +1,4 @@
-package andreasWallner.io.adc
+package andreasWallner.io.dac
 
 import andreasWallner.registers.BusSlaveFactoryRecorder
 import andreasWallner.registers.casemodel.Value
@@ -8,7 +8,7 @@ import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.misc.BusSlaveFactory
 
-case class StrobedAdcGenerics(
+case class StrobedDacGenerics(
     count: Int = 2,
     dataWidth: Int = 8,
     initialValue: Option[Int] = Some(0xff),
@@ -20,28 +20,28 @@ case class StrobedAdcGenerics(
   def adrWidth = log2Up(count)
 }
 
-case class AdcRequestData(g: StrobedAdcGenerics) extends Bundle {
+case class DacRequestData(g: StrobedDacGenerics) extends Bundle {
   val adr = UInt(g.adrWidth bit)
   val data = Bits(g.dataWidth bit)
 }
-case class AdcInterface(g: StrobedAdcGenerics) extends Bundle {
+case class DacInterface(g: StrobedDacGenerics) extends Bundle {
   val data = Bits(g.dataWidth bit)
   val adr = UInt(g.adrWidth bit)
   val wr = Bool()
 }
 
-// ADC interface for ADC with data, address (channel) and
+// DAC interface for DAC with data, address (channel) and
 // and write enable like MAX5102
 // https://datasheets.maximintegrated.com/en/ds/MAX5102.pdf
 // Data and address to be written needs to be written to the io.write
-// stream, which will be fired one ADC has been updated
-case class StrobedAdcPeripheralCore(g: StrobedAdcGenerics) extends Component {
+// stream, which will be fired one DAC has been updated
+case class StrobedDacPeripheralCore(g: StrobedDacGenerics) extends Component {
   val io = new Bundle {
-    val write = slave(Stream(AdcRequestData(g)))
-    val adc = out(AdcInterface(g)) setAsReg
+    val write = slave(Stream(DacRequestData(g)))
+    val dac = out(DacInterface(g)) setAsReg
   }
 
-  io.adc.wr init Bool(!g.assertPolarity)
+  io.dac.wr init Bool(!g.assertPolarity)
   io.write.ready := False
 
   // Since all output signals are registered, we get at
@@ -53,8 +53,8 @@ case class StrobedAdcPeripheralCore(g: StrobedAdcGenerics) extends Component {
     val Idle: State = new State with EntryPoint {
       whenIsActive {
         when(io.write.valid) {
-          io.adc.data := io.write.data
-          io.adc.adr := io.write.adr
+          io.dac.data := io.write.data
+          io.dac.adr := io.write.adr
           goto(Setup)
         }
       }
@@ -64,11 +64,11 @@ case class StrobedAdcPeripheralCore(g: StrobedAdcGenerics) extends Component {
     }
     val Asserting = new StateDelay(g.writeAssertTime) {
       whenCompleted { goto(Hold) }
-      whenIsActive { io.adc.wr := Bool(g.assertPolarity) }
+      whenIsActive { io.dac.wr := Bool(g.assertPolarity) }
     }
     val Hold = new StateDelay(g.writeDeassertHoldTime) {
       whenCompleted {
-        io.adc.wr := Bool(!g.assertPolarity)
+        io.dac.wr := Bool(!g.assertPolarity)
         io.write.ready := True
         goto(Idle)
       }
@@ -76,21 +76,21 @@ case class StrobedAdcPeripheralCore(g: StrobedAdcGenerics) extends Component {
   }
 }
 
-class StrobedAdcPeripheral[T <: spinal.core.Data with IMasterSlave](
-    g: StrobedAdcGenerics = StrobedAdcGenerics(),
+class StrobedDacPeripheral[T <: spinal.core.Data with IMasterSlave](
+    g: StrobedDacGenerics = StrobedDacGenerics(),
     busType: HardType[T],
     metaFactory: T => BusSlaveFactory
 ) extends Component
     with BusComponent {
   val io = new Bundle {
     val bus = slave(busType())
-    val adc = out(AdcInterface(g))
+    val dac = out(DacInterface(g))
   }
   val mapper = metaFactory(io.bus)
   val f = new BusSlaveFactoryRecorder(mapper)
 
-  val core = StrobedAdcPeripheralCore(g)
-  core.io.adc <> io.adc
+  val core = StrobedDacPeripheralCore(g)
+  core.io.dac <> io.dac
 
   val resetDone = if(g.initialValue.nonEmpty) False else True
   val writing = Reg(Bool()) init False
@@ -99,7 +99,7 @@ class StrobedAdcPeripheral[T <: spinal.core.Data with IMasterSlave](
     writing || !resetDone,
     bitOffset = 0,
     name = "busy",
-    doc = "shows whether the peripheral is currently writing to the ADC",
+    doc = "shows whether the peripheral is currently writing to the DAC",
     values = List(
       Value(0, "idle", "Peripheral is idle, a write may be performed"),
       Value(1, "busy", "Peripheral is busy, a write will be ignored")
@@ -108,19 +108,19 @@ class StrobedAdcPeripheral[T <: spinal.core.Data with IMasterSlave](
 
   val combAdr = UInt(g.adrWidth bit)
   val combData = Bits(g.dataWidth bits)
-  val adcReg = f.register(address = 4, name = "adc")
-  adcReg.nonStopWrite(
+  val dacReg = f.register(address = 4, name = "adc")
+  dacReg.nonStopWrite(
     combAdr,
     bitOffset = 32 - g.adrWidth,
     name = "address",
-    doc = "Selector for the ADC channel to write to",
+    doc = "Selector for the DAC channel to write to",
     values = (for (i <- 0 to g.count) yield Value(i, f"channel$i")).toList
   )
-  adcReg.nonStopWrite(
+  dacReg.nonStopWrite(
     combData,
     bitOffset = 0,
     name = "value",
-    doc = "numeric value to write to ADC, no transformation is performed"
+    doc = "numeric value to write to DAC, no transformation is performed"
   )
 
   val adr = Reg(UInt(g.adrWidth bit))
@@ -128,7 +128,7 @@ class StrobedAdcPeripheral[T <: spinal.core.Data with IMasterSlave](
   core.io.write.adr := adr
   core.io.write.data := data
   core.io.write.valid := writing
-  adcReg.onWrite {
+  dacReg.onWrite {
     when(!writing) {
       writing := True
       adr := combAdr
@@ -162,7 +162,7 @@ class StrobedAdcPeripheral[T <: spinal.core.Data with IMasterSlave](
   }
 
   override def elements = f.elements
-  override def busComponentName = "AdcCtrl"
+  override def busComponentName = "DacCtrl"
   override def dataWidth = f.dataWidth
   override def wordAddressInc = f.wordAddressInc
 }

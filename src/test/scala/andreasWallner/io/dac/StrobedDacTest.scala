@@ -1,4 +1,4 @@
-package andreasWallner.io.adc
+package andreasWallner.io.dac
 
 import spinal.core._
 import spinal.core.sim._
@@ -7,21 +7,21 @@ import spinal.lib.bus.amba3.apb._
 import spinal.lib.bus.amba3.apb.sim.Apb3Driver
 import org.scalatest.funsuite.AnyFunSuite
 
-case class Apb3Adc(
-    g: StrobedAdcGenerics = StrobedAdcGenerics(),
+case class Apb3Dac(
+    g: StrobedDacGenerics = StrobedDacGenerics(),
     busConfig: Apb3Config = Apb3Config(12, 32)
-) extends StrobedAdcPeripheral[Apb3](
+) extends StrobedDacPeripheral[Apb3](
       g,
       Apb3(busConfig),
       Apb3SlaveFactory(_)
     )
 
-class StrobedAdcPeripheralTest extends AnyFunSuite {
+class StrobedDacPeripheralTest extends AnyFunSuite {
   val dut = SimConfig.withWave
     .withConfig(
       SpinalConfig(defaultClockDomainFrequency = FixedFrequency(100 MHz))
     )
-    .compile(Apb3Adc())
+    .compile(Apb3Dac())
 
   test("write 2") {
     dut.doSim("write 2") { dut =>
