@@ -110,7 +110,7 @@ object Pwm {
     val io = new Bundle {
       val max_count = in UInt (parameters.counterWidth bits)
       val levels = in Vec (UInt(parameters.counterWidth bits), parameters.channelCnt)
-      val pwm = out Vec (Bool, parameters.channelCnt)
+      val pwm = out Vec (Bool, parameters.channelCnt) setAsReg
       val run = in Bool()
       val willOverflow = out Bool()
     }
