@@ -12,7 +12,8 @@ object IOMux {
       inCnt: Int,
       outCnt: Int,
       lineCnt: Int,
-      syncSteps: Int = 2
+      syncSteps: Int = 2,
+      invertOutputEnable: Boolean = false
   ) {
     def selWidth = log2Up(inCnt)
   }
@@ -26,7 +27,7 @@ object IOMux {
 
     for ((muxed, sel) <- io.muxeds.zip(io.sels)) {
       muxed.write := RegNext(io.all(sel).write)
-      muxed.writeEnable := RegNext(io.all(sel).writeEnable)
+      muxed.writeEnable := RegNext(io.all(sel).writeEnable ^ B(p.lineCnt bit, default -> p.invertOutputEnable))
     }
 
     for (a <- io.all)

@@ -39,7 +39,8 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     commModules: List[ISpinalTAPCommModule[T]],
     metaFactory: T => BusSlaveFactory,
     moduleAddressSpace: BigInt,
-    interconnectFactory: (T, List[ISpinalTAPModule[T]], BigInt) => Component
+    interconnectFactory: (T, List[ISpinalTAPModule[T]], BigInt) => Component,
+    invertOutputEnable: Boolean = false
 ) extends Component with Bus {
   val io = new Bundle {
     val bus = slave(busType())
@@ -47,7 +48,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     val port0 = master(TriStateArray(5))
     val port1 = master(TriStateArray(5))
   }
-  val mux = new Wrapped.IOMux[T]("mux", IOMux.Parameter(1 + 2 + commModules.size, 2, 5))
+  val mux = new Wrapped.IOMux[T]("mux", IOMux.Parameter(1 + 2 + commModules.size, 2, 5, invertOutputEnable=invertOutputEnable))
   val gpio0 = new Wrapped.Gpio[T]("gpio0", Gpio.Parameter(width = 5, readBufferLength = 0))
   val gpio1 = new Wrapped.Gpio[T]("gpio1", Gpio.Parameter(width = 5, readBufferLength = 0))
   val auxModules = extraModules ++ List(gpio0, gpio1, mux)
