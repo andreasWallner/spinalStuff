@@ -2,7 +2,6 @@ package andreasWallner.spinaltap
 
 import andreasWallner.io.Gpio
 import andreasWallner.io.iomux.IOMux
-import andreasWallner.io.pwm.Pwm
 import andreasWallner.io.spi.SpiMaster
 import andreasWallner.registers.datamodel.{Bus, BusElement, BusComponent}
 import spinal.core._
@@ -41,8 +40,9 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     moduleAddressSpace: BigInt,
     interconnectFactory: (T, List[ISpinalTAPModule[T]], BigInt) => Component,
     invertOutputEnable: Boolean = false
-) extends Component with Bus {
-  val portWidth=5
+) extends Component
+    with Bus {
+  val portWidth = 5
   val io = new Bundle {
     val bus = slave(busType())
 
@@ -51,20 +51,23 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     val port1 = master(TriStateArray(portWidth))
     val port1_vcc_en = out(Bool())
   }
-  val portGenerics = IOMux.PortGenerics(triCnt=portWidth, outCnt=1)
-  val mux = new Wrapped.IOMux[T]("mux", IOMux.Generics(
-      inPorts=1 + 2 + commModules.size,
-      outPorts=2,
-      portGenerics=portGenerics,
-      invertOutputEnable=invertOutputEnable))
-  val gpio0 = new Wrapped.Gpio[T]("gpio0", Gpio.Parameter(
-      width=portWidth+1,
-      input=(0 until portWidth).toList,
-      readBufferLength=0))
-  val gpio1 = new Wrapped.Gpio[T]("gpio1", Gpio.Parameter(
-      width=portWidth+1,
-      input=(0 until portWidth).toList,
-      readBufferLength=0))
+  val portGenerics = IOMux.PortGenerics(triCnt = portWidth, outCnt = 1)
+  val mux = new Wrapped.IOMux[T](
+    "mux",
+    IOMux.Generics(
+      inPorts = 1 + 2 + commModules.size,
+      outPorts = 2,
+      portGenerics = portGenerics,
+      invertOutputEnable = invertOutputEnable
+    )
+  )
+  val gpioParameter = Gpio.Parameter(
+    width = portWidth + 1,
+    input = (0 until portWidth).toList,
+    readBufferLength = 0
+  )
+  val gpio0 = new Wrapped.Gpio[T]("gpio0", gpioParameter)
+  val gpio1 = new Wrapped.Gpio[T]("gpio1", gpioParameter)
   val auxModules = extraModules ++ List(gpio0, gpio1, mux)
 
   for (module <- auxModules) {
@@ -105,7 +108,6 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
 
   mux.wrapped().io.all(1) <> gpioToPort(gpio0.wrapped().io.gpio)
   mux.wrapped().io.all(2) <> gpioToPort(gpio1.wrapped().io.gpio)
-
 
   for ((module, idx) <- commModules.zipWithIndex) {
     module.init(
@@ -198,8 +200,8 @@ class ApbSpinalTap
           name = "BuildInfo",
           List("just", "an", "example")
         ),
-        new Wrapped.Adc[Apb3](
-          name = "VccAdc"
+        new Wrapped.Dac[Apb3](
+          name = "VccDac"
         )
       ),
       List(
