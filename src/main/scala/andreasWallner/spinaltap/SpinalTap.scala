@@ -42,7 +42,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     interconnectFactory: (T, List[ISpinalTAPModule[T]], BigInt) => Component,
     invertOutputEnable: Boolean = false
 ) extends Component with Bus {
-  def portWidth=5
+  val portWidth=5
   val io = new Bundle {
     val bus = slave(busType())
 
@@ -125,11 +125,16 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
       allModules,
       moduleAddressSpace
     )
-  for(module <- allModules) {
+  for (module <- allModules) {
     for (subIO <- module.otherIO) {
-      val topIO = cloneOf(subIO).setPartialName(module.wrapped(), subIO.getPartialName(), true)
+      val topIO = cloneOf(subIO).setPartialName(
+        module.wrapped(),
+        subIO.getPartialName(),
+        true
+      )
       topIO.copyDirectionOf(subIO)
-      for((s, t) <- (subIO.flatten zip topIO.flatten) if s.isAnalog) t.setAsAnalog()
+      for ((s, t) <- (subIO.flatten zip topIO.flatten) if s.isAnalog)
+        t.setAsAnalog()
       topIO <> subIO
     }
   }
@@ -141,9 +146,10 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   }*/
   override def elements: List[(BusElement, Long)] = {
     val l = MutableList[(BusElement, Long)]()
-    for((m, idx) <- allModules.zipWithIndex) {
+    for ((m, idx) <- allModules.zipWithIndex) {
       m.wrapped match {
-        case b: BusElement => l += ((b, (0x43c00000 + moduleAddressSpace * idx).toLong))
+        case b: BusElement =>
+          l += ((b, (0x43c00000 + moduleAddressSpace * idx).toLong))
         case _ =>
       }
     }
@@ -151,12 +157,12 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
   }
 
   def muxConnections: List[(Int, Option[BusComponent])] = {
-    val moduleConnections: List[(Int, Option[BusComponent])] = for ((module, idx) <- allModules.zipWithIndex) yield (
-      idx,
-      module.wrapped() match {
-        case bc: BusComponent => Some(bc)
-        case _ => None
-      })
+    val moduleConnections: List[(Int, Option[BusComponent])] =
+      for ((module, idx) <- allModules.zipWithIndex)
+        yield (idx, module.wrapped() match {
+          case bc: BusComponent => Some(bc)
+          case _                => None
+        })
     moduleConnections
   }
 }
@@ -189,8 +195,11 @@ class ApbSpinalTap
       Apb3(8, 32),
       List(
         new Wrapped.BuildInfo[Apb3](
-          name="BuildInfo",
+          name = "BuildInfo",
           List("just", "an", "example")
+        ),
+        new Wrapped.Adc[Apb3](
+          name = "VccAdc"
         )
       ),
       List(
