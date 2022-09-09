@@ -17,11 +17,13 @@ case class MemoryFormatterTester(in_width: Int, out_width: Int)
 }
 
 class MemoryFormatterTest extends AnyFunSuite {
-  for (inputWidth <- List(24); outputWidth <- List(128, 64, 32)) {
+  for (inputWidth <- List(16, 24); outputWidth <- List(32, 64, 128)) {
     val dut = SimConfig.withFstWave
       .compile(
         MemoryFormatterTester(inputWidth, outputWidth)
-          .setName(f"MemoryFormatterTester_${inputWidth}_${outputWidth}")
+          .setDefinitionName(
+            f"MemoryFormatterTester_${inputWidth}_$outputWidth"
+          )
       )
 
     test(f"MemoryFormatter $inputWidth-$outputWidth randomized") {
@@ -29,7 +31,7 @@ class MemoryFormatterTest extends AnyFunSuite {
         SimTimeout(100000)
         val scoreboard = ScoreboardInOrder[String]()
         StreamDriver(dut.io.i, dut.clockDomain) { payload =>
-          payload.randomize
+          payload.randomize()
           true
         }
         StreamMonitor(dut.io.i, dut.clockDomain) { payload =>
@@ -58,7 +60,7 @@ class MemoryFormatterTest extends AnyFunSuite {
           SimTimeout(100000)
           val scoreboard = ScoreboardInOrder[String]()
           StreamDriver(dut.io.i, dut.clockDomain) { payload =>
-            payload.randomize
+            payload.randomize()
             true
           }.transactionDelay = () => 0
           StreamMonitor(dut.io.i, dut.clockDomain) { payload =>
@@ -87,7 +89,7 @@ class MemoryFormatterTest extends AnyFunSuite {
           SimTimeout(100000)
           val scoreboard = ScoreboardInOrder[String]()
           StreamDriver(dut.io.i, dut.clockDomain) { payload =>
-            payload.randomize
+            payload.randomize()
             true
           }
           StreamMonitor(dut.io.i, dut.clockDomain) { payload =>
@@ -111,32 +113,31 @@ class MemoryFormatterTest extends AnyFunSuite {
       }
     }
     test(f"MemoryFormatter $inputWidth-$outputWidth max flow") {
-      dut.doSim(f"MemoryFormatter $inputWidth-$outputWidth max flow") {
-        dut =>
-          SimTimeout(100000)
-          val scoreboard = ScoreboardInOrder[String]()
-          StreamDriver(dut.io.i, dut.clockDomain) { payload =>
-            payload.randomize
-            true
-          }.transactionDelay = ()=>0
-          StreamMonitor(dut.io.i, dut.clockDomain) { payload =>
-            //println(f"IN: ${payload.toInt}%06x")
-            payload.toBigInt
-              .hexString(inputWidth)
-              .grouped(2)
-              .foreach(scoreboard.pushRef)
-          }
+      dut.doSim(f"MemoryFormatter $inputWidth-$outputWidth max flow") { dut =>
+        SimTimeout(100000)
+        val scoreboard = ScoreboardInOrder[String]()
+        StreamDriver(dut.io.i, dut.clockDomain) { payload =>
+          payload.randomize()
+          true
+        }.transactionDelay = () => 0
+        StreamMonitor(dut.io.i, dut.clockDomain) { payload =>
+          //println(f"IN: ${payload.toInt}%06x")
+          payload.toBigInt
+            .hexString(inputWidth)
+            .grouped(2)
+            .foreach(scoreboard.pushRef)
+        }
 
-          dut.io.o.ready #= true
-          StreamMonitor(dut.io.o, dut.clockDomain) { payload =>
-            //println(f"OUT: ${payload.toBigInt}%016x")
-            payload.toBigInt
-              .hexString(outputWidth)
-              .grouped(2)
-              .foreach(scoreboard.pushDut)
-          }
-          dut.clockDomain.forkStimulus(10)
-          dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches >= 1000)
+        dut.io.o.ready #= true
+        StreamMonitor(dut.io.o, dut.clockDomain) { payload =>
+          //println(f"OUT: ${payload.toBigInt}%016x")
+          payload.toBigInt
+            .hexString(outputWidth)
+            .grouped(2)
+            .foreach(scoreboard.pushDut)
+        }
+        dut.clockDomain.forkStimulus(10)
+        dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches >= 1000)
       }
     }
   }

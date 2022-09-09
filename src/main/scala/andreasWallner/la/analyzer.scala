@@ -75,27 +75,36 @@ object MemoryFormatter {
 
   def rotate[A](seq: Seq[A], n: Int): Seq[A] = {
     val nn =
-      if (n > 0) (n % seq.length) else (seq.length - (n.abs % seq.length))
+      if (n > 0) n % seq.length else seq.length - (n.abs % seq.length)
     seq.view.takeRight(nn) ++ seq.view.dropRight(nn)
   }
 
-  def enableDecoder(outputCnt: Int, bufferCnt: Int): Seq[(Int, Bits)] = {
-    val v = mutable.Map[Int, Bits]()
-    val l = mutable.ArrayBuffer[Int]()
+  // to only require a +1 upcounter, we count the insert positions 0, 1, 2
+  // but actually mean the first, second, ... insert offset (if we have 3
+  // input blocks that would be 0, 3, 6
+  // generate decoder from insert position to vector of enables
+  // if inputBlocks and outputBlocks share a common divider, not all
+  // indices might actually be needed, deal with this by adding until we
+  // completed a full cycle
+  def enableDecoder(
+      outputCnt: Int,
+      bufferCnt: Int,
+      inputBlocks: Int
+  ): Seq[(Any, Bits)] = {
+    val v = mutable.ArrayBuffer[(Any, Bits)]()
     var idx = 0
-    for (i <- 0 to outputCnt - 1) {
-      if (!v.values.exists(x => x == idx)) {
-        v(i) = B(
-          bufferCnt bits,
-          idx -> true,
-          (idx + 1) % bufferCnt -> true,
-          (idx + 2) % bufferCnt -> true,
-          default -> false
-        )
-        idx = (idx + 3) % outputCnt
+    var insertOffset = 0
+    do {
+      assert(v.count(_ => true) < outputCnt)
+      val en = for (i <- insertOffset until insertOffset + inputBlocks) yield {
+        i % bufferCnt -> true
       }
-    }
-    v.toSeq
+      v.append((idx, B(bufferCnt bits, default -> false, en: _*)))
+      idx += 1
+      insertOffset = (insertOffset + inputBlocks) % outputCnt
+    } while (insertOffset != 0)
+
+    v
   }
 
   def apply[T1 <: Data, T2 <: Data](
@@ -103,6 +112,8 @@ object MemoryFormatter {
       output: Stream[T2],
       pieceWidth: Int = 8
   ) {
+    import andreasWallner.Utils.gcd
+
     val inputWidth = widthOf(input.payload)
     val paddedInputWidth = makeMultipleOf(inputWidth, pieceWidth)
     val outputWidth = widthOf(output.payload)
@@ -111,16 +122,17 @@ object MemoryFormatter {
 
     val inputBlocks = paddedInputWidth / pieceWidth
     val outputBlocks = outputWidth / pieceWidth
-    val bufferBlocks = inputBlocks + outputBlocks - 1
+    val bufferBlocks = inputBlocks + outputBlocks - gcd(
+      inputBlocks,
+      outputBlocks
+    )
     val lastOutputElement = inputBlocks - 1
-    val secondLoopOffset = (inputBlocks - (outputBlocks % inputBlocks))
+    val secondLoopOffset = inputBlocks - (outputBlocks % inputBlocks)
 
     val paddedInput = input.payload.asBits.resize(paddedInputWidth)
 
-    val storeOffset = Counter(0 to bufferBlocks - 3)
     val inputOffset = Counter(0 until inputBlocks)
     inputOffset.value.setName("inputOffset")
-    storeOffset.value.setName("storeOffset") // TODO keep the weird ordering?
 
     val buffers =
       Vec(Reg(Bits(pieceWidth bits)), bufferBlocks).setName("buffers")
@@ -129,28 +141,37 @@ object MemoryFormatter {
     def muxIndices(muxCnt: Int, mux: Int, offset: Int): Seq[Int] = {
       // note: muxCnt is also the number of inputs per mux
       for (input <- 0 until muxCnt) yield {
-        val initial = (muxCnt - 1 downto 0)
+        val initial = muxCnt - 1 downto 0
         //println(f"""$input / $mux: ${initial mkString( " ")} >> ${(offset*input)%muxCnt} = ${rotate(initial, (offset * input) % muxCnt) mkString(" ")}""")
         rotate(initial, (offset * input) % muxCnt)(mux)
       }
     }
 
     val muxes = for (ii <- 0 until inputBlocks) yield {
-      val indices = (0 until inputBlocks)
+      val indices = 0 until inputBlocks
       val results = muxIndices(inputBlocks, ii, secondLoopOffset)
       inputOffset.value
         .muxList(
           (indices zip results).map({
             case (i: Int, r: Int) => (i, slicedInput(r))
-          })
-            :+ (spinal.core.default, slicedInput(0))
+          }) ++ (if (outputWidth % inputWidth != 0)
+                   List((spinal.core.default, slicedInput(0)))
+                 else List())
         )
         .setName(f"mux$ii")
     }
-    val input_fire = input.fire
+
+    val enableEncodings = enableDecoder(outputBlocks, bufferBlocks, inputBlocks)
+    val storeOffset = Counter(0 until enableEncodings.count(_ => true))
+    storeOffset.value.setName("storeOffset") // TODO keep the weird ordering?
     val enables =
-      storeOffset.muxList(enableDecoder(outputBlocks, bufferBlocks)).reversed
-    enables.setName("enables")
+      storeOffset
+        .muxList(enableDecoder(outputBlocks, bufferBlocks, inputBlocks))
+        .reversed
+        .setName("enables")
+
+    val input_fire = input.fire
+
     val bufferValid = Reg(Bool()) init False
     bufferValid
       .setWhen(enables(lastOutputElement) && input_fire)
@@ -166,7 +187,10 @@ object MemoryFormatter {
       }
     }
     val trueBufferBlocks = bufferBlocks - outputBlocks
-    val delayedEnables = RegNextWhen(enables(trueBufferBlocks - 1 downto 0), input_fire) init 0
+    val delayedEnables = RegNextWhen(
+      enables(trueBufferBlocks - 1 downto 0),
+      input_fire
+    ) init 0
     delayedEnables.setName("delayedEnables")
     for (ii <- 0 until trueBufferBlocks) {
       when(delayedEnables(ii) && input_fire) {
