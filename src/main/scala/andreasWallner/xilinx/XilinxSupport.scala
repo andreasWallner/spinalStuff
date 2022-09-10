@@ -1,6 +1,6 @@
 package andreasWallner.xilinx
 
-import andreasWallner.zynq.Dma
+import andreasWallner.zynq.ZynqDma
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axilite.{
@@ -21,8 +21,8 @@ object XilinxSupportFactory {
       case axilite: AxiLite4 => Some(AxiLite4Support(axilite))
       case axi: Axi4         => Some(Axi4Support(axi))
       case apb: Apb3         => Some(Apb3Support(apb))
-      case req: Dma.Request  => Some(DmaReqSupport(req))
-      case ack: Dma.Ack      => Some(DmaAckSupport(ack))
+      case req: ZynqDma.Request  => Some(DmaReqSupport(req))
+      case ack: ZynqDma.Ack      => Some(DmaAckSupport(ack))
       case _                 => None
     }
 }
@@ -45,7 +45,7 @@ trait BusSupport {
 
 // see Vivado 2022.1 install directory, data/ip/xilinx/processing_system7_v5_5/component.xml
 // search for DMA0_REQ
-case class DmaReqSupport(req: Dma.Request) extends BusSupport {
+case class DmaReqSupport(req: ZynqDma.Request) extends BusSupport {
   override def name(idx: Integer) = f"DMA${idx}_REQ"
 
   override def rename(idx: Integer): Unit = {
@@ -85,7 +85,7 @@ case class DmaReqSupport(req: Dma.Request) extends BusSupport {
   override def clockInterfaceNames(idx: Integer) =
     Some(f"${name(idx)}:${req.drready.getName()}")
 }
-case class DmaAckSupport(ack: Dma.Ack) extends BusSupport {
+case class DmaAckSupport(ack: ZynqDma.Ack) extends BusSupport {
   override def name(idx: Integer) = f"DMA${idx}_ACK"
 
   override def rename(idx: Integer): Unit = {
