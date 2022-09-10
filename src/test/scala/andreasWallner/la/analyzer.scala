@@ -17,17 +17,20 @@ case class MemoryFormatterTester(in_width: Int, out_width: Int)
 }
 
 class MemoryFormatterTest extends AnyFunSuite {
-  for (inputWidth <- List(16, 24); outputWidth <- List(32, 64, 128)) {
-    val dut = SimConfig.withFstWave
-      .compile(
-        MemoryFormatterTester(inputWidth, outputWidth)
-          .setDefinitionName(
-            f"MemoryFormatterTester_${inputWidth}_$outputWidth"
-          )
-      )
+  import andreasWallner.Utils.memoize
 
-    test(f"MemoryFormatter $inputWidth-$outputWidth randomized") {
-      dut.doSim(f"MemoryFormatter $inputWidth-$outputWidth randomized") { dut =>
+  lazy val dutFactory: ((Int, Int, Boolean)) => SimCompiled[MemoryFormatterTester] =
+    memoize { case (i, o, noDelay) =>
+      val d = if(noDelay) "noDelay" else "delay"
+      SimConfig.withFstWave.compile(
+        MemoryFormatterTester(i, o)
+          .setDefinitionName(f"MemoryFormatterTester_${i}_${o}_$d"))}
+
+  for (inputWidth <- List(16, 24); outputWidth <- List(32, 64); noDelay <- List(true, false)) { // TODO test 48/56
+    val d = if(noDelay) "noDelay" else "delay"
+    val prefix = f"MemoryFormatter $inputWidth-$outputWidth $d "
+    test(prefix + "randomized") {
+      dutFactory(inputWidth, outputWidth, noDelay).doSim(prefix + "randomized") { dut =>
         SimTimeout(100000)
         val scoreboard = ScoreboardInOrder[String]()
         StreamDriver(dut.io.i, dut.clockDomain) { payload =>
@@ -54,8 +57,8 @@ class MemoryFormatterTest extends AnyFunSuite {
         dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches >= 1000)
       }
     }
-    test(f"MemoryFormatter $inputWidth-$outputWidth input pressure") {
-      dut.doSim(f"MemoryFormatter $inputWidth-$outputWidth input pressure") {
+    test(prefix + "output starved") {
+      dutFactory(inputWidth, outputWidth, noDelay).doSim(prefix + "output starved") {
         dut =>
           SimTimeout(100000)
           val scoreboard = ScoreboardInOrder[String]()
@@ -83,8 +86,8 @@ class MemoryFormatterTest extends AnyFunSuite {
           dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches >= 1000)
       }
     }
-    test(f"MemoryFormatter $inputWidth-$outputWidth free output") {
-      dut.doSim(f"MemoryFormatter $inputWidth-$outputWidth free output") {
+    test(prefix + "input starved") {
+      dutFactory(inputWidth, outputWidth, noDelay).doSim(prefix + "input starved") {
         dut =>
           SimTimeout(100000)
           val scoreboard = ScoreboardInOrder[String]()
@@ -112,8 +115,8 @@ class MemoryFormatterTest extends AnyFunSuite {
           dut.clockDomain.waitActiveEdgeWhere(scoreboard.matches >= 1000)
       }
     }
-    test(f"MemoryFormatter $inputWidth-$outputWidth max flow") {
-      dut.doSim(f"MemoryFormatter $inputWidth-$outputWidth max flow") { dut =>
+    test(prefix + "max flow") {
+      dutFactory(inputWidth, outputWidth, noDelay).doSim(prefix + "max flow") { dut =>
         SimTimeout(100000)
         val scoreboard = ScoreboardInOrder[String]()
         StreamDriver(dut.io.i, dut.clockDomain) { payload =>

@@ -1,7 +1,9 @@
 package andreasWallner.la
 
+import andreasWallner.Utils.gcd
 import spinal.core._
 import spinal.lib._
+
 import scala.collection.mutable
 
 case class AnalyzerGenerics(
@@ -107,13 +109,23 @@ object MemoryFormatter {
     v
   }
 
+  // generate mux mappings depending on the current inputOffset
+  // for a single mux so that data can be stored in the correct mux
+  def muxIndices(muxCnt: Int, mux: Int, offset: Int): Seq[Int] = {
+    // note: muxCnt is also the number of inputs per mux
+    for (input <- 0 until muxCnt) yield {
+      val initial = muxCnt - 1 downto 0
+      //println(f"""$input / $mux: ${initial mkString( " ")} >> ${(offset*input)%muxCnt} = ${rotate(initial, (offset * input) % muxCnt) mkString(" ")}""")
+      rotate(initial, (offset * input) % muxCnt)(mux)
+    }
+  }
+
   def apply[T1 <: Data, T2 <: Data](
       input: Stream[T1],
       output: Stream[T2],
-      pieceWidth: Int = 8
+      pieceWidth: Int = 8,
+      noDelay: Boolean = true
   ) {
-    import andreasWallner.Utils.gcd
-
     val inputWidth = widthOf(input.payload)
     val paddedInputWidth = makeMultipleOf(inputWidth, pieceWidth)
     val outputWidth = widthOf(output.payload)
@@ -129,24 +141,13 @@ object MemoryFormatter {
     val lastOutputElement = inputBlocks - 1
     val secondLoopOffset = inputBlocks - (outputBlocks % inputBlocks)
 
-    val paddedInput = input.payload.asBits.resize(paddedInputWidth)
+    val buffers =
+      Vec(Reg(Bits(pieceWidth bits)), bufferBlocks).setName("buffers")
+    val slicedInput =
+      input.payload.asBits.resize(paddedInputWidth).subdivideIn(pieceWidth bits)
 
     val inputOffset = Counter(0 until inputBlocks)
     inputOffset.value.setName("inputOffset")
-
-    val buffers =
-      Vec(Reg(Bits(pieceWidth bits)), bufferBlocks).setName("buffers")
-    val slicedInput = paddedInput.subdivideIn(pieceWidth bits)
-
-    def muxIndices(muxCnt: Int, mux: Int, offset: Int): Seq[Int] = {
-      // note: muxCnt is also the number of inputs per mux
-      for (input <- 0 until muxCnt) yield {
-        val initial = muxCnt - 1 downto 0
-        //println(f"""$input / $mux: ${initial mkString( " ")} >> ${(offset*input)%muxCnt} = ${rotate(initial, (offset * input) % muxCnt) mkString(" ")}""")
-        rotate(initial, (offset * input) % muxCnt)(mux)
-      }
-    }
-
     val muxes = for (ii <- 0 until inputBlocks) yield {
       val indices = 0 until inputBlocks
       val results = muxIndices(inputBlocks, ii, secondLoopOffset)
@@ -163,7 +164,7 @@ object MemoryFormatter {
 
     val enableEncodings = enableDecoder(outputBlocks, bufferBlocks, inputBlocks)
     val storeOffset = Counter(0 until enableEncodings.count(_ => true))
-    storeOffset.value.setName("storeOffset") // TODO keep the weird ordering?
+    storeOffset.value.setName("storeOffset")
     val enables =
       storeOffset
         .muxList(enableDecoder(outputBlocks, bufferBlocks, inputBlocks))
@@ -176,6 +177,7 @@ object MemoryFormatter {
     bufferValid
       .setWhen(enables(lastOutputElement) && input_fire)
       .clearWhen(output.fire)
+      .setName("bufferValid")
     when(input_fire) {
       storeOffset.increment()
       when(enables(lastOutputElement)) { inputOffset.increment() }
@@ -198,9 +200,30 @@ object MemoryFormatter {
       }
     }
 
-    output.payload.assignFromBits(Cat(buffers.takeRight(outputBlocks)))
+    val outputs = if (noDelay) {
+      (for (ii <- bufferBlocks - 1 downto trueBufferBlocks) yield {
+        val muxedFromBuffer = ii >= bufferBlocks - trueBufferBlocks // TODO only need if input/output size relation fits (output < 2*input?)
+        val muxedFromInput = ii >= trueBufferBlocks && ii < trueBufferBlocks + inputBlocks
+        val bufferIdx = ii - outputBlocks
+        val muxIdx = (bufferBlocks - 1 - ii) % muxes.length
+        (muxedFromBuffer, muxedFromInput) match {
+          case (false, false) => buffers(ii)
+          case (true, false) =>
+            (delayedEnables(bufferIdx) && !bufferValid) ? buffers(bufferIdx) | buffers(ii)
+          case (false, true) =>
+            (enables(ii) && !bufferValid) ? muxes(muxIdx) | buffers(ii)
+          case (true, true) =>
+            (enables(ii) && !bufferValid) ? muxes(muxIdx) | (
+              (delayedEnables(bufferIdx) && !bufferValid) ? buffers(bufferIdx) | buffers(ii))
+        }
+      }).reverse
+    } else buffers.takeRight(outputBlocks)
+
+    output.payload.assignFromBits(Cat(outputs))
     input.ready := !bufferValid
-    output.valid := bufferValid
+    output.valid := bufferValid | (if (noDelay)
+                                     enables(lastOutputElement) && input_fire && !bufferValid
+                                   else False)
   }
 }
 
