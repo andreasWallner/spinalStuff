@@ -2,6 +2,8 @@ package andreasWallner.iceblink
 
 import spinal.core._
 import spinal.lib._
+import spinal.lib.eda.bench.Rtl
+import andreasWallner.yosys.YosysFlow
 import spinal.lib.io.InOutWrapper
 
 case class EppDemo () extends Component {
@@ -27,4 +29,7 @@ object EppDemo extends App {
     comp.io.led.setName("led")
     InOutWrapper(comp)
   }
+  val synth = YosysFlow("yosys", "iceblink_demo", Rtl(report), "ice40", "lp1k", "qn84", Some(100 MHz), Some("iceblink40.pcf"))
+  println(synth.getFMax())
+  println(synth.getArea())
 }
