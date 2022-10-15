@@ -5,6 +5,7 @@ import spinal.core._
 import spinal.lib._
 
 import scala.collection.mutable
+import scala.language.postfixOps
 
 case class AnalyzerGenerics(
     dataWidth: Int,
@@ -152,13 +153,9 @@ object MemoryFormatter {
       val indices = 0 until inputBlocks
       val results = muxIndices(inputBlocks, ii, secondLoopOffset)
       inputOffset.value
-        .muxList(
-          (indices zip results).map({
-            case (i: Int, r: Int) => (i, slicedInput(r))
-          }) ++ (if (outputWidth % inputWidth != 0)
-                   List((spinal.core.default, slicedInput(0)))
-                 else List())
-        )
+        .muxListDc((indices zip results).map({
+          case (i: Int, r: Int) => (i, slicedInput(r))
+        }))
         .setName(f"mux$ii")
     }
 
@@ -209,17 +206,24 @@ object MemoryFormatter {
         (muxedFromBuffer, muxedFromInput) match {
           case (false, false) => buffers(ii)
           case (true, false) =>
-            (delayedEnables(bufferIdx) && !bufferValid) ? buffers(bufferIdx) | buffers(ii)
+            (delayedEnables(bufferIdx) && !bufferValid) ? buffers(bufferIdx) | buffers(
+              ii
+            )
           case (false, true) =>
             (enables(ii) && !bufferValid) ? muxes(muxIdx) | buffers(ii)
           case (true, true) =>
-            (enables(ii) && !bufferValid) ? muxes(muxIdx) | (
-              (delayedEnables(bufferIdx) && !bufferValid) ? buffers(bufferIdx) | buffers(ii))
+            (enables(ii) && !bufferValid) ? muxes(muxIdx) | ((delayedEnables(
+              bufferIdx
+            ) && !bufferValid) ? buffers(bufferIdx) | buffers(ii))
         }
       }).reverse
     } else buffers.takeRight(outputBlocks)
 
     output.payload.assignFromBits(Cat(outputs))
+    // TODO think about the more obvious solution of making input.ready
+    // depend on output.ready to allow for no delay (instead of all the
+    // comb paths) - check why this fails for 24-32
+    // input.ready := !bufferValid || output.ready
     input.ready := !bufferValid
     output.valid := bufferValid | (if (noDelay)
                                      enables(lastOutputElement) && input_fire && !bufferValid
