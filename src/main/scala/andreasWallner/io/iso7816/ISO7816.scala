@@ -785,27 +785,27 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
   // divider
 
   core.io.config.control.ta := factory
-    .register(0x18, "config1")
+    .register(0x18, "timing1")
     .createReadAndWrite(UInt(32 bits), 0, "ta")
     .init(500 * defaultClkDivider)
   core.io.config.control.tb := factory
-    .register(0x1c, "config2")
+    .register(0x1c, "timing2")
     .createReadAndWrite(UInt(32 bits), 0, "tb")
     .init(1000 * defaultClkDivider)
   core.io.config.control.te := factory
-    .register(0x20, "config3")
+    .register(0x20, "timing3")
     .createReadAndWrite(UInt(32 bits), 0, "te")
     .init(0)
   core.io.config.control.th := factory
-    .register(0x24, "config4")
+    .register(0x24, "timing4")
     .createReadAndWrite(UInt(32 bits), 0, "th")
     .init(frequency / 100000000)
   core.io.config.control.vcc_offset := factory
-    .register(0x28, "config5")
+    .register(0x28, "timing5")
     .createReadAndWrite(UInt(32 bits), 0, "vcc_offset")
     .init(0)
   core.io.config.control.clk_offset := factory
-    .register(0x2c, "config6")
+    .register(0x2c, "timing6")
     .createReadAndWrite(UInt(32 bits), 0, "clk_offset")
     .init(0)
 

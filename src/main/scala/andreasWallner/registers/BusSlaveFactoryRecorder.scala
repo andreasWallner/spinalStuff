@@ -266,7 +266,8 @@ class BusSlaveFactoryRecorder(factory: BusSlaveFactory) extends BusComponent {
       name: String,
       doc: String = null
   ): RegisterRecorder = {
-    assert(!registers.contains(address))
+    assert(!registers.contains(address), s"address $address is already used")
+    assert(!registers.values.exists(reg => reg.name == name), s"Register named $name is already used")
     registers(address) = Register(name, address.toLong, Option(doc), List())
     new RegisterRecorder(registers, address, factory)
   }
