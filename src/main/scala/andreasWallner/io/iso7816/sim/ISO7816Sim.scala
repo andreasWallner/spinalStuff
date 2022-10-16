@@ -11,11 +11,12 @@ import andreasWallner.io.iso7816.ISO7816
 case class ISO7816SimRx(io: TriState[Bool], baudrate: Double)(
     rxCallback: (Int, Boolean) => Boolean
 ) {
-  var pullDown = false
   var baudrateLong = baudrate.asInstanceOf[Long]
   var disableRx = false
 
   fork {
+    // wait for one cycle to prevent issues with random init
+    // values looking like a start bit...
     sleep(1)
     while (true) {
       waitUntil(!disableRx)
@@ -39,7 +40,7 @@ case class ISO7816SimRx(io: TriState[Bool], baudrate: Double)(
     val indicateOk = cb(data, parity == io.write.toBoolean)
     sleep(baudrateLong)
     io.drive(indicateOk)
-    sleep(((if (!indicateOk) 2 else 1) * baudrateLong))
+    sleep((if (!indicateOk) 2 else 1) * baudrateLong)
     io.highz()
 
     data
@@ -91,18 +92,18 @@ case class ISO7816SimClient(iso: ISO7816)(
     clientFun(this)
   }
 
-  def waitForReset() = {
+  def waitForReset(): Unit = {
     waitUntil(iso.rst.toBoolean == false)
   }
 
-  def waitForActivation() = {
+  def waitForActivation(): Unit = {
     iso.io.highz()
     waitUntil(
       iso.vcc.toBoolean == true && iso.io.read.toBoolean == true && iso.rst.toBoolean == true
     )
   }
 
-  def send(s: String, baudrate: Double) = {
+  def send(s: String, baudrate: Double): Unit = {
     val tx = ISO7816SimTx(iso.io, baudrate) { (_, _, _) =>
       {}
     }
@@ -124,7 +125,7 @@ case class ISO7816SimClient(iso: ISO7816)(
     sleep(baudrate.toLong)
     sleep(baudrate.toLong)
     iso.io.drive(true)
-    sleep(((if (!true) 2 else 1) * baudrate.toLong))
+    sleep((if (!true) 2 else 1) * baudrate.toLong)
     iso.io.highz()
 
     data
