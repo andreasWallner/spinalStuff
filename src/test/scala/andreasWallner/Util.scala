@@ -33,6 +33,11 @@ case class RandomSource(elementCnt: Long, maxRnd: Int) {
   }
 }
 
+/*
+ * Randomize a passed payload n times, use e.g. for StreamDrivers
+ *
+ *     StreamDriver(dut.io.tx, dut.clockDomain)(PayloadRandmizer(toSend).apply)
+ */
 case class PayloadRandmizer(elementCnt: Long) {
   var cnt = 0
 
