@@ -120,6 +120,7 @@ case class StateCtrl() extends Component {
       val driving_io = out Bool ()
       val clock = out Bool ()
       val busy = out Bool ()
+      val current = out(CtrlState.craft())
     }
   }
 
@@ -127,6 +128,7 @@ case class StateCtrl() extends Component {
   val command = Reg(CtrlCommand()).init(CtrlCommand.Idle)
   val active = command =/= CtrlCommand.Idle
   io.state.busy := active
+  io.state.current := state
   val timing = new Area {
     val reset = False
     val count = Reg(UInt(32 bit))
@@ -622,6 +624,7 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
       val tx_active = out Bool ()
       val rx_active = out Bool ()
       val change_active = out Bool ()
+      val ctrl_state = out(CtrlState.craft())
     }
     val start = new Bundle {
       val tx = in Bool ()
@@ -650,6 +653,7 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   control.io.iso.io.read := io.iso.io.read
   io.iso.io.write := control.io.state.driving_io ? control.io.iso.io.write | rxtx.io.iso.io.write
   io.iso.io.writeEnable := control.io.state.driving_io ? control.io.iso.io.writeEnable | rxtx.io.iso.io.writeEnable
+  io.state.ctrl_state := control.io.state.current
 
   rxtx.io.config := io.config.rxtx
   rxtx.io.rx <> io.rx
@@ -735,6 +739,28 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
     txFifo.io.push.isStall.asBits,
     4,
     "tx_ovfl"
+  )
+  state.read(
+    core.io.state.ctrl_state,
+    bitOffset = 5,
+    name = "iso_state",
+    doc =
+      "State of the ISO interface. May show old or new value during an ongoing change.",
+    values = List(
+      Value(
+        CtrlState.Active,
+        "chip is supplied and activated, ready for communication"
+      ),
+      Value(
+        CtrlState.Reset,
+        "chip is supplied but kept in reset via the ISO reset line"
+      ),
+      Value(
+        CtrlState.ClockStop,
+        "chip is supplied, no clock is toggling - no communication is possible"
+      ),
+      Value(CtrlState.Inactive, "ISO VCC is disabled and chip is turned off")
+    )
   )
 
   val config1 = factory.register(0x0c, "config1")
