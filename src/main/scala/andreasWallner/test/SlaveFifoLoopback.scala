@@ -3,7 +3,9 @@ package andreasWallner.test
 import spinal.core._
 import spinal.lib._
 import andreasWallner.io.fx3._
-import andreasWallner.misc.Xorshift
+import andreasWallner.misc.{XorShiftConfig, Xorshift}
+
+import scala.language.postfixOps
 
 case class SlaveFifoLoopback() extends Component {
   val io = new Bundle {
@@ -11,7 +13,7 @@ case class SlaveFifoLoopback() extends Component {
     val activity = out Bool()
     val mode = in Bits(4 bit)
 
-    val toggle1Hz = out(Reg(Bool))
+    val toggle1Hz = out Bool() setAsReg()
   }
 
   val sfmTxEn = RegInit(False)
@@ -21,7 +23,7 @@ case class SlaveFifoLoopback() extends Component {
   sfm.io.tx.pktend_timeout := 10000
   sfm.io.tx.en := sfmTxEn
 
-  val xorshift = Xorshift()
+  val xorshift = Xorshift(XorShiftConfig(16, hasRun=true))
   xorshift.io.run := io.mode(0)
   val fifo = StreamFifo(
     dataType = Bits(16 bit),
