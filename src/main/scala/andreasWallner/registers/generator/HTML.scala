@@ -6,32 +6,32 @@ import java.io.{Writer, PrintWriter, File}
 
 class HTML(intf: BusComponent) {
   private var name = intf.busComponentName
-  
+
   def overrideName(newName: String) = {
     name = newName
     this
   }
 
-  def write(): Unit = write(f"${GlobalData.get.phaseContext.config.targetDirectory}/${name}.html")
+  def write(): Unit = write(f"${GlobalData.get.phaseContext.config.targetDirectory}/$name.html")
 
   def write(filename: String): Unit = {
     val writer = new PrintWriter(new File(filename))
     try {
       write(writer)
     } finally {
-      writer.close();
+      writer.close()
     }
   }
 
   def formatResetValue(value: BigInt, bitCount: Int):String = {
     val hexCount = scala.math.ceil(bitCount/4.0).toInt
-    val unsignedValue = if(value >= 0) value else ((BigInt(1) << bitCount) + value)
-    if(value == 0) s"${bitCount}'b0" else s"${bitCount}'h%${hexCount}s".format(unsignedValue.toString(16)).replace(' ','0')
+    val unsignedValue = if(value >= 0) value else (BigInt(1) << bitCount) + value
+    if(value == 0) s"$bitCount'b0" else s"$bitCount'h%${hexCount}s".format(unsignedValue.toString(16)).replace(' ','0')
   }
 
   def write(writer: Writer): Unit = {
     writeHeader(writer)
-    intf.elements.map(writeElement(_, writer))
+    intf.elements.foreach(writeElement(_, writer))
     writeFooter(writer)
   }
 
@@ -44,32 +44,35 @@ class HTML(intf: BusComponent) {
 
   def writeRegister(register: Register, writer: Writer): Unit = {
     val fieldCnt = register.fields.size
+    val odd = if(((register.address / 4) % 2) != 0) "odd" else "even"
 
     writer.write(s"""
-        |          <tr class="reg" align="left">
-        |            <td align="center" rowspan="${fieldCnt}">0x${register.address.toHexString}</td>
-        |            <td align="left" rowspan="${fieldCnt}">${(register.name).toUpperCase()}</td>
-        |            <td class="fixWidth" align="center" rowspan="${fieldCnt}">${register.doc} </td>
-        |            <td align="center" rowspan="${fieldCnt}"></td>
+        |          <tr class="reg $odd" align="left">
+        |            <td align="center" rowspan="$fieldCnt">0x${register.address.toHexString}</td>
+        |            <td align="left" rowspan="$fieldCnt">${register.name.toUpperCase()}</td>
+        |            <td class="fixWidth" align="center" rowspan="$fieldCnt">${register.doc} </td>
+        |            <td align="center" rowspan="$fieldCnt"></td>
         """.stripMargin)
-    
-    writeField(register.fields.last, writer)
-    register.fields.toList.reverse.tail.map(field => {
-      writer.write("</tr><tr>")
-      writeField(field, writer)
-    })
 
+    if(register.fields.nonEmpty) {
+      writeField(register.fields.last, writer)
+
+      register.fields.toList.reverse.tail.foreach(field => {
+        writer.write(s"""</tr><tr class="$odd">""")
+        writeField(field, writer)
+      })
+    }
     writer.write(s"""          </tr>""")
   }
 
-  def writeField(field: Field, writer: Writer) = {
+  def writeField(field: Field, writer: Writer): Unit = {
     val reserved = if (field.accessType == AccessType.NA) "reserved" else ""
     writer.write(s"""
-    |          <td class="${reserved}" >${field.section}</td>
-    |          <td class="${reserved}" >${field.name}</td>
-    |          <td class="${reserved}" align="center">${field.accessType}</td>
-    |          <td class="${reserved}" align="right">${formatResetValue(field.resetValue, field.section.width)}</td>
-    |          <td class="${reserved} fixWidth2" >${field.doc}</td>
+    |          <td class="$reserved" align="right">${field.section}</td>
+    |          <td class="$reserved" >${field.name}</td>
+    |          <td class="$reserved" align="center">${field.accessType}</td>
+    |          <td class="$reserved" align="right">${formatResetValue(field.resetValue, field.section.width)}</td>
+    |          <td class="$reserved fixWidth2" align="left">${field.doc.getOrElse("")}</td>
     |""".stripMargin)
   }
 
@@ -78,28 +81,28 @@ class HTML(intf: BusComponent) {
       |<html>
       |  <head>
       |    <title>
-      |      ${name}
+      |      $name
       |    </title>
       |    <style>
       |      div{
       |          text-align: center;
       |      }
-      |${commonCSS}
-      |${Default}
-      |${Spring}
+      |$commonCSS
+      |$Default
+      |$Spring
       |    </style>
       |  </head>
       |  <body>
       |  <header align="center">
-      |  <p class="regif-title"> ${name} Interface Document </p>
+      |  <p class="regif-title"> $name Interface Document </p>
       |  </header>
       |  <div class="table">
       |  <table  align="center" class="theme-default">
       |      <br/>
-      |${tableHead}
+      |$tableHead
       |      <tbody>
       """.stripMargin)
-  
+
   def writeFooter(writer: Writer): Unit = writer.write("""
       |      </tbody>
       |  </table>
@@ -181,6 +184,9 @@ class HTML(intf: BusComponent) {
       |      }
       |      .theme-default tbody tr.reg{
       |          border-top: 2px solid #000;
+      |      }
+      |      .theme-default tbody tr.odd {
+      |         background: #ddd
       |      }
       |""".stripMargin
   val Spring =
