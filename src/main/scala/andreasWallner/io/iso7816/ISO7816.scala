@@ -346,8 +346,8 @@ case class Timeout() extends Component {
 
     val en = in Bool ()
     val activity = in Bool ()
-    val c_timeout = out Bool() setAsReg()
-    val b_timeout = out Bool() setAsReg()
+    val c_timeout = out Bool () setAsReg ()
+    val b_timeout = out Bool () setAsReg ()
   }
 
   val cnt = Reg(UInt(32 bit))
@@ -731,9 +731,24 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
   info1.read(txBufferSize, 16, "tx_buffer_size")
 
   val state = factory.register(0x08, "state")
-  state.read(core.io.state.rx_active, 0, "rx_active")
-  state.read(core.io.state.tx_active, 1, "tx_active")
-  state.read(core.io.state.change_active, 2, "change_active")
+  state.read(
+    core.io.state.rx_active,
+    0,
+    "rx_active",
+    "waiting for response or receiving response data"
+  )
+  state.read(
+    core.io.state.tx_active,
+    1,
+    "tx_active",
+    "data is being transmitted"
+  )
+  state.read(
+    core.io.state.change_active,
+    2,
+    "change_active",
+    "ISO state is changing (e.g. activating)"
+  )
   state.doBitsAccumulationAndClearOnRead(rxFifoIsOverflow.asBits, 3, "rx_ovfl")
   state.doBitsAccumulationAndClearOnRead(
     txFifo.io.push.isStall.asBits,
@@ -778,14 +793,14 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
     UInt(core.io.config.rxtx.cgt.getWidth bits),
     1,
     "cgt",
-    "character guard time in module clocks"
+    "character guard time in module clocks, wait time between two consecutively transmitted characters"
   )
   val config2 = factory.register(0x4c, "config2")
   core.io.config.rxtx.baudrateDivider := config2
     .createReadAndWrite(
       UInt(32 bit),
       0,
-      "baudrate",
+      "baudrate_div",
       "divider for baudrate, baudrate = fmodule / divider" // TODO more useful description not mixing up baudrate and divider
     )
     .init(frequency / 9600)
@@ -797,10 +812,25 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
   core.io.start.deactivate := False
   core.io.start.activate := False
   core.io.start.stop_clock := False
-  trigger.setOnSet(core.io.start.rx, 0, "rx")
+  trigger.setOnSet(
+    core.io.start.rx,
+    0,
+    "rx",
+    "start a transmission, may be set together with tx for rx after tx is finished"
+  )
   trigger.setOnSet(core.io.start.tx, 1, "tx")
-  trigger.setOnSet(core.io.start.reset, 2, "reset")
-  trigger.setOnSet(core.io.start.deactivate, 3, "deactivate")
+  trigger.setOnSet(
+    core.io.start.reset,
+    2,
+    "reset",
+    "bring card to reset state, set together with `activate` for a timed warm reset"
+  )
+  trigger.setOnSet(
+    core.io.start.deactivate,
+    3,
+    "deactivate",
+    "deactivate card, set together with `activate` for a timed cold reset"
+  )
   trigger.setOnSet(core.io.start.activate, 4, "activate")
   trigger.setOnSet(core.io.start.stop_clock, 5, "stop_clock")
 
@@ -809,11 +839,9 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
   core.io.config.clockrate := config0.createReadAndWrite(
     UInt(32 bit),
     0,
-    "divider",
-    "divider for clock generator, clockrate = 2 * fmodule / divider"
+    "clockrate_div",
+    "divider for ISO clock, clock = 2 * fmodule / clockrate_div"
   ) init defaultClkDivider.toInt
-  // TODO describe difference from baudrate divider
-  // divider
 
   core.io.config.control.ta := factory
     .register(0x18, "timing1")
@@ -859,7 +887,7 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
       UInt(32 bit),
       0,
       "bwt",
-      "bwt in fmodule cycles, set to 0 to disable"
+      "bwt in fmodule cycles, set to 0 to disable - timeout between character after initial character is received"
     )
   core.io.config.cwt := factory
     .register(0x48, "config8")
@@ -867,7 +895,7 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
       UInt(32 bit),
       0,
       "cwt",
-      "cwt in fmodule cycles, set to 0 to disable"
+      "cwt in fmodule cycles, set to 0 to disable - timeout until the initial character"
     )
 
   override def elements = factory.elements
