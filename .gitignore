@@ -48,3 +48,12 @@ tmp/
 project
 !project/build.properties
 generated/*
+
+# python virtual env
+.env
+
+# SymbiYosys output files
+*.asc
+*.bin
+*.rpt
+*.blif
