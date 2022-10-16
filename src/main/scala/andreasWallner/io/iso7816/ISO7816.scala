@@ -541,6 +541,7 @@ case class RxTxCore() extends Component {
 
     RxStart.whenIsActive {
       io.state.rx_active := True
+      io.state.activity := True
       timing.en := True
       data := B"1000000000"
       parity := True
@@ -552,6 +553,7 @@ case class RxTxCore() extends Component {
     Rx.whenIsActive {
       timing.en := True
       io.state.rx_active := True
+      io.state.activity := True
       when(timing.rx_sample) {
         data := io.iso.io.read ## data(1 to 9)
         parity := parity ^ io.iso.io.read
@@ -564,6 +566,7 @@ case class RxTxCore() extends Component {
     RxParity.whenIsActive {
       timing.en := True
       io.state.rx_active := True
+      io.state.activity := True
       when(timing.rx_sample) {
         when(parity || !io.config.characterRepetition) {
           io.rx.valid := True
@@ -577,6 +580,7 @@ case class RxTxCore() extends Component {
     RxStop.whenIsActive {
       timing.en := True
       io.state.rx_active := True
+      io.state.activity := True
       when(timing.rx_sample) {
         goto(RxWait)
       }
@@ -587,6 +591,7 @@ case class RxTxCore() extends Component {
       io.state.rx_active := True
       io.iso.io.write := False
       io.iso.io.writeEnable := True
+      io.state.activity := True
       when(timing.rx_sample) {
         goto(RxErrorPost)
       }
@@ -596,6 +601,7 @@ case class RxTxCore() extends Component {
       io.state.rx_active := True
       io.iso.io.write := True
       io.iso.io.writeEnable := True
+      io.state.activity := True
       goto(RxWait)
     }
   }
