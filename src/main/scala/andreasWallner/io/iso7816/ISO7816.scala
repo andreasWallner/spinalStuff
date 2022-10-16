@@ -359,7 +359,7 @@ case class Timeout() extends Component {
 
   first.setWhen(!io.en)
   first.clearWhen(io.activity)
-  io.c_timeout.setWhen((cnt === io.cwt) && (io.cwt =/= 0))
+  io.c_timeout.setWhen((cnt === io.cwt) && (io.cwt =/= 0) && !first)
   io.c_timeout.clearWhen(!io.en)
   io.b_timeout.setWhen((cnt === io.bwt) && (io.bwt =/= 0) && first)
   io.b_timeout.clearWhen(!io.en)
