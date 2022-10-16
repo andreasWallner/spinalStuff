@@ -137,12 +137,21 @@ package object sim {
   }
 
   implicit class SimBool(b: Bool) {
-    def strobe(v: Boolean, cd: ClockDomain) = {
+    def strobe(v: Boolean, cd: ClockDomain):Unit = {
       fork {
         cd.waitActiveEdge()
         b #= v
         cd.waitActiveEdge()
         b #= !v
+      }
+    }
+
+    def strobe(cd: ClockDomain):Unit = {
+      fork {
+        cd.waitActiveEdge()
+        b #= !b.toBoolean
+        cd.waitActiveEdge()
+        b #= !b.toBoolean
       }
     }
   }
