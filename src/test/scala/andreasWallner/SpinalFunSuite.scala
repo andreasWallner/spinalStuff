@@ -10,7 +10,7 @@ import scala.util.Random
 /**
  * A suite of tests running digital simulation
  *
- * Recommanded usage:
+ * Recommended usage:
  *
  * <pre class="stHighlight">
  * class SomeTests extends HwFunSuite {
@@ -30,7 +30,7 @@ import scala.util.Random
  * This class allows the SpinalSim seed to be overwritten from the
  * command line: <code>testOnly path.to.the.Class -- -Dseed=1</code>
  */
-class HwFunSuite extends AnyFunSuite with BeforeAndAfterAllConfigMap {
+class SpinalFunSuite extends AnyFunSuite with BeforeAndAfterAllConfigMap {
   var _globalSeed: Option[Int] = None
   override def beforeAll(configMap: ConfigMap):Unit = {
     _globalSeed = configMap.getOptional[java.lang.String]("seed").map(s => java.lang.Integer.parseInt(s))

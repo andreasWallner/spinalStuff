@@ -26,7 +26,7 @@ class TestDmac extends AnyFunSuite {
   )
 
   test("foo") {
-    dut.doSim("foo", seed=1) { dut =>
+    dut.doSim("foo") { dut =>
       SimTimeout(100000)
 
       val axiDriver = AxiLite4Driver(dut.io.axi, dut.clockDomain)
@@ -47,15 +47,16 @@ class TestDmac extends AnyFunSuite {
       sleep(2000)
 
       val xs = XorShift()
+
       def next2() = {
         val a = xs.next
         val b = xs.next
         (BigInt(a) << 16) + BigInt(b)
       }
+
       for (_ <- 1 to 100) {
         waitUntil(requested > 0)
-        val r = axiDriver.read(0x40000000)
-        assert(r == next2())
+        assert(axiDriver.read(0x40000000) == next2() + 1)
         dut.clockDomain.waitActiveEdge(Random.nextInt(30))
         requested -= 1
       }

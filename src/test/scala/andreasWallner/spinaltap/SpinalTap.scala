@@ -19,23 +19,26 @@ object simLog {
 }
 
 class SpinalTapTest extends AnyFunSuite {
-  val dut = SimConfig.withWave.compile(new Component() {
-    val spinaltap = new ApbSpinalTap()
-    val io = new Bundle {
-      val bus = slave(Apb3(32, 32))
-      val iso = master(ISO7816())
-    }
-    spinaltap.io.bus <> io.bus
-    io.iso.io <> spinaltap.io.port0(0)
-    io.iso.rst <> spinaltap.io.port0.write(1)
-    io.iso.clk <> spinaltap.io.port0.write(2)
-    io.iso.vcc <> True
+  val dut = SimConfig.withWave
+    .withConfig(
+      SpinalConfig(defaultClockDomainFrequency = FixedFrequency(100 MHz))
+    ).compile(new Component() {
+      val spinaltap = new ApbSpinalTap()
+      val io = new Bundle {
+        val bus = slave(Apb3(32, 32))
+        val iso = master(ISO7816())
+      }
+      spinaltap.io.bus <> io.bus
+      io.iso.io <> spinaltap.io.port0(0)
+      io.iso.rst <> spinaltap.io.port0.write(1)
+      io.iso.clk <> spinaltap.io.port0.write(2)
+      io.iso.vcc <> True
 
-    for (i <- 1 to 4)
-      spinaltap.io.port0.read(i) := spinaltap.io.port0.write(i)
-    for (i <- 0 to 4)
-      spinaltap.io.port1.read(i) := False
-  })
+      for (i <- 1 to 4)
+        spinaltap.io.port0.read(i) := spinaltap.io.port0.write(i)
+      for (i <- 0 to 4)
+        spinaltap.io.port1.read(i) := False
+    })
 
   test("configure and run ISO communication") {
     dut.doSim("configure and run ISO communication") { dut =>
@@ -44,7 +47,7 @@ class SpinalTapTest extends AnyFunSuite {
       ISO7816SimClient(dut.io.iso) { client =>
         val baudrate = 50
         val clockrate = 10e-6
-        val T = 250 // 500
+        val T = 250 // baudrate // 10
 
         dut.clockDomain.waitActiveEdge(10)
         simLog("waiting for activation")

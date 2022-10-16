@@ -153,7 +153,6 @@ class BusMasterSim extends FunSuite {
   }
 
   val dut = SimConfig.withWave
-    .workspacePath("/c/work/tmp/sim")
     .compile(BusMaster())
 
   test("write registers") {
