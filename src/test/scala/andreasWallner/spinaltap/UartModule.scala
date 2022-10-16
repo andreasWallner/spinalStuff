@@ -9,9 +9,8 @@ import org.scalatest.funsuite.AnyFunSuite
 
 class UartModuleSim extends AnyFunSuite {
   val dut = SimConfig.withWave
-    .workspacePath("/c/work/tmp/sim")
     .compile(UartModule(1))
-  
+
   /*test("txrx") {
     dut.doSim("txrx") { dut =>
       val toSend = 5
