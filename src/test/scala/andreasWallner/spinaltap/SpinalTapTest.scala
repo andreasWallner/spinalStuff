@@ -1,22 +1,16 @@
 package andreasWallner.spinaltap
 
-import spinal.core._
-import spinal.sim._
-import spinal.core.sim._
-import spinal.lib.sim._
-import org.scalatest.funsuite.AnyFunSuite
-import spinal.lib.bus.amba3.apb.sim.Apb3Driver
+import andreasWallner.io.iso7816.ISO7816
 import andreasWallner.io.iso7816.sim.ISO7816SimClient
-
-import spinal.lib.bus.amba3.apb.Apb3
-import andreasWallner.io.iso7816.{Apb3ISO7816Peripheral, ISO7816}
+import andreasWallner.sim.simLog
+import org.scalatest.funsuite.AnyFunSuite
+import spinal.core._
+import spinal.core.sim._
 import spinal.lib._
+import spinal.lib.bus.amba3.apb.Apb3
+import spinal.lib.bus.amba3.apb.sim.Apb3Driver
 
-object simLog {
-  def apply(s: String) = {
-    println(f"[${Console.BLUE}${simTime()}${Console.RESET}] $s")
-  }
-}
+import scala.language.postfixOps
 
 class SpinalTapTest extends AnyFunSuite {
   val dut = SimConfig.withWave
@@ -65,13 +59,13 @@ class SpinalTapTest extends AnyFunSuite {
 
       dut.clockDomain.forkStimulus(10)
 
-      val isobase = 0x43c00400;
-      val muxbase = 0x43c00300;
+      val isobase = 0x43c00500;
+      val muxbase = 0x43c00400;
 
       driver.write(muxbase, 0x403)
 
-      driver.write(isobase + 0x14, 25) // divider
-      driver.write(isobase + 0x4c, 25)
+      driver.write(isobase + 0x14, 25) // clockrate
+      driver.write(isobase + 0x4c, 25) // baudrate
       driver.write(isobase + 0x44, 0) //40000 * 50) // bwt
       driver.write(isobase + 0x48, 3000) //40000 * 50) // cwt
 
@@ -84,7 +78,7 @@ class SpinalTapTest extends AnyFunSuite {
 
       driver.write(isobase + 0x10, 0x11) // trigger activation & rx
 
-      while (driver.read(isobase + 0x08) != 0) {}
+      while ((driver.read(isobase + 0x08) & 0x3) != 0) {} // wait until state change and RX are done
       assert((driver.read(isobase + 0x30) & 0xffff) == 2)
       assert((driver.read(isobase + 0x3c) & 0xff) == 0x3b)
       assert((driver.read(isobase + 0x3c) & 0xff) == 0x00)
@@ -99,7 +93,7 @@ class SpinalTapTest extends AnyFunSuite {
       driver.write(isobase + 0x10, 0x03) // trigger tx & rx
 
       simLog("receiving response")
-      while (driver.read(isobase + 0x08) != 0) {}
+      while ((driver.read(isobase + 0x08) & 0x3) != 0) {} // wait until state change and RX are done
       assert((driver.read(isobase + 0x30) & 0xffff) == 2)
       assert((driver.read(isobase + 0x3c) & 0xff) == 0x90)
       assert((driver.read(isobase + 0x3c) & 0xff) == 0x21)
