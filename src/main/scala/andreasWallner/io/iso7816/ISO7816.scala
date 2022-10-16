@@ -816,7 +816,7 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
     core.io.start.rx,
     0,
     "rx",
-    "start a transmission, may be set together with tx for rx after tx is finished"
+    "start a transmission. May be set together with tx for rx after tx is finished. May be set together with `activate` to trigger receive ATR."
   )
   trigger.setOnSet(core.io.start.tx, 1, "tx")
   trigger.setOnSet(
