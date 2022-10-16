@@ -1,8 +1,8 @@
 package andreasWallner.registers.casemodel
 
 import andreasWallner.registers.datamodel
-import andreasWallner.registers.datamodel.{Section, AccessType}
-import spinal.core.{HardType, Data}
+import andreasWallner.registers.datamodel.{AccessType, Section}
+import spinal.core.{Data, SpinalEnum, SpinalEnumElement}
 
 case class Register(
     name: String,
@@ -98,4 +98,19 @@ object Value {
   def apply(value: Long, name: String, doc: String): Value =
     Value(value, name, Some(doc))
   def apply(value: Long, name: String): Value = Value(value, name, None)
+
+  def apply[T <: SpinalEnum](value: SpinalEnumElement[T]): datamodel.Value =
+    EnumValue(value, None)
+  def apply[T <: SpinalEnum](value: SpinalEnumElement[T], doc:String): datamodel.Value =
+    EnumValue(value, Some(doc))
+}
+
+// The name of an enum value is only available after the nameables have
+// been named, not during initial phases of hardware elaboration
+// -> delay until after nameables are named
+case class EnumValue[T <: SpinalEnum](
+    element: SpinalEnumElement[T],
+    doc: Option[String]) extends datamodel.Value {
+  override def name:String = element.getName()
+  override val value = element.craft().getEncoding.getValue(element).toLong
 }

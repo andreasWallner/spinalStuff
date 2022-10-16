@@ -24,7 +24,7 @@ class RegisterRecorder(
       bitOffset: Int,
       name: String,
       doc: String = null,
-      values: List[Value] = List()
+      values: List[datamodel.Value] = List()
   ): T = {
     append(
       Field(
@@ -47,7 +47,7 @@ class RegisterRecorder(
       bitOffset: Int,
       name: String,
       doc: String = null,
-      values: List[Value] = List()
+      values: List[datamodel.Value] = List()
   ): T = {
     append(
       Field(
@@ -69,7 +69,7 @@ class RegisterRecorder(
       bitOffset: Int,
       name: String,
       doc: String = null,
-      values: List[Value] = List()
+      values: List[datamodel.Value] = List()
   ): T = {
     append(
       Field(
@@ -91,7 +91,7 @@ class RegisterRecorder(
       bitOffset: Int,
       name: String,
       doc: String = null,
-      values: List[Value] = List()
+      values: List[datamodel.Value] = List()
   ): T = {
     append(
       Field(
@@ -113,7 +113,7 @@ class RegisterRecorder(
       bitOffset: Int,
       name: String,
       doc: String = null,
-      values: List[Value] = List()
+      values: List[datamodel.Value] = List()
   ): Unit = {
     append(
       Field(
@@ -135,7 +135,7 @@ class RegisterRecorder(
       bitOffset: Int,
       name: String,
       doc: String = null,
-      values: List[Value] = List()
+      values: List[datamodel.Value] = List()
   ) = {
     append(
       Field(
@@ -158,7 +158,7 @@ class RegisterRecorder(
       payloadBitOffset: Int,
       name: String,
       doc: String = null,
-      values: List[Value] = List(),
+      values: List[datamodel.Value] = List(),
       validInverted: Boolean = false
   ): Unit = {
     append(
@@ -210,7 +210,7 @@ class RegisterRecorder(
       bitOffset: Int,
       name: String,
       doc: String = null,
-      values: List[Value] = List()
+      values: List[datamodel.Value] = List()
   ): Flow[T] = {
     append(
       Field(
@@ -240,7 +240,7 @@ class RegisterRecorder(
       bitOffset: Int,
       name: String,
       doc: String = null,
-      values: List[Value] = List()
+      values: List[datamodel.Value] = List()
   ): T = {
     append(
       Field(
