@@ -91,7 +91,7 @@ class TestActiveState extends AnyFunSuite {
       dut.clockDomain.waitActiveEdgeWhere(!dut.io.state.busy.toBoolean)
       dut.clockDomain.waitActiveEdge(5)
 
-      send_command(dut, CtrlCommand.Reset)
+      send_command(dut, CtrlCommand.GotoReset)
       dut.clockDomain.waitActiveEdgeWhere(!dut.io.state.busy.toBoolean)
       dut.clockDomain.waitActiveEdge(5)
 
@@ -164,7 +164,7 @@ class TestResetState extends AnyFunSuite {
       send_command(dut, CtrlCommand.Activate)
       dut.clockDomain.waitActiveEdgeWhere(!dut.io.state.busy.toBoolean)
       dut.clockDomain.waitActiveEdge(5)
-      send_command(dut, CtrlCommand.Reset)
+      send_command(dut, CtrlCommand.GotoReset)
       dut.clockDomain.waitActiveEdgeWhere(!dut.io.state.busy.toBoolean)
       dut.clockDomain.waitActiveEdge(count = 5)
 
@@ -224,7 +224,7 @@ class TestClockStopState extends AnyFunSuite {
 
       dut.io.config.te #= 40
 
-      send_command(dut, CtrlCommand.Reset)
+      send_command(dut, CtrlCommand.GotoReset)
       dut.clockDomain.waitActiveEdgeWhere(!dut.io.state.busy.toBoolean)
       dut.clockDomain.waitActiveEdge(5)
       verify_reset(dut)

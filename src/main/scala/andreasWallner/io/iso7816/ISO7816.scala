@@ -101,7 +101,7 @@ object CtrlState extends SpinalEnum {
 }
 
 object CtrlCommand extends SpinalEnum {
-  val Idle, Deactivate, Activate, Reset, StopClock, ColdReset, WarmReset =
+  val Idle, Deactivate, Activate, GotoReset, StopClock, ColdReset, WarmReset =
     newElement()
 }
 
@@ -237,7 +237,7 @@ case class StateCtrl() extends Component {
             }
           }
 
-          is(CtrlCommand.Reset, CtrlCommand.WarmReset) {
+          is(CtrlCommand.GotoReset, CtrlCommand.WarmReset) {
             io.state.driving_io := True
             io.iso.io.writeEnable := False
             when(timing.te_reached) {
@@ -292,7 +292,7 @@ case class StateCtrl() extends Component {
             }
           }
 
-          is(CtrlCommand.Reset, CtrlCommand.WarmReset) {
+          is(CtrlCommand.GotoReset, CtrlCommand.WarmReset) {
             io.iso.rst := False
             io.iso.io.writeEnable := timing.te_reached
             when(
@@ -678,7 +678,7 @@ case class ISO7816Master(generics: CoreGenerics) extends Component {
   } elsewhen (io.start.activate) {
     control.io.command.push(CtrlCommand.Activate)
   } elsewhen (io.start.reset) {
-    control.io.command.push(CtrlCommand.Reset)
+    control.io.command.push(CtrlCommand.GotoReset)
   } elsewhen (io.start.stop_clock) {
     control.io.command.push(CtrlCommand.StopClock)
   }
