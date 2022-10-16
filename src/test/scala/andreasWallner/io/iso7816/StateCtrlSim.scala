@@ -183,7 +183,7 @@ class TestClockStopState extends AnyFunSuite {
   import Helper._
   val dut = SimConfig.withWave.compile(StateCtrl())
 
-  def goto_clockstop(dut: StateCtrl) = {
+  def goto_clockstop(dut: StateCtrl): Unit = {
     send_command(dut, CtrlCommand.Activate)
     dut.clockDomain.waitActiveEdgeWhere(!dut.io.state.busy.toBoolean)
     dut.clockDomain.waitActiveEdge(5)
@@ -301,7 +301,7 @@ class TestClockStopState extends AnyFunSuite {
 
 
 object Helper {
-  def zero_io(dut: StateCtrl) = {
+  def zero_io(dut: StateCtrl): Unit = {
     dut.io.iso.io.read #= false
     dut.io.config.ta #= 0
     dut.io.config.tb #= 0
@@ -316,14 +316,14 @@ object Helper {
   def send_command(
                     dut: StateCtrl,
                     cmd: SpinalEnumElement[CtrlCommand.type]
-  ) = {
+  ): Unit = {
     dut.io.command.payload #= cmd
     dut.io.command.valid #= true
     dut.clockDomain.waitActiveEdge()
     dut.io.command.valid #= false
   }
 
-  def verify_inactive(dut: StateCtrl) = {
+  def verify_inactive(dut: StateCtrl): Unit = {
     assert(!dut.io.iso.vcc.toBoolean)
     assert(!dut.io.iso.rst.toBoolean)
     assert(!dut.io.state.clock.toBoolean)
@@ -333,7 +333,7 @@ object Helper {
     assert(!dut.io.iso.io.write.toBoolean)
   }
 
-  def verify_active(dut: StateCtrl) = {
+  def verify_active(dut: StateCtrl): Unit = {
     assert(dut.io.iso.vcc.toBoolean)
     assert(dut.io.iso.rst.toBoolean)
     assert(dut.io.state.clock.toBoolean)
@@ -341,7 +341,7 @@ object Helper {
     assert(!dut.io.state.driving_io.toBoolean)
   }
 
-  def verify_reset(dut: StateCtrl) = {
+  def verify_reset(dut: StateCtrl): Unit = {
     assert(dut.io.iso.vcc.toBoolean)
     assert(!dut.io.iso.rst.toBoolean)
     assert(dut.io.state.clock.toBoolean)
@@ -350,7 +350,7 @@ object Helper {
     assert(!dut.io.iso.io.writeEnable.toBoolean)
   }
 
-  def verify_clockstop(dut: StateCtrl) = {
+  def verify_clockstop(dut: StateCtrl): Unit = {
     assert(dut.io.iso.vcc.toBoolean)
     assert(dut.io.iso.rst.toBoolean)
     assert(!dut.io.state.clock.toBoolean)

@@ -35,7 +35,6 @@ IO   ---------------___________________
 
 package andreasWallner.io.iso7816
 
-import andreasWallner.spinaltap.ISpinalTAPCommModule
 import spinal.core.ClockDomain.FixedFrequency
 import spinal.core._
 import spinal.lib._
@@ -47,7 +46,7 @@ import spinal.lib.bus.amba4.axilite.{
 }
 import spinal.lib.bus.misc.BusSlaveFactory
 import spinal.lib.fsm._
-import spinal.lib.io.{TriState, TriStateArray}
+import spinal.lib.io.TriState
 import andreasWallner.registers.BusSlaveFactoryRecorder
 import andreasWallner.registers.datamodel.BusComponent
 import andreasWallner.registers.casemodel.Value
@@ -60,7 +59,7 @@ case class ISO7816() extends Bundle with IMasterSlave {
   val rst = Bool()
   val clk = Bool()
 
-  def asMaster() = {
+  def asMaster(): Unit = {
     master(io)
     out(vcc, rst, clk)
   }
@@ -345,8 +344,8 @@ case class Timeout() extends Component {
 
     val en = in Bool ()
     val activity = in Bool ()
-    val c_timeout = out Bool () setAsReg
-    val b_timeout = out Bool () setAsReg
+    val c_timeout = out Bool() setAsReg()
+    val b_timeout = out Bool() setAsReg()
   }
 
   val cnt = Reg(UInt(32 bit))
