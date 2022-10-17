@@ -1,11 +1,10 @@
 package andreasWallner.iceblink
 
-import andreasWallner.HwFunSuite
+import andreasWallner.SpinalFunSuite
 import andreasWallner.iceblink.sim.EPPSimMaster
 import andreasWallner.sim._
 import spinal.core._
 import spinal.core.sim._
-import spinal.lib.sim._
 import org.scalatest.funsuite.AnyFunSuite
 import spinal.lib.slave
 
@@ -53,7 +52,7 @@ case class EppBusSlaveFactoryTester() extends Component {
   factory.read(io.readReg, 1, 0)
 }
 
-class EppBusSlaveFactoryTest extends HwFunSuite {
+class EppBusSlaveFactoryTest extends SpinalFunSuite {
   val dut = SimConfig.withFstWave
     .withConfig(
       SpinalConfig(defaultClockDomainFrequency = FixedFrequency(100 MHz))
