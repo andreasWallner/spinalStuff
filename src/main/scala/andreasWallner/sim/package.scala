@@ -3,7 +3,10 @@ package andreasWallner
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib.io.TriState
+
+import scala.annotation.tailrec
 import scala.collection.mutable
+import scala.util.Random
 
 class SimDriverState() {
   var driveEnable = false
@@ -152,6 +155,81 @@ package object sim {
         b #= !b.toBoolean
         cd.waitActiveEdge()
         b #= !b.toBoolean
+      }
+    }
+  }
+
+  implicit class PimpedSimBits(bt: Bits) {
+    def changedInt(): Int = {
+      val width = bt.getWidth
+      assert(width < 32)
+      val current = bt.toInt
+
+      @tailrec
+      def changedValue(): Int = {
+        val candidate = Random.nextInt() & ((1 << width) - 1)
+        if (candidate != current) candidate else changedValue()
+      }
+
+      val next = changedValue()
+      bt #= next
+      next
+    }
+
+    def changedLong(): Long = {
+      val width = bt.getWidth
+      assert(width < 64)
+      val current = bt.toInt
+
+      @tailrec
+      def changedValue(): Long = {
+        val candidate = Random.nextLong() & ((1L << width) - 1)
+        if (candidate != current) candidate else changedValue()
+      }
+
+      val next = changedValue()
+      bt #= next
+      next
+    }
+
+    def changedBigInt(): BigInt = {
+      val width = bt.getWidth
+      val current = bt.toBigInt
+
+      @tailrec
+      def changedValue(): BigInt = {
+        val candidate = BigInt(width, Random)
+        if (candidate != current) candidate else changedValue()
+      }
+
+      val next = changedValue()
+      bt #= next
+      next
+    }
+
+    def changed(): BigInt = {
+      bt.getWidth match {
+        case x if x < 32 => changedInt()
+        case x if x < 64 => changedLong()
+        case _           => changedBigInt()
+      }
+    }
+  }
+
+  implicit class PimpedSpinalSimConfig(config: SpinalSimConfig) {
+    def withWaveOverride(wave: String = null): SpinalSimConfig = {
+      sys.env.getOrElse("SPINALSIM_WAVE", wave) match {
+        case "vcd"  => config.withVcdWave
+        case "fst"  => config.withFstWave
+        case "fsdb" => config.withFsdbWave
+        case null   => config
+        case _      => throw new Exception(s"invalid wave format $wave")
+      }
+    }
+    def withWorkspacePathOverride(path: String = null): SpinalSimConfig = {
+      sys.env.getOrElse("SPINALSIM_WORKSPACE", path) match {
+        case null => config
+        case _    => config.workspacePath(path)
       }
     }
   }
