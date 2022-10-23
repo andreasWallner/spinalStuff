@@ -1,26 +1,19 @@
 package andreasWallner.io.fx3
 
+import andreasWallner.SpinalFunSuite
 import andreasWallner.io.fx3.sim._
-
 import spinal.core._
-import spinal.sim._
 import spinal.core.sim._
-import spinal.lib.sim.{
-  StreamDriver,
-  StreamMonitor,
-  StreamReadyRandomizer,
-  ScoreboardInOrder
-}
+import spinal.lib.sim.{ScoreboardInOrder, StreamDriver, StreamMonitor, StreamReadyRandomizer}
 
-import scala.collection.mutable.Queue
+import scala.collection.mutable
 import scala.util.Random
-import org.scalatest.FunSuite
 
 case class SimHistory[T](depth: Int, initial: T = None) {
   var data: Seq[T] = List.fill(depth)(initial)
 
   def apply(idx: Int) = data(idx)
-  def update(next: T) = {
+  def update(next: T): Unit = {
     data = List(next) ++ data.slice(0, depth - 1)
   }
 }
@@ -29,18 +22,18 @@ case class OpenDrainMonitor(
     writeEnable: List[(Bool, Boolean)],
     clockDomain: ClockDomain
 ) {
-  var last: List[Boolean] = writeEnable.map(v => false)
+  var last: List[Boolean] = writeEnable.map(_ => false)
 
   def check() {
     val current = writeEnable.map(v => v._1.toBoolean == v._2)
     val enabledLines = last.zip(current).map(b => b._1 || b._2).count(b => b)
-    assert(enabledLines <= 1, f"overlapping enables: last cycle ${last}, current cycle ${current}")
+    assert(enabledLines <= 1, f"overlapping enables: last cycle $last, current cycle $current")
     last = current
   }
-  clockDomain.onActiveEdges(check)
+  clockDomain.onActiveEdges(check())
 }
 
-class SlaveFifoMasterTest extends FunSuite {
+class SlaveFifoMasterTest extends SpinalFunSuite {
   val dut = SimConfig.withWave
     .compile(SlaveFifoMaster())
 
@@ -50,7 +43,7 @@ class SlaveFifoMasterTest extends FunSuite {
 
       SimTimeout(toSend * 5 * 10)
       val scoreboard = ScoreboardInOrder[Int]()
-      val fx3 = SlaveFifoSimTx(dut.io.fx3, dut.clockDomain) { () =>
+      SlaveFifoSimTx(dut.io.fx3, dut.clockDomain) { () =>
         if (scoreboard.matches + scoreboard.ref.length < toSend) {
           val dataValue = scoreboard.matches + scoreboard.ref.length + 10
           scoreboard.pushRef(dataValue)
@@ -169,8 +162,8 @@ class SlaveFifoMasterTest extends FunSuite {
 
       SimTimeout(toSend * 15 * 10)
       val scoreboard = ScoreboardInOrder[Int]()
-      val fx3 = SlaveFifoSimRx(dut.io.fx3, dut.clockDomain) { payload =>
-        scoreboard.pushDut(payload.toInt)
+      SlaveFifoSimRx(dut.io.fx3, dut.clockDomain) { payload =>
+        scoreboard.pushDut(payload)
       }
 
       StreamDriver(dut.io.tx.data, dut.clockDomain) { payload =>
@@ -198,8 +191,8 @@ class SlaveFifoMasterTest extends FunSuite {
 
       SimTimeout(toSend * 15 * 10)
       val scoreboard = ScoreboardInOrder[Int]()
-      val fx3 = SlaveFifoSimRx(dut.io.fx3, dut.clockDomain) { payload =>
-        scoreboard.pushDut(payload.toInt)
+      SlaveFifoSimRx(dut.io.fx3, dut.clockDomain) { payload =>
+        scoreboard.pushDut(payload)
       }
 
       StreamDriver(dut.io.tx.data, dut.clockDomain) { payload =>
@@ -230,8 +223,8 @@ class SlaveFifoMasterTest extends FunSuite {
 
       SimTimeout((toSend + toReceive) * 20 * 10)
       val scoreboardTx = ScoreboardInOrder[Int]()
-      val fx3tx = SlaveFifoSimRx(dut.io.fx3, dut.clockDomain) { payload =>
-        scoreboardTx.pushDut(payload.toInt)
+      SlaveFifoSimRx(dut.io.fx3, dut.clockDomain) { payload =>
+        scoreboardTx.pushDut(payload)
       }
       StreamDriver(dut.io.tx.data, dut.clockDomain) { payload =>
         payload.randomize()
@@ -242,7 +235,7 @@ class SlaveFifoMasterTest extends FunSuite {
       }
 
       val scoreboardRx = ScoreboardInOrder[Int]()
-      val fx3rx = SlaveFifoSimTx(dut.io.fx3, dut.clockDomain) { () =>
+      SlaveFifoSimTx(dut.io.fx3, dut.clockDomain) { () =>
         val dataValue = scoreboardRx.matches + scoreboardRx.ref.length + 10
         val sendMore = scoreboardRx.matches + scoreboardRx.ref.length < toReceive
         if (sendMore)
@@ -281,9 +274,9 @@ class SlaveFifoMasterTest extends FunSuite {
       var transmitNext = true
       val scoreboard = ScoreboardInOrder[Int]()
       val fx3rx = SlaveFifoSimRx(dut.io.fx3, dut.clockDomain) { _ => }
-      fx3rx.pktendCallback = { (values: Queue[Int]) =>
+      fx3rx.pktendCallback = { (values: mutable.Queue[Int]) =>
         assert(values.size == 1)
-        scoreboard.pushDut(values(0))
+        scoreboard.pushDut(values.head)
         transmitNext = true
         dut.io.tx.pktend_timeout #= dut.io.tx.pktend_timeout.toInt + 10
       }
@@ -318,9 +311,9 @@ class SlaveFifoMasterTest extends FunSuite {
       var transmitNext = true
       val scoreboard = ScoreboardInOrder[Int]()
       val fx3rx = SlaveFifoSimRx(dut.io.fx3, dut.clockDomain) { _ => }
-      fx3rx.pktendCallback = { (values: Queue[Int]) =>
+      fx3rx.pktendCallback = { (values: mutable.Queue[Int]) =>
         assert(values.size == 1)
-        scoreboard.pushDut(values(0))
+        scoreboard.pushDut(values.head)
       }
       fx3rx.next_remaining_space = () => { 100 }
       fx3rx.next_empty_delay = () => { 20 }
@@ -342,12 +335,12 @@ class SlaveFifoMasterTest extends FunSuite {
 
       dut.clockDomain.forkStimulus(10)
       while(scoreboard.matches < toSend) {
-        dut.clockDomain.waitActiveEdge(40);
+        dut.clockDomain.waitActiveEdge(40)
         dut.io.tx.pktend #= true
-        dut.clockDomain.waitActiveEdge();
+        dut.clockDomain.waitActiveEdge()
         dut.io.tx.pktend #= false
 
-        dut.clockDomain.waitActiveEdgeWhere(dut.io.tx.pktend_done.toBoolean == true)
+        dut.clockDomain.waitActiveEdgeWhere(dut.io.tx.pktend_done.toBoolean)
         dut.clockDomain.waitActiveEdge(10)
         scoreboard.checkEmptyness()
 
