@@ -9,9 +9,12 @@ import scala.language.postfixOps
 
 case class AnalyzerGenerics(
     dataWidth: Int,
-    externalTriggerCnt: Int,
-    rleCounterWidth: Int
-)
+    internalWidth: Int,
+    externalTriggerCnt: Int=0) {
+  assert(dataWidth < internalWidth, "dataWidth must be smaller than internalWidth")
+
+  def compressedDataWidth = internalWidth - 1
+}
 
 object TriggerMode extends SpinalEnum {
   val disabled, rising, falling, high, low = newElement()
@@ -45,30 +48,44 @@ case class SimpleTriggerUnit(width: Int) extends Component {
   io.trigger := active.orR
 }
 
-case class CompressedData(tw: Int, dw: Int) extends Bundle {
-  val time = UInt(tw bits)
-  val data = Bits(dw bits)
+case class CompressedData(width:Int) extends Bundle {
+  val isData = Bool()
+  val dataOrTime = Bits(width bits)
 }
 
 case class RLECompressor(g: AnalyzerGenerics) extends Component {
   val io = new Bundle {
     val data = in Bits (g.dataWidth bits)
-    val compressed = master(
-      Flow(CompressedData(g.rleCounterWidth, g.dataWidth))
-    )
+    val compressed = master(Flow(CompressedData(g.compressedDataWidth)))
     val run = in Bool ()
   }
-  val delayData = RegNext(io.data)
-  val counter = Reg(UInt(g.rleCounterWidth bits))
-  when(io.run) {
-    counter := counter - 1
+  val dataChange = io.data =/= RegNext(io.data)
+  val skidBuffer = new Area {
+    val hold = Bool()
+
+    val delayedData = RegNext(io.data)
+    val delayedChange = RegNext(dataChange)
+
+    val choice = RegNext(hold) || (delayedChange && RegNext(delayedChange)) || io.run.rise()
+    val data = choice ? delayedData | io.data
+    val change = choice ? delayedChange | dataChange
+  }
+  val counter = Reg(UInt(g.compressedDataWidth bits))
+  val maxCount = counter === counter.maxValue
+  val sendCount = (dataChange.rise() || maxCount) && !io.run.rise()
+
+  val send = maxCount || dataChange.rise() || skidBuffer.change || io.run.rise()
+  skidBuffer.hold := maxCount || dataChange.rise()
+
+  io.compressed.payload.isData := !sendCount
+  io.compressed.payload.dataOrTime := sendCount ? counter.asBits | skidBuffer.data.resized
+  io.compressed.valid := send && io.run
+
+  when(io.run && !send) {
+    counter := counter + 1
   } otherwise {
     counter := 0
   }
-
-  io.compressed.valid := (io.run && (counter === 0 || (io.data ^ delayData).orR))
-  io.compressed.payload.data := io.data
-  io.compressed.payload.time := counter
 }
 
 object MemoryFormatter {
