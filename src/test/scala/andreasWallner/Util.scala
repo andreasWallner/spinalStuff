@@ -1,7 +1,9 @@
 package andreasWallner
 
+import andreasWallner.sim.simLog
 import spinal.core._
 import spinal.core.sim._
+import spinal.lib.sim.ScoreboardInOrder
 
 import scala.util.Random
 
@@ -49,5 +51,23 @@ case class PayloadRandmizer(elementCnt: Long) {
     } else {
       false
     }
+  }
+}
+
+object LoggingScoreboardInOrder {
+  def apply[T]() = new LoggingScoreboardInOrder[T]("")
+  def apply[T](name:String) = new LoggingScoreboardInOrder[T](name)
+}
+
+class LoggingScoreboardInOrder[T](name:String) extends ScoreboardInOrder[T] {
+  val spacedName = if(name != "") name + " " else ""
+  override def pushRef(that: T): Unit = {
+    simLog(spacedName + s"${Console.BLUE}ref${Console.RESET}", that)
+    super.pushRef(that)
+  }
+
+  override def pushDut(that: T): Unit = {
+    simLog(spacedName + s"${Console.GREEN}dut${Console.RESET}", that)
+    super.pushDut(that)
   }
 }
