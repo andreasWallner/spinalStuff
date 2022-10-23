@@ -26,30 +26,37 @@ class SimDriverStateBitVector() {
 
 object DriverStates {
   val boolStates = mutable.Map[TriState[Bool], SimDriverState]()
-  val bitVectorStates = mutable.Map[TriState[BitVector], SimDriverStateBitVector]()
+  val bitVectorStates =
+    mutable.Map[TriState[BitVector], SimDriverStateBitVector]()
 }
 
 package object sim {
   object simLog {
-    def apply(s: String): Unit = {
-      println(f"[${Console.BLUE}${simTime()}${Console.RESET}] $s")
+    def apply(xs: Any*): Unit = {
+      println(
+        f"[${Console.BLUE}${simTime()}${Console.RESET}] " + xs
+          .map(_.toString)
+          .mkString(" ")
+      )
     }
   }
 
   implicit class SimTriStatePimperBitVector[T <: BitVector](tri: TriState[T]) {
-    def simulatePullup(readDelay:Int = 0): Unit = {
+    def simulatePullup(readDelay: Int = 0): Unit = {
       val state = new SimDriverStateBitVector()
-      DriverStates.bitVectorStates += (tri.asInstanceOf[TriState[BitVector]] -> state)
+      DriverStates.bitVectorStates += (tri
+        .asInstanceOf[TriState[BitVector]] -> state)
 
       forkSensitive {
         assert(
           !(state.driveEnable && tri.writeEnable.toBoolean && (state.driveLevel != tri.write.toBigInt)),
           f"${simTime()} drivers must not drive against each other (testbench drives ${state.driveLevel}%x, dut drives ${tri.write.toBigInt}%x)"
         )
-        val newState = if(state.driveEnable) state.driveLevel
-        else if(tri.writeEnable.toBoolean) tri.write.toBigInt
-        else BigInt(0)
-        if(readDelay == 0) {
+        val newState =
+          if (state.driveEnable) state.driveLevel
+          else if (tri.writeEnable.toBoolean) tri.write.toBigInt
+          else BigInt(0)
+        if (readDelay == 0) {
           if (newState != tri.read.toBigInt)
             tri.read #= newState
         } else {
@@ -62,8 +69,13 @@ package object sim {
     }
 
     def prohibitAnyConcurrentDrivers(): Unit = {
-      assert(DriverStates.bitVectorStates contains tri.asInstanceOf[TriState[BitVector]], "no simulation set up for TriState")
-      val state = DriverStates.bitVectorStates(tri.asInstanceOf[TriState[BitVector]])
+      assert(
+        DriverStates.bitVectorStates contains tri
+          .asInstanceOf[TriState[BitVector]],
+        "no simulation set up for TriState"
+      )
+      val state =
+        DriverStates.bitVectorStates(tri.asInstanceOf[TriState[BitVector]])
       forkSensitive {
         assert(
           !(state.driveEnable && tri.writeEnable.toBoolean),
@@ -72,18 +84,28 @@ package object sim {
       }
     }
 
-    def drive(level: Int):Unit = drive(BigInt.int2bigInt(level))
-    def drive(level: Long):Unit = drive(BigInt.long2bigInt(level))
-    def drive(level: BigInt):Unit = {
-      assert(DriverStates.bitVectorStates contains tri.asInstanceOf[TriState[BitVector]], "no simulation set up for TriState")
-      val state = DriverStates.bitVectorStates(tri.asInstanceOf[TriState[BitVector]])
+    def drive(level: Int): Unit = drive(BigInt.int2bigInt(level))
+    def drive(level: Long): Unit = drive(BigInt.long2bigInt(level))
+    def drive(level: BigInt): Unit = {
+      assert(
+        DriverStates.bitVectorStates contains tri
+          .asInstanceOf[TriState[BitVector]],
+        "no simulation set up for TriState"
+      )
+      val state =
+        DriverStates.bitVectorStates(tri.asInstanceOf[TriState[BitVector]])
       state.driveEnable = true
       state.driveLevel = level
     }
 
     def highz(): Unit = {
-      assert(DriverStates.bitVectorStates contains tri.asInstanceOf[TriState[BitVector]], "no simulation set up for TriState")
-      val state = DriverStates.bitVectorStates(tri.asInstanceOf[TriState[BitVector]])
+      assert(
+        DriverStates.bitVectorStates contains tri
+          .asInstanceOf[TriState[BitVector]],
+        "no simulation set up for TriState"
+      )
+      val state =
+        DriverStates.bitVectorStates(tri.asInstanceOf[TriState[BitVector]])
       state.driveEnable = false
     }
   }
@@ -100,7 +122,7 @@ package object sim {
         )
         val newState =
           !((state.driveEnable && !state.driveLevel) || (tri.writeEnable.toBoolean && !tri.write.toBoolean))
-        if(readDelay == 0) {
+        if (readDelay == 0) {
           if (newState != tri.read.toBoolean) {
             tri.read #= newState
           }
@@ -115,7 +137,10 @@ package object sim {
     }
 
     def prohibitAnyConcurrentDrivers(): Unit = {
-      assert(DriverStates.boolStates contains tri, "no simulation set up for TriState")
+      assert(
+        DriverStates.boolStates contains tri,
+        "no simulation set up for TriState"
+      )
       val state = DriverStates.boolStates(tri)
       forkSensitive {
         assert(
@@ -126,21 +151,27 @@ package object sim {
     }
 
     def drive(level: Boolean): Unit = {
-      assert(DriverStates.boolStates contains tri, "no simulation set up for TriState")
+      assert(
+        DriverStates.boolStates contains tri,
+        "no simulation set up for TriState"
+      )
       val state = DriverStates.boolStates(tri)
       state.driveEnable = true
       state.driveLevel = level
     }
 
     def highz(): Unit = {
-      assert(DriverStates.boolStates contains tri, "no simulation set up for TriState")
+      assert(
+        DriverStates.boolStates contains tri,
+        "no simulation set up for TriState"
+      )
       val state = DriverStates.boolStates(tri)
       state.driveEnable = false
     }
   }
 
   implicit class SimBool(b: Bool) {
-    def strobe(v: Boolean, cd: ClockDomain):Unit = {
+    def strobe(v: Boolean, cd: ClockDomain): Unit = {
       fork {
         cd.waitActiveEdge()
         b #= v
@@ -149,7 +180,7 @@ package object sim {
       }
     }
 
-    def strobe(cd: ClockDomain):Unit = {
+    def strobe(cd: ClockDomain): Unit = {
       fork {
         cd.waitActiveEdge()
         b #= !b.toBoolean
