@@ -1,0 +1,23 @@
+set_io -pullup no clk A9
+set_frequency clk 3.33
+
+set_io -pullup no led[0] A29
+set_io -pullup no led[1] B20
+set_io -pullup no led[2] B19
+set_io -pullup no led[3] A25
+
+set_io -pullup no io_epp_DB[0] A20
+set_io -pullup no io_epp_DB[1] B15
+set_io -pullup no io_epp_DB[2] A19
+set_io -pullup no io_epp_DB[3] B14
+set_io -pullup no io_epp_DB[4] B13
+set_io -pullup no io_epp_DB[5] B12
+set_io -pullup no io_epp_DB[6] B11
+set_io -pullup no io_epp_DB[7] B10
+set_io -pullup yes io_epp_WRITE A14
+set_io -pullup yes io_epp_ASTB A12
+set_io -pullup yes io_epp_DSTB A13
+set_io -pullup yes io_epp_WAIT A16
+
+set_io -pullup yes io_tx A11
+set_io -pullup yes io_tx2 B7
