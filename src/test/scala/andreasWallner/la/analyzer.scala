@@ -1,19 +1,21 @@
 package andreasWallner.la
 
+import andreasWallner.Utils.gcd
 import spinal.core._
-import spinal.sim._
 import spinal.lib._
 import spinal.core.sim._
 import spinal.lib.sim._
 import org.scalatest.funsuite.AnyFunSuite
 
+import scala.language.postfixOps
+
 case class MemoryFormatterTester(in_width: Int, out_width: Int)
-    extends Component {
+  extends Component {
   val io = new Bundle {
     val i = slave(Stream(Bits(in_width bits)))
     val o = master(Stream(Bits(out_width bits)))
   }
-  MemoryFormatter(io.i, io.o, 8)
+  MemoryFormatter(io.i, io.o, gcd(in_width, out_width))
 }
 
 class MemoryFormatterTest extends AnyFunSuite {
