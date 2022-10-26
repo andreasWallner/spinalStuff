@@ -30,7 +30,8 @@ case class UartTransmitter(baudrate: Int) extends Component {
   }
 
   val timing = new Area {
-    val count = (clockDomain.frequency.getValue.toBigDecimal / baudrate).toBigInt() - 1
+    val count = (clockDomain.frequency.getValue.toBigDecimal / baudrate)
+      .toBigInt() - 1
     val counter = Reg(UInt(log2Up(count) bits))
 
     val en = Bool()
@@ -71,22 +72,26 @@ case class EppLaDemo() extends Component {
   io.tx2 := io.tx
 
   val factory = new EppBusFactory(io.epp)
-  io.led(0) := factory.createReadAndWrite(Bool(), 0, 0)
-  io.led(1) := factory.createReadAndWrite(Bool(), 1, 0)
-  io.led(2) := factory.createReadAndWrite(Bool(), 2, 0)
-  io.led(3) := factory.createReadAndWrite(Bool(), 3, 0)
+  io.led(0) := factory.createReadAndWrite(Bool(), 0)
+  io.led(1) := factory.createReadAndWrite(Bool(), 1)
+  io.led(2) := factory.createReadAndWrite(Bool(), 2)
+  io.led(3) := factory.createReadAndWrite(Bool(), 3)
 
-  val toTrace = io.epp.ASTB ## io.epp.DSTB ## io.epp.WAIT ## io.epp.DB.writeEnable ## io.epp.DB.read
+  val toTrace = io.epp.WRITE ## io.epp.ASTB ## io.epp.DSTB ## io.epp.WAIT ## io.epp.DB.writeEnable ## io.epp.DB.read
   val syncedTrace = BufferCC(toTrace)
-  val compressor = RLECompressor(AnalyzerGenerics(dataWidth = 12, internalWidth = 14))
+  val compressor = RLECompressor(
+    AnalyzerGenerics(dataWidth = toTrace.getWidth, internalWidth = 14)
+  )
   compressor.io.data := syncedTrace
   compressor.io.run := Delay(True, 10, init = False)
   val overflow = Bool()
   val buffered = compressor.io.compressed.toStream(overflow, 128, 128)
   val bufferedBits = buffered.payload.asBits
-  val padded = buffered.translateWith(True ## bufferedBits(13 downto 7) ## False ## bufferedBits(6 downto 0))
-  val fragmented = padded.fragmentTransaction(8)
-  io.tx := UartTransmitter(115200, fragmented)
+  val uart = UartTransmitter(115200)
+  val fragmented = buffered
+    .fragmentTransaction(7)
+    .translateInto(uart.io.data)((o, i) => o := i.last ## i.fragment)
+  io.tx := uart.io.tx
 }
 
 object EppLaDemo extends App {
@@ -99,7 +104,15 @@ object EppLaDemo extends App {
     comp.io.led.setName("led")
     InOutWrapper(comp)
   }
-  val synth = YosysFlow("yosys", "iceblink_demo", Rtl(report), "ice40", "lp1k", "qn84", Some(100 MHz), Some("iceblink40.pcf"))
+  val synth = YosysFlow(
+    "iceblink_demo",
+    Rtl(report),
+    "ice40",
+    "lp1k",
+    "qn84",
+    frequencyTarget = Some(100 MHz),
+    pcfFile = Some("iceblink40.pcf")
+  )
   println(synth.getFMax())
   println(synth.getArea())
 }

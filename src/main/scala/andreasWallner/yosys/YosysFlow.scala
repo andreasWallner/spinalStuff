@@ -1,7 +1,6 @@
 package andreasWallner.yosys
 
 import spinal.core.HertzNumber
-import spinal.lib.DoCmd.doCmd
 import spinal.lib.eda.bench.{Report, Rtl}
 
 import java.nio.file.Paths
@@ -12,24 +11,30 @@ import scala.util.parsing.json.JSON
 object YosysFlow {
 
   /**
-    * family: ice40, ecp5
-    * device: lp1k
-    * fpgaPackage: qn84
-    */
+   * family: ice40, ecp5
+   * device: e.g. lp1k
+   * fpgaPackage: e.g. qn84
+   *
+   * For ICE40 device & fpgaPackage names see https://clifford.at/icestorm#What_is_the_Status_of_the_Project
+   */
   def apply(
-      yosysPath: String,
-      workspacePath: String,
-      rtl: Rtl,
-      family: String,
-      device: String,
-      fpgaPackage: String,
-      frequencyTarget: Option[HertzNumber] = None,
-      pcfFile: Option[String] = None
-  ): Report = {
-    def doCmd(cmd:Seq[String], path:String):Unit = {
+             workspacePath: String,
+             rtl: Rtl,
+             family: String,
+             device: String,
+             fpgaPackage: String,
+             yosysPath: String = "",
+             frequencyTarget: Option[HertzNumber] = None,
+             pcfFile: Option[String] = None,
+             allowUnconstrained: Boolean = false
+           ): Report = {
+    if (yosysPath != "" && !yosysPath.endsWith("/"))
+      throw new RuntimeException("Yosys path must end with a '/' if set")
+
+    def doCmd(cmd: Seq[String], path: String): Unit = {
       val process = Process(cmd, new java.io.File(path))
       println(process)
-      process!
+      process !
     }
 
     val frequencyMHz =
@@ -39,7 +44,7 @@ object YosysFlow {
     if (rtl.getRtlPaths().exists(file => isVhdl(file)))
       throw new RuntimeException("Yosys flow can only run with verilog sources")
 
-    if (family != "ice40")
+    if (family != "ice40" && family != "ecp5")
       throw new RuntimeException(
         "Currently only support for ice40 is implemented"
       )
@@ -47,11 +52,11 @@ object YosysFlow {
       rtl.getRtlPaths().map(file => s"${Paths.get(file).toAbsolutePath}")
     doCmd(
       Seq(
-        yosysPath,
+        yosysPath + "yosys",
         "-l",
         "yosys.log",
         "-p",
-        s"synth_ice40 -top ${rtl.getTopModuleName()} -json ${rtl.getName()}.json"
+        s"synth_${family} -top ${rtl.getTopModuleName()} -json ${rtl.getName()}.json"
       )
         ++ readRtl,
       workspacePath
@@ -59,7 +64,7 @@ object YosysFlow {
 
     doCmd(
       Seq(
-        "nextpnr-ice40",
+        yosysPath + s"nextpnr-${family}",
         "--freq",
         s"$frequencyMHz",
         s"--$device",
@@ -73,21 +78,28 @@ object YosysFlow {
         s"${rtl.getName()}_report.json"
       )
         ++ pcfFile
-          .map(x => Seq("--pcf", x))
-          .getOrElse(Seq("--pcf-allow-unconstrained")),
+        .map(x => Seq("--pcf", x))
+        .getOrElse(Seq())
+        ++ (if (pcfFile.isEmpty || allowUnconstrained)
+        Seq("--pcf-allow-unconstrained")
+      else Seq()),
       workspacePath
     )
 
     doCmd(
-      Seq("icetime", "-d", device)
+      Seq(yosysPath + "icetime", "-d", device)
         ++ pcfFile.map(x => Seq("-p", x)).getOrElse(Seq())
         ++ Seq("-c", s"${frequencyMHz}MHz")
         ++ Seq("-mtr", s"${rtl.getName()}.rpt", s"${rtl.getName()}.asc"),
       workspacePath
     )
-    if(pcfFile.isDefined)
+    if (pcfFile.isDefined)
       doCmd(
-        Seq("icepack", s"${rtl.getName()}.asc", s"${rtl.getName()}.bin"),
+        Seq(
+          yosysPath + "icepack",
+          s"${rtl.getName()}.asc",
+          s"${rtl.getName()}.bin"
+        ),
         workspacePath
       )
 
@@ -128,10 +140,8 @@ object YosysFlow {
           val D(lc_available) = lc.get("available")
           val D(ram_used) = ram.get("used")
           val D(ram_available) = ram.get("available")
-          lc_used.toLong.toString + "/" + lc_available.toLong
-            .toString + " LCs\n" +
-            ram_used.toLong.toString + "/" + ram_available.toLong
-            .toString + " RAMs"
+          lc_used.toLong.toString + "/" + lc_available.toLong.toString + " LCs\n" +
+            ram_used.toLong.toString + "/" + ram_available.toLong.toString + " RAMs"
         } catch {
           case _: Exception => "???"
         }
