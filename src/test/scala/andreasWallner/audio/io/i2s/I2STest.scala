@@ -1,15 +1,15 @@
 package andreasWallner.audio.io.i2s
 
+import andreasWallner.SpinalFunSuite
 import spinal.core._
-import spinal.sim._
 import spinal.lib._
 import spinal.core.sim._
 import spinal.lib.sim._
-import andreasWallner.sim.simLog
-import org.scalatest.FunSuite
+
+import scala.language.postfixOps
 
 case class I2STester(in_width: Int, ctrl_width: Int, out_width: Int)
-    extends Component {
+  extends Component {
   val io = new Bundle {
     val rx = new Bundle {
       val left = master(Flow(UInt(out_width bit)))
@@ -46,22 +46,22 @@ case class I2STester(in_width: Int, ctrl_width: Int, out_width: Int)
   io.i2s.sck := ctrl.io.i2s.sck
 }
 
-case class I2STest() extends FunSuite {
+case class I2STest() extends SpinalFunSuite {
   def shift(value: Int, shift: Int) =
-    if (shift > 0) (value >> shift) else (value << -shift)
+    if (shift > 0) value >> shift else value << -shift
 
   for ((in_width, ctrl_width, out_width) <- List(
-         (24, 24, 24),
-         (10, 10, 10),
-         (5, 10, 10),
-         (10, 5, 10),
-         (10, 10, 5),
-         (5, 5, 10),
+    (24, 24, 24),
+    (10, 10, 10),
+    (5, 10, 10),
+    (10, 5, 10),
+    (10, 10, 5),
+    (5, 5, 10),
          (5, 10, 5),
          (10, 5, 5),
          (5, 5, 5)
        )) {
-    val name = f"I2STest_${in_width}_${ctrl_width}_${out_width}"
+    val name = f"I2STest_${in_width}_${ctrl_width}_$out_width"
 
     test(name) {
       def calcResult(value: Int) = {
@@ -82,21 +82,21 @@ case class I2STest() extends FunSuite {
 
         dut.io.tx.left.valid #= true
         dut.io.tx.right.valid #= true
-        dut.io.tx.left.payload.randomize
-        dut.io.tx.right.payload.randomize
+        dut.io.tx.left.payload.randomize()
+        dut.io.tx.right.payload.randomize()
 
         dut.clockDomain.forkStimulus(10)
 
-        dut.clockDomain.waitActiveEdgeWhere(dut.io.i2s.ws.toBoolean == true)
-        dut.clockDomain.waitActiveEdgeWhere(dut.io.i2s.ws.toBoolean == false)
+        dut.clockDomain.waitActiveEdgeWhere(dut.io.i2s.ws.toBoolean)
+        dut.clockDomain.waitActiveEdgeWhere(!dut.io.i2s.ws.toBoolean)
         // we are synced now since the output will be kept driven until the next sck falling edge
 
         StreamDriver(dut.io.tx.left, dut.clockDomain) { payload =>
-          payload.randomize
+          payload.randomize()
           true
         }.transactionDelay = () => 0
         StreamDriver(dut.io.tx.right, dut.clockDomain) { payload =>
-          payload.randomize
+          payload.randomize()
           true
         }.transactionDelay = () => 0
         StreamMonitor(dut.io.tx.left, dut.clockDomain) { payload =>
@@ -108,7 +108,7 @@ case class I2STest() extends FunSuite {
 
         // wait for the last reception from the data before the sync
         dut.clockDomain.waitActiveEdgeWhere(
-          dut.io.rx.right.valid.toBoolean == true
+          dut.io.rx.right.valid.toBoolean
         )
 
         FlowMonitor(dut.io.rx.left, dut.clockDomain) { payload =>
