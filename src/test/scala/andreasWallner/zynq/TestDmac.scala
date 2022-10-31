@@ -1,9 +1,7 @@
 package andreasWallner.zynq
 
-import spinal.core._
-import spinal.core.sim._
-import spinal.lib.sim
 import org.scalatest.funsuite.AnyFunSuite
+import spinal.core.sim._
 import spinal.lib.bus.amba4.axilite.AxiLite4Config
 import spinal.lib.bus.amba4.axilite.sim.AxiLite4Driver
 
