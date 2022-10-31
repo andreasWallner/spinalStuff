@@ -11,7 +11,7 @@ case class SequenceSource(elements: Seq[Int]) {
   var idx = 0
 
   def apply(payload: Bits): Boolean = {
-    if(idx < elements.size) {
+    if (idx < elements.size) {
       payload #= elements(idx)
       idx = idx + 1
       true
@@ -19,13 +19,15 @@ case class SequenceSource(elements: Seq[Int]) {
       false
     }
   }
+
+  val done = idx == elements.size
 }
 
 case class RandomSource(elementCnt: Long, maxRnd: Int) {
   var cnt = 0
 
   def apply(payload: Bits): Boolean = {
-    if(cnt < elementCnt) {
+    if (cnt < elementCnt) {
       payload #= Random.nextInt(maxRnd)
       cnt += 1
       true
@@ -33,6 +35,8 @@ case class RandomSource(elementCnt: Long, maxRnd: Int) {
       false
     }
   }
+
+  val done = cnt == elementCnt
 }
 
 /*
@@ -44,7 +48,7 @@ case class PayloadRandmizer(elementCnt: Long) {
   var cnt = 0
 
   def apply(payload: Bits): Boolean = {
-    if(cnt < elementCnt) {
+    if (cnt < elementCnt) {
       payload.randomize()
       cnt += 1
       true
@@ -52,6 +56,8 @@ case class PayloadRandmizer(elementCnt: Long) {
       false
     }
   }
+
+  def done: Boolean = elementCnt == cnt
 }
 
 object LoggingScoreboardInOrder {
