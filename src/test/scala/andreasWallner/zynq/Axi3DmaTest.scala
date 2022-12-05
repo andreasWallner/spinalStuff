@@ -21,7 +21,7 @@ object helper {
     for (lineStart <- first to last by width) {
       print(f"0x$lineStart%04x")
       for (addr <- lineStart to last.min(lineStart + width)) {
-        val v = m.get(addr).map(x => f" $x%02x").getOrElse("   ")
+        val v = m.get(addr).map(x => f" $x%02x").getOrElse(" --")
         print(v)
       }
       println()
@@ -32,7 +32,7 @@ object helper {
 class Axi3DmaTest extends SpinalFunSuite {
   val dut =
     SimConfig.withWaveOverride("fst").compile {
-      Axi3Dma(Apb3Config(16, 32))
+      Axi3Dma()
     }
 
   def setup(

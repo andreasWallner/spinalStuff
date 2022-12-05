@@ -14,7 +14,7 @@ case class DmaConfig(axiConfig: Axi4Config) extends Bundle {
   val circular = Bool()
 }
 
-case class Axi3Dma(apbConfig: Apb3Config, axiConfig: Axi4Config = Axi4Config(addressWidth = 64, dataWidth = 64, idWidth = 2)) extends Component {
+case class Axi3Dma(axiConfig: Axi4Config = Axi4Config(addressWidth = 64, dataWidth = 64, idWidth = 2)) extends Component {
   val io = new Bundle {
     val axi = master(Axi4WriteOnly(axiConfig)) // use Axi4 for now, close enough (see http://www.vlsiip.com/amba/axi34.html)
     val config = in(DmaConfig(axiConfig))
@@ -73,7 +73,7 @@ case class Axi3Dma(apbConfig: Apb3Config, axiConfig: Axi4Config = Axi4Config(add
   // transacts first (and io.data.valid goes away) by delaying
   // the data.ready signal and not make be tied to W.ready but
   // awDone & wDone?
-  io.axi.aw.valid := io.run & ((io.data.valid || wDone) & !awDone) & !io.full
+  io.axi.aw.valid := io.run & ((io.data.valid || wDone) & !awDone) & !io.full // TODO NEEDED? & outstandingB =/= outstandingB.maxValue
 
   io.axi.w.payload.data := io.data.payload #* 4
   io.axi.w.payload.strb := address(2 downto 1).mux(

@@ -1,17 +1,23 @@
 package andreasWallner.la
 
 import andreasWallner.Utils.gcd
+import andreasWallner.zynq.Axi3Dma
 import spinal.core._
 import spinal.lib._
+import spinal.lib.bus.amba4.axi.{Axi4Config, Axi4WriteOnly}
 
 import scala.collection.mutable
 import scala.language.postfixOps
 
 case class AnalyzerGenerics(
-    dataWidth: Int,
-    internalWidth: Int,
-    externalTriggerCnt: Int=0) {
-  assert(dataWidth < internalWidth, "dataWidth must be smaller than internalWidth")
+                             dataWidth: Int,
+                             internalWidth: Int,
+                             externalTriggerCnt: Int = 0
+                           ) {
+  assert(
+    dataWidth < internalWidth,
+    "dataWidth must be smaller than internalWidth"
+  )
 
   def compressedDataWidth = internalWidth - 1
 }
@@ -34,7 +40,7 @@ case class SimpleTriggerUnit(width: Int) extends Component {
     val trigger = out Bool ()
   }
   val active = Bits(width bits)
-  for (i <- 0 to width) {
+  for (i <- 0 until width) {
     active(i) := io
       .mode(i)
       .mux(
@@ -45,10 +51,10 @@ case class SimpleTriggerUnit(width: Int) extends Component {
         default -> True
       )
   }
-  io.trigger := active.orR
+  io.trigger := active.andR
 }
 
-case class CompressedData(width:Int) extends Bundle {
+case class CompressedData(width: Int) extends Bundle {
   val isData = Bool()
   val dataOrTime = Bits(width bits)
 }
@@ -66,7 +72,8 @@ case class RLECompressor(g: AnalyzerGenerics) extends Component {
     val delayedData = RegNext(io.data)
     val delayedChange = RegNext(dataChange)
 
-    val choice = RegNext(hold) || (delayedChange && RegNext(delayedChange)) || io.run.rise()
+    val choice = RegNext(hold) || (delayedChange && RegNext(delayedChange)) || io.run
+      .rise()
     val data = choice ? delayedData | io.data
     val change = choice ? delayedChange | dataChange
   }
@@ -249,16 +256,51 @@ object MemoryFormatter {
 }
 
 case class Analyzer(g: AnalyzerGenerics) extends Component {
+  val dmaAxiConfig =
+    Axi4Config(addressWidth = 64, dataWidth = 64, useId = false)
   val io = new Bundle {
-    val data = in Bits (g.dataWidth bits)
-    val externalTrigger = in Bits (g.externalTriggerCnt bits)
-    val triggerMode = in Vec (TriggerMode(), g.dataWidth)
+    val data = in(Bits(g.dataWidth bits))
+    val externalTrigger = in(Bits(g.externalTriggerCnt bits))
+    val triggerMode = in(Vec(TriggerMode(), g.dataWidth))
+    val dmaAxi = master(Axi4WriteOnly(dmaAxiConfig))
+    val config = new Bundle {
+      val startAddress = in(UInt(dmaAxiConfig.addressWidth bits))
+      val endAddress = in(UInt(dmaAxiConfig.addressWidth bits))
+      val armTrigger = in(Bool())
+      val circular = in(Bool())
+    }
+    val status = new Bundle {
+      val running = out(Bool()).setAsReg()
+      val busy = out(Bool())
+      val overflow = out(Bool()).setAsReg()
+    }
   }
 
   val triggerUnit = SimpleTriggerUnit(g.dataWidth)
-  val compressor = RLECompressor(g)
-
   triggerUnit.io.data := io.data
   triggerUnit.io.mode := io.triggerMode
-  val doTrigger = triggerUnit.io.trigger || io.externalTrigger.orR
+  val doTrigger = (triggerUnit.io.trigger || io.externalTrigger.orR) && io.config.armTrigger
+  io.status.running.setWhen(doTrigger).clearWhen(io.status.overflow || !io.config.armTrigger)
+
+  val compressor = RLECompressor(g)
+  compressor.io.run := io.status.running
+  compressor.io.data := io.data
+
+  val fifo = new StreamFifo(Bits(g.internalWidth bit), 64)
+  val fifoOverflow = Bool()
+  fifo.io.push.translateFrom(compressor.io.compressed.toStream(fifoOverflow))(
+    (o, i) => o := i.isData ## i.dataOrTime.resize(g.compressedDataWidth)
+  )
+  val dma = Axi3Dma(dmaAxiConfig)
+  dma.io.run := io.status.running
+  dma.io.config.startAddress := io.config.startAddress
+  dma.io.config.endAddress := io.config.endAddress
+  dma.io.config.circular := io.config.circular
+  dma.io.data << fifo.io.pop
+  dma.io.dataAvailable := fifo.io.occupancy.resized
+
+  dma.io.axi <> io.dmaAxi
+  io.status.busy := dma.io.busy // FIXME we also need to consider the FIFO state
+
+  io.status.overflow.setWhen(fifoOverflow).clearWhen(!io.config.armTrigger)
 }
