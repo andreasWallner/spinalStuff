@@ -24,12 +24,15 @@ object YosysFlow {
              device: String,
              fpgaPackage: String,
              yosysPath: String = "",
+             nextpnrPath: String = "",
+             useDsp: Boolean = true,
+             additionalSynthArgs: String = "",
              frequencyTarget: Option[HertzNumber] = None,
              pcfFile: Option[String] = None,
              allowUnconstrained: Boolean = false
            ): Report = {
-    if (yosysPath != "" && !yosysPath.endsWith("/"))
-      throw new RuntimeException("Yosys path must end with a '/' if set")
+    assert(yosysPath == "" || yosysPath.endsWith("/"), "yosysPath must end with a '/' if set")
+    assert(nextpnrPath == "" || nextpnrPath.endsWith("/"), "nextpnrPath must end with a '/' if set")
 
     def doCmd(cmd: Seq[String], path: String): Unit = {
       val process = Process(cmd, new java.io.File(path))
@@ -50,13 +53,14 @@ object YosysFlow {
       )
     val readRtl =
       rtl.getRtlPaths().map(file => s"${Paths.get(file).toAbsolutePath}")
+    val dspArg = if (useDsp) " -dsp " else ""
     doCmd(
       Seq(
         yosysPath + "yosys",
         "-l",
         "yosys.log",
         "-p",
-        s"synth_${family} -top ${rtl.getTopModuleName()} -json ${rtl.getName()}.json"
+        s"synth_${family} $dspArg $additionalSynthArgs -top ${rtl.getTopModuleName()} -json ${rtl.getName()}.json"
       )
         ++ readRtl,
       workspacePath
@@ -64,7 +68,7 @@ object YosysFlow {
 
     doCmd(
       Seq(
-        yosysPath + s"nextpnr-${family}",
+        nextpnrPath + s"nextpnr-${family}",
         "--freq",
         s"$frequencyMHz",
         s"--$device",
@@ -87,7 +91,7 @@ object YosysFlow {
     )
 
     doCmd(
-      Seq(yosysPath + "icetime", "-d", device)
+      Seq(nextpnrPath + "icetime", "-d", device)
         ++ pcfFile.map(x => Seq("-p", x)).getOrElse(Seq())
         ++ Seq("-c", s"${frequencyMHz}MHz")
         ++ Seq("-mtr", s"${rtl.getName()}.rpt", s"${rtl.getName()}.asc"),
@@ -96,7 +100,7 @@ object YosysFlow {
     if (pcfFile.isDefined)
       doCmd(
         Seq(
-          yosysPath + "icepack",
+          nextpnrPath + "icepack",
           s"${rtl.getName()}.asc",
           s"${rtl.getName()}.bin"
         ),
@@ -114,7 +118,6 @@ object YosysFlow {
     class CC[T] {
       def unapply(a: Option[Any]): Option[T] = a.map(aa => aa.asInstanceOf[T])
     }
-
     object M extends CC[Map[String, Any]]
     object D extends CC[Double]
 
