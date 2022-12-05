@@ -1,10 +1,10 @@
 set_io -pullup no clk A9
-set_frequency clk 3.33
+set_frequency clk 33.3333333
 
-set_io -pullup no led[0] A29
-set_io -pullup no led[1] B20
-set_io -pullup no led[2] B19
-set_io -pullup no led[3] A25
+set_io -pullup no io_led[0] A29
+set_io -pullup no io_led[1] B20
+set_io -pullup no io_led[2] B19
+set_io -pullup no io_led[3] A25
 
 set_io -pullup no io_epp_DB[0] A20
 set_io -pullup no io_epp_DB[1] B15
@@ -21,3 +21,6 @@ set_io -pullup yes io_epp_WAIT A16
 
 set_io -pullup yes io_tx A11
 set_io -pullup yes io_tx2 B7
+
+set_io -pullup no io_clk_debug A33 # J2.1
+set_io -pullup no io_lock B26 # J2.2
