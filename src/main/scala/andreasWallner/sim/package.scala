@@ -190,11 +190,11 @@ package object sim {
     }
   }
 
-  implicit class PimpedSimBits(bt: Bits) {
+  implicit class PimpedSimBitVector(bv: BitVector) {
     def changedInt(): Int = {
-      val width = bt.getWidth
+      val width = bv.getWidth
       assert(width < 32)
-      val current = bt.toInt
+      val current = bv.toInt
 
       @tailrec
       def changedValue(): Int = {
@@ -203,14 +203,14 @@ package object sim {
       }
 
       val next = changedValue()
-      bt #= next
+      bv #= next
       next
     }
 
     def changedLong(): Long = {
-      val width = bt.getWidth
+      val width = bv.getWidth
       assert(width < 64)
-      val current = bt.toInt
+      val current = bv.toInt
 
       @tailrec
       def changedValue(): Long = {
@@ -219,13 +219,13 @@ package object sim {
       }
 
       val next = changedValue()
-      bt #= next
+      bv #= next
       next
     }
 
     def changedBigInt(): BigInt = {
-      val width = bt.getWidth
-      val current = bt.toBigInt
+      val width = bv.getWidth
+      val current = bv.toBigInt
 
       @tailrec
       def changedValue(): BigInt = {
@@ -234,15 +234,15 @@ package object sim {
       }
 
       val next = changedValue()
-      bt #= next
+      bv #= next
       next
     }
 
     def changed(): BigInt = {
-      bt.getWidth match {
+      bv.getWidth match {
         case x if x < 32 => changedInt()
         case x if x < 64 => changedLong()
-        case _           => changedBigInt()
+        case _ => changedBigInt()
       }
     }
   }
