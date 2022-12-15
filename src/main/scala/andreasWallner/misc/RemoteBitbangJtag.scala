@@ -50,16 +50,16 @@ case class RemoteBitbangJtag(jtag: Jtag, cd: ClockDomain, trst: Option[Bool] = N
 
   def processCmd(cmd: Byte, sc: SocketChannel): Unit = {
     cmd match {
-      case 'B' | 'b' => _ // ignore blink for now
+      case 'B' | 'b' => // ignore blink for now
       case 'R' =>
         val resp = ByteBuffer.allocate(1)
         resp.array()(0) = if (jtag.tms.toBoolean) ascii1 else ascii0
         sc.write(resp)
       case w if w >= '0' && w <= '7' =>
         val bits = w - '0'
-        jtag.tdi #= bits & 1 != 0
-        jtag.tms #= bits & 2 != 0
-        jtag.tck #= bits & 3 != 0
+        jtag.tdi #= (bits & 1) != 0
+        jtag.tms #= (bits & 2) != 0
+        jtag.tck #= (bits & 3) != 0
       case 'r' =>
         trst.foreach(_ #= false)
         srst.foreach(_ #= false)
