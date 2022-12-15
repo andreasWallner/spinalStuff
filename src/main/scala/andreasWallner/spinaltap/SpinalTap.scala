@@ -25,9 +25,12 @@ trait ISpinalTAPCommModule[T <: spinal.core.Data with IMasterSlave]
     extends ISpinalTAPModule[T] {
   def init(busType: HardType[T], factory: T => BusSlaveFactory): Unit
 
-  def triggerInputs(): List[Bool]
-  def triggerOutputs(): List[Bool]
+  def triggerInputs(): List[Bool] = List()
+
+  def triggerOutputs(): List[Bool] = List()
+
   def ports(): TriStateArray
+
   def vcc(): Bool
 }
 
@@ -191,26 +194,20 @@ object ApbSpinalTap {
   }
 }
 
+import andreasWallner.io.iso7816
+
 class ApbSpinalTap
-    extends SpinalTap[Apb3](
-      Apb3(32, 32),
-      Apb3(8, 32),
-      List(
-        new Wrapped.BuildInfo[Apb3](
-          name = "BuildInfo",
-          List("just", "an", "example")
-        ),
-        new Wrapped.Dac[Apb3](
-          name = "VccDac"
-        )
-      ),
-      List(
-        new Wrapped.Iso7816[Apb3](
-          "ISO7816",
-          andreasWallner.io.iso7816.PeripheralGenerics()
-        ),
-        new Wrapped.Spi[Apb3]("SPI", SpiMaster.PeripheralParameter())
-      ),
+  extends SpinalTap[Apb3](
+    Apb3(32, 32),
+    Apb3(8, 32),
+    List(
+      new Wrapped.BuildInfo[Apb3](name = "BuildInfo", List("just", "an", "example")),
+      new Wrapped.Dac[Apb3](name = "VccDac")
+    ),
+    List(
+      new Wrapped.Iso7816[Apb3]("ISO7816", iso7816.PeripheralGenerics()),
+      new Wrapped.Spi[Apb3]("SPI", SpiMaster.PeripheralParameter())
+    ),
       new Apb3SlaveFactory(_, 0),
       0x100 Byte,
       ApbSpinalTap.makeInterconnect

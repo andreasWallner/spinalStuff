@@ -117,8 +117,6 @@ object Wrapped {
 
     override def wrapped() = module
     override def bus() = module.io.bus
-    override def triggerInputs() = List()
-    override def triggerOutputs() = List()
     override def vcc() = True
 
     override def ports() = {
@@ -159,8 +157,6 @@ object Wrapped {
 
     override def wrapped() = module
     override def bus() = module.io.bus
-    override def triggerOutputs() = List()
-    override def triggerInputs() = List()
     override def ports() = {
       val tri = TriStateArray(5 bit)
       tri(0) <> module.io.iso.io
