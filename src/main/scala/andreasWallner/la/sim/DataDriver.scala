@@ -10,10 +10,12 @@ case class DataDriver(
                        d: BitVector,
                        cd: ClockDomain,
                        maxTime: Int = 10,
-                       b2bRate: Double = 0.2
+                       b2bRate: Double = 0.2,
+                       seqStart: Seq[BigInt] = List()
                      )(cb: (Int, BigInt) => Boolean) {
   fork {
     var end = false
+    var cnt = 0
     while (!end) {
       cd.waitSampling()
       val waitTime = if (Random.nextDouble() > b2bRate) {
@@ -22,7 +24,11 @@ case class DataDriver(
         cd.waitSampling(waitTime)
         waitTime
       } else 0
-      val newValue = d.changed()
+      val newValue = if (cnt < seqStart.length) {
+        d #= seqStart(cnt)
+        seqStart(cnt)
+      } else d.changed()
+      cnt += 1
       end = !cb(waitTime, newValue)
     }
     simLog("ending DataDriver")

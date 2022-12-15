@@ -3,6 +3,7 @@ package andreasWallner.la
 import andreasWallner.SpinalFunSuite
 import andreasWallner.Utils.gcd
 import andreasWallner.la.sim.DataDriver
+import andreasWallner.sim.simLog
 import andreasWallner.zynq.helper.printMemory
 import org.scalatest.funsuite.AnyFunSuite
 import spinal.core._
@@ -192,11 +193,12 @@ class AnalyzerTest extends SpinalFunSuite {
     dut.clockDomain.waitSampling(100)
     dut.io.config.armTrigger #= true
 
-    val cnt = 20
+    val cnt = 5
     var i = 0
     var offset = 0
-    DataDriver(dut.io.data, dut.clockDomain) { (waitTime, newValue) =>
-      //simLog("DataDriver", waitTime, f"$newValue%02x")
+    // start sequence makes sure that first change triggers
+    DataDriver(dut.io.data, dut.clockDomain, seqStart = List(0x01)) { (waitTime, newValue) =>
+      simLog("DataDriver", waitTime, f"$newValue%02x")
       if (waitTime > 0 && i > 0) {
         expected(0x1000 + offset + 1) = ((waitTime - 1) >> 8).toByte
         expected(0x1000 + offset) = (waitTime - 1).toByte
@@ -211,9 +213,9 @@ class AnalyzerTest extends SpinalFunSuite {
     }
 
     dut.clockDomain.waitSamplingWhere(i >= cnt && !dut.io.status.busy.toBoolean)
-    assert(memory == expected)
-    sleep(1000)
     printMemory(memory)
     printMemory(expected)
+    assert(memory == expected)
+    sleep(1000)
   }
 }

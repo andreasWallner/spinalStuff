@@ -270,9 +270,9 @@ case class Analyzer(g: AnalyzerGenerics) extends Component {
       val circular = in(Bool())
     }
     val status = new Bundle {
-      val running = out(Bool()).setAsReg()
+      val running = out(Bool()).setAsReg() init False
       val busy = out(Bool())
-      val overflow = out(Bool()).setAsReg()
+      val overflow = out(Bool()).setAsReg() init False
     }
   }
 
