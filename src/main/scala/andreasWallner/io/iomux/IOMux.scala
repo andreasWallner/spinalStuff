@@ -1,5 +1,7 @@
 package andreasWallner.io.iomux
 
+import andreasWallner.registers.casemodel.Value
+import andreasWallner.registers.{BusSlaveFactoryRecorder, RegisterRecorder}
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.misc.BusSlaveFactory
@@ -8,7 +10,12 @@ import spinal.lib.io.TriStateArray
 import scala.language.postfixOps
 
 object IOMux {
-  case class PortGenerics (
+
+  /**
+    * @param triCnt Number of tristate signals to multiplex
+    * @param outCnt Number of output signals to multiplex
+    */
+  case class PortGenerics(
       triCnt: Int,
       outCnt: Int
   )
@@ -22,18 +29,24 @@ object IOMux {
     }
   }
 
+  /**
+    * @param inPorts Number of 'inside' ports to be multiplexed to outs
+    * @param outPorts Number of multiplexed output ports
+    * @param portGenerics Sizing of individual ports
+    * @param syncSteps Length of synchronizier in input path
+    * @param invertOutputEnable `true` to invert `writeEnable` signals of outputs
+    * @param withSwap `true` to add additional layer to allow for swapping of tristate signals in input ports
+    */
   case class Generics(
-                       inPorts: Int,
-                       outPorts: Int,
-                       portGenerics: PortGenerics,
-                       syncSteps: Int = 2,
-                       invertOutputEnable: Boolean = false,
-                       withSwap: Boolean = false
-                     ) {
+      inPorts: Int,
+      outPorts: Int,
+      portGenerics: PortGenerics,
+      syncSteps: Int = 2,
+      invertOutputEnable: Boolean = false,
+      withSwap: Boolean = false
+  ) {
     def selWidth = log2Up(inPorts)
-
     def swapWidth = log2Up(portGenerics.triCnt + 1)
-
     def swapMax = ((BigInt(1) << swapWidth) - 1).intValue()
   }
 
@@ -41,8 +54,10 @@ object IOMux {
     val io = new Bundle {
       val all = Vec(slave(MuxedPort(g.portGenerics)), g.inPorts)
       val muxeds = Vec(master(MuxedPort(g.portGenerics)), g.outPorts)
-      val sels = in Vec(UInt(g.selWidth bits), g.outPorts)
-      val swapSel = if (g.withSwap) Some(in(Vec(Vec(UInt(g.swapWidth bits), g.portGenerics.triCnt), g.inPorts))) else None
+      val sels = in Vec (UInt(g.selWidth bits), g.outPorts)
+      val swapSel =
+        if (g.withSwap) Some(in(Vec(Vec(UInt(g.swapWidth bits), g.portGenerics.triCnt), g.inPorts)))
+        else None
     }
 
     val swappeds = g.withSwap match {
@@ -56,7 +71,9 @@ object IOMux {
           val swappedReads = for (i <- 0 until g.portGenerics.triCnt) yield (i, swapped.tri(i).read)
           for (i <- 0 until g.portGenerics.triCnt) {
             swapped.tri(i).write := sel(i).muxListDc(inputWrites)
-            swapped.tri(i).writeEnable := sel(i).muxList(inputWriteEnables ++ falseFill)
+            swapped.tri(i).writeEnable := sel(i).muxList(
+              inputWriteEnables ++ falseFill
+            )
             input.tri(i).read := sel(i).muxListDc(swappedReads)
           }
           swapped.o := input.o
@@ -66,7 +83,12 @@ object IOMux {
 
     for ((muxed, sel) <- (io.muxeds, io.sels).zipped) {
       muxed.tri.write := RegNext(swappeds(sel).tri.write)
-      muxed.tri.writeEnable := RegNext(swappeds(sel).tri.writeEnable ^ B(g.portGenerics.triCnt bit, default -> g.invertOutputEnable))
+      muxed.tri.writeEnable := RegNext(
+        swappeds(sel).tri.writeEnable ^ B(
+          g.portGenerics.triCnt bit,
+          default -> g.invertOutputEnable
+        )
+      )
       muxed.o := RegNext(swappeds(sel).o)
     }
 
@@ -86,7 +108,7 @@ object IOMux {
     }
   }
 
-  class Ctrl[T <: spinal.core.Data with IMasterSlave](
+  class Ctrl[T <: spinal.core.Data with IMasterSlave]( // TODO make this a case class
       generics: Generics,
       busType: HardType[T],
       factory: T => BusSlaveFactory
@@ -94,18 +116,42 @@ object IOMux {
     val io = new Bundle {
       val bus = slave(busType())
       val all = Vec(slave(MuxedPort(generics.portGenerics)), generics.inPorts)
-      val muxeds = Vec(master(MuxedPort(generics.portGenerics)), generics.outPorts)
+      val muxeds =
+        Vec(master(MuxedPort(generics.portGenerics)), generics.outPorts)
     }
     val core = Core(generics)
     core.io.all <> io.all
     core.io.muxeds <> io.muxeds
 
-    val mapper = factory(io.bus)
-    for ((sel, idx) <- core.io.sels.zipWithIndex)
-      sel := mapper.createReadAndWrite(
+    val mapper = new BusSlaveFactoryRecorder(factory(io.bus))
+    var register:RegisterRecorder = null// TODO improve this shameful thing
+    for ((sel, idx) <- core.io.sels.zipWithIndex) {
+      if(idx % 4 == 0) {
+        val regIdx = idx / 4
+        register = mapper.register(s"sel$regIdx", "Select multiplexer output")
+      }
+      sel := register.createReadAndWrite(
         UInt(generics.selWidth bits),
-        0x04 * (idx / 4),
-        8 * (idx % 4)
+        8 * (idx % 4),
+        s"out$idx"
       ) init 0
+    }
+
+    if(generics.withSwap) {
+      for((swapSels, inIdx) <- core.io.swapSel.get.zipWithIndex) {
+        assert(swapSels.length * generics.swapWidth <= mapper.dataWidth, "currently not implemented to split to multiple registers")
+        val register = mapper.register(s"swap$inIdx", "Swap signals of input $inIdx")
+        for((swapSel, swapIdx) <- swapSels.zipWithIndex) {
+          swapSel := register.createReadAndWrite(
+            UInt(generics.swapWidth bits),
+            swapIdx * generics.swapWidth,
+            s"tri$swapIdx",
+            values=List(
+              Value(swapSel.maxValue.toLong, "dis", "Disable driver")
+            )
+          )
+        }
+      }
+    }
   }
 }
