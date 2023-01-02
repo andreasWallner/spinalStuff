@@ -264,4 +264,19 @@ package object sim {
       }
     }
   }
+
+  // WIP sim slicing for BitVector
+  object SimBitVector {
+    val values = mutable.HashMap[BitVector, BigInt]()
+  }
+  class SimBitVector(d: BitVector, slice: Range) {
+    val mask = ((BigInt(1) << slice.length) - 1) << slice.min
+
+    def #=(b: BigInt): Unit = {
+      val current = SimBitVector.values.getOrElse(d, BigInt(0))
+      val updated = (current & mask) | b << slice.min
+      SimBitVector.values += ((d, updated))
+      d #= updated
+    }
+  }
 }
