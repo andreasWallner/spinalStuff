@@ -1,20 +1,23 @@
 package andreasWallner.registers
 
 import andreasWallner.registers.casemodel._
-import andreasWallner.registers.datamodel.{AccessType, Section, BusComponent}
+import andreasWallner.registers.datamodel.{AccessType, BusComponent, Section}
+
 import scala.collection.mutable.Map
 import spinal.lib.bus.misc.BusSlaveFactory
-import spinal.core.{Data, Bits, Bool}
-import spinal.lib.{Stream, Flow}
+import spinal.core.{Bits, Bool, Data}
+import spinal.lib.{Flow, Stream}
+
+import scala.collection.mutable
 
 class RegisterRecorder(
-    registers: Map[BigInt, Register],
-    address: BigInt,
-    factory: BusSlaveFactory
-) {
+                        registers: mutable.Map[BigInt, Register],
+                        address: BigInt,
+                        factory: BusSlaveFactory
+                      ) {
   private def append(field: Field): Unit = {
     registers(address) = registers get address match {
-      case None    => Register("", address.toLong, None, List(field))
+      case None => Register("", address.toLong, None, List(field))
       case Some(r) => r.copy(fields = r.fields :+ field)
     }
   }
@@ -259,12 +262,12 @@ class RegisterRecorder(
 }
 
 class BusSlaveFactoryRecorder(factory: BusSlaveFactory) extends BusComponent {
-  protected val registers = Map[BigInt, Register]()
+  protected val registers = mutable.Map[BigInt, Register]()
 
   def register(
       address: BigInt,
       name: String,
-      doc: String = null
+      doc: String
   ): RegisterRecorder = {
     assert(!registers.contains(address), s"address $address is already used")
     assert(!registers.values.exists(reg => reg.name == name), s"Register named $name is already used")
@@ -272,12 +275,26 @@ class BusSlaveFactoryRecorder(factory: BusSlaveFactory) extends BusComponent {
     new RegisterRecorder(registers, address, factory)
   }
 
+  def register(address: BigInt, name: String): RegisterRecorder = register(address, name, null)
+
+  def register(
+    name: String,
+    doc: String
+  ): RegisterRecorder = {
+    assert(!registers.values.exists(reg => reg.name == name), s"Register named $name is already used")
+    val address = if (registers.isEmpty) BigInt(0) else registers.keys.max + factory.wordAddressInc
+    register(address, name, doc)
+  }
+
+  def register(name: String): RegisterRecorder = register(name, null)
+
   def f = factory
 
   override def elements =
     registers.values.toList.sortWith((a: Register, b: Register) =>
       a.address < b.address
     )
+
   override def busComponentName: String = ???
   override def dataWidth = factory.busDataWidth
   override def wordAddressInc: Long = factory.wordAddressInc
