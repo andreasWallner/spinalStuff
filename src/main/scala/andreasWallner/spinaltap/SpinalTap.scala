@@ -61,7 +61,8 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
       inPorts = 1 + 2 + commModules.size,
       outPorts = 2,
       portGenerics = portGenerics,
-      invertOutputEnable = invertOutputEnable
+      invertOutputEnable = invertOutputEnable,
+      withSwap = true
     )
   )
   val gpioParameter = Gpio.Parameter(
