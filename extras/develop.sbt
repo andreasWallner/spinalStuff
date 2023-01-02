@@ -7,13 +7,22 @@ lazy val spinalHdlSim = ProjectRef(file("../SpinalHDL"), "sim")
 lazy val spinalHdlCore = ProjectRef(file("../SpinalHDL"), "core")
 lazy val spinalHdlLib = ProjectRef(file("../SpinalHDL"), "lib")
 
-dependsOn(spinalHdlIdslPlugin, spinalHdlSim, spinalHdlCore, spinalHdlLib)
-scalacOptions += (artifactPath in (spinalHdlIdslPlugin, Compile, packageBin)).map { file =>
+lazy val spinalStuff = (project in file(".")).dependsOn(spinalHdlIdslPlugin, spinalHdlSim, spinalHdlCore, spinalHdlLib)
+scalacOptions += (spinalHdlIdslPlugin / Compile / packageBin / artifactPath).map { file =>
   s"-Xplugin:${file.getAbsolutePath}"
 }.value
 
 libraryDependencies ++= Seq(
-  "org.scalatest" %% "scalatest" % "3.1.1" % "test",
+  "org.scalatest" %% "scalatest" % "3.2.5" % "test",
 )
+
+def stagingClean = Command.command("staging-clean") { currentState =>
+  import sys.process._
+  import sbt.BuildPaths.{getGlobalBase, getStagingDirectory}
+
+  val stagingDir = getStagingDirectory(currentState, getGlobalBase(currentState))
+  ("rm -rf " + stagingDir).!
+  currentState
+}
 
 fork := true
