@@ -22,7 +22,7 @@ object StringPimper {
   }
 }
 
-class YAML(comp: BusComponent) {
+class YAML(comp: BusComponent, comments: Option[Seq[String]]=None) {
   import StringPimper._
 
   private var name = comp.busComponentName
@@ -45,8 +45,9 @@ class YAML(comp: BusComponent) {
   }
 
   def write(writer: Writer): Unit = {
+    val commentLines = comments.map(_.map("# " + _)).map("\n" + _.mkString("\n")).getOrElse("")
     writer.write(s"""
-      |---
+      |---$commentLines
       |!BusComponent;1
       |busComponentName: ${comp.busComponentName.yamlSafe.quoted}
       |dataWidth: ${comp.dataWidth}
@@ -54,7 +55,7 @@ class YAML(comp: BusComponent) {
       |elements:
       |""".stripMargin)
 
-    comp.elements.map(writeElement(_, writer, 1))
+    comp.elements.foreach(writeElement(_, writer, 1))
 
     writer.write("...")
   }

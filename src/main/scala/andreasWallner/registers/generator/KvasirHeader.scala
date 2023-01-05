@@ -8,7 +8,8 @@ import spinal.core.Bool
 class KvasirHeader(
   component: BusComponent,
   namespace: Option[String] = None,
-  offset: Long = 0
+  offset: Long = 0,
+  comments: Option[Seq[String]]=None
 ) {
   private var name = component.busComponentName
   def overrideName(newName: String) = {
@@ -27,7 +28,8 @@ class KvasirHeader(
     }
   }
   def write(writer: Writer): Unit = {
-    writer.write(s"""#ifndef header_kvasir_registers_${name}_h
+    val commentLines = comments.map(_.map("# " + _)).map(_.mkString("\n") + "\n").getOrElse("")
+    writer.write(s"""$commentLines#ifndef header_kvasir_registers_${name}_h
       |#define header_kvasir_registers_${name}_h
       |
       |#include <cstdint.h>

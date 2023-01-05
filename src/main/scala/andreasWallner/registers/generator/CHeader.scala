@@ -6,9 +6,9 @@ import java.io.{Writer, PrintWriter, File}
 
 // TODO register prefix
 
-class CHeader(intf: BusComponent, offset: Long = 0) {
+class CHeader(intf: BusComponent, offset: Long = 0, comments: Option[Seq[String]]=None) {
   private var name = intf.busComponentName
-  
+
   def overrideName(newName: String) = {
     name = newName
     this
@@ -26,7 +26,8 @@ class CHeader(intf: BusComponent, offset: Long = 0) {
   }
 
   def write(writer: Writer): Unit = {
-    writer.write(s"""#ifndef header_c_registers_${name}_h
+    val commentLines = comments.map(_.map("# " + _)).map(_.mkString("\n") + "\n").getOrElse("")
+    writer.write(s"""$commentLines#ifndef header_c_registers_${name}_h
       |#define header_c_registers_${name}_h
       |#include <stdint.h>
       |
@@ -72,7 +73,7 @@ class CHeader(intf: BusComponent, offset: Long = 0) {
 
   def writeRegisterStructs(intf: BusComponent, writer: Writer): Unit = intf.elements.foreach(_ match {
     case r: Register => writeRegisterStruct(r, intf.dataWidth, writer)
-    case _ => 
+    case _ =>
   })
 
   def writeRegisterStruct(reg: Register, dataWidth: Long, writer: Writer): Unit = {

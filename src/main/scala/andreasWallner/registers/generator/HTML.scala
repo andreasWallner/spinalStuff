@@ -4,7 +4,7 @@ import andreasWallner.registers.datamodel._
 import spinal.core.GlobalData
 import java.io.{Writer, PrintWriter, File}
 
-class HTML(intf: BusComponent) {
+class HTML(intf: BusComponent, comments: Option[Seq[String]]=None) {
   private var name = intf.busComponentName
 
   def overrideName(newName: String) = {
@@ -76,8 +76,9 @@ class HTML(intf: BusComponent) {
     |""".stripMargin)
   }
 
+  val commentLines = comments.map(_.map("# " + _)).map("\n<!--\n" + _.mkString("\n") + "\n-->").getOrElse("")
   def writeHeader(writer: Writer): Unit = writer.write(s"""
-      |<!DOCTYPE html>
+      |<!DOCTYPE html>$commentLines
       |<html>
       |  <head>
       |    <title>
