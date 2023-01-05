@@ -5,18 +5,18 @@ import spinal.core.GlobalData
 import java.io.{Writer, PrintWriter, File}
 
 object StringPimper {
-  implicit def richString(s: String) = new {
-    def indent(steps: Int) = {
+  implicit class RichString(s: String) {
+    def indent(steps: Int): String = {
       val ind = " " * steps
       s.split("\n").map(ind + _).mkString("\n") + (if (s.endsWith("\n")) "\n"
                                                    else "")
     }
 
-    def quoted = {
+    def quoted: String = {
       "\"" + s + "\""
     }
 
-    def yamlSafe = {
+    def yamlSafe: String = {
       s.replace("\\", "\\\\").replace("\"", "\\\"")
     }
   }
@@ -27,13 +27,13 @@ class YAML(comp: BusComponent, comments: Option[Seq[String]]=None) {
 
   private var name = comp.busComponentName
 
-  def overrideName(newName: String) = {
+  def overrideName(newName: String): YAML = {
     name = newName
     this
   }
 
   def write(): Unit =
-    write(f"${GlobalData.get.phaseContext.config.targetDirectory}/${name}.yaml")
+    write(f"${GlobalData.get.phaseContext.config.targetDirectory}/$name.yaml")
 
   def write(filename: String): Unit = {
     val writer = new PrintWriter(new File(filename))
@@ -67,7 +67,7 @@ class YAML(comp: BusComponent, comments: Option[Seq[String]]=None) {
     }
   }
 
-  def writeCluster(cluster: Cluster, writer: Writer, indent: Int) = {
+  private def writeCluster(cluster: Cluster, writer: Writer, indent: Int): Iterable[Unit] = {
     writer.write(f"""|-  !ElementSet;1
                      |   name: ${cluster.name.yamlSafe.quoted}
                      |   doc: ${cluster.doc.map(_.yamlSafe.quoted) getOrElse "null"}
@@ -76,7 +76,7 @@ class YAML(comp: BusComponent, comments: Option[Seq[String]]=None) {
     cluster.elements.map(writeElement(_, writer, indent + 1))
   }
 
-  def writeRegister(register: Register, writer: Writer, indent: Int) = {
+  def writeRegister(register: Register, writer: Writer, indent: Int): Iterable[Iterable[Unit]] = {
     writer.write(f"""|-  !Register;1
       |   name: ${register.name.yamlSafe.quoted}
       |   doc: ${register.doc.map(_.yamlSafe.quoted) getOrElse "null"}
@@ -87,7 +87,7 @@ class YAML(comp: BusComponent, comments: Option[Seq[String]]=None) {
     register.fields.map(writeField(_, writer, indent + 1))
   }
 
-  def writeField(field: Field, writer: Writer, indent: Int) = {
+  private def writeField(field: Field, writer: Writer, indent: Int): Iterable[Unit] = {
     writer.write(f"""|-  !Field;1
       |   name: ${field.name.yamlSafe.quoted}
       |   doc: ${field.doc.map(_.yamlSafe.quoted) getOrElse "null"}
@@ -104,7 +104,7 @@ class YAML(comp: BusComponent, comments: Option[Seq[String]]=None) {
     field.values.map(writeValue(_, writer, indent + 1))
   }
 
-  def writeValue(value: Value, writer: Writer, indent: Int) = {
+  private def writeValue(value: Value, writer: Writer, indent: Int): Unit = {
     writer.write(f"""|-  !Value;1
       |   name: ${value.name.yamlSafe.quoted}
       |   value: ${value.value}
