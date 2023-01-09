@@ -52,7 +52,7 @@ object SB_PLL40_PAD_CONFIG_EXT {
       for (div <- 0 to 15) {
         breakable {
           val fdiv = fin / (div + 1.0)
-          if (fdiv < (10.0 MHz) || fdiv > (133.0 MHz))
+          if (fdiv < (10.0 MHz) || fdiv > (133.0 MHz)) // TODO too restrictive?
             break
 
           for (divf <- 0 to divf_max) {
@@ -62,19 +62,19 @@ object SB_PLL40_PAD_CONFIG_EXT {
                 if (fvco < (533.0 MHz) || fvco > (1066.0 MHz))
                   break
 
-                for (divq <- 1 to 6) {
-                  val fout = fvco / (1 << (divq - 1))
+                for (divq <- 0 to 6) {
+                  val fout = fvco / (1 << divq)
                   best = better_match(
                     best,
                     Dividers(div, divf, divq, simple_fb, fin, fdiv, fvco, fout)
                   )
                 }
               } else {
-                for (divq <- 1 to 6) {
+                for (divq <- 0 to 6) {
                   val fvco = fdiv * (divf + 1.0) * (1 << (divq - 1))
-                  if (fvco < 533.0 || fvco > 1066.0)
+                  if (fvco < (533 MHz) || fvco > (1066 MHz))
                     break
-                  val fout = fvco / (1 << (divq - 1))
+                  val fout = fvco / (1 << divq)
                   best = better_match(
                     best,
                     Dividers(div, divf, divq, simple_fb, fin, fdiv, fvco, fout)
@@ -117,15 +117,15 @@ object SB_PLL40_PAD_CONFIG_EXT {
       allowed_mismatch_percent
     )
     val filter_range = best.fdiv match {
-      case x if x < 17 => 1
-      case x if x < 26 => 2
-      case x if x < 44 => 3
-      case x if x < 66 => 4
-      case x if x < 101 => 5
+      case x if x < (17 MHz) => 1
+      case x if x < (26 MHz) => 2
+      case x if x < (44 MHz) => 3
+      case x if x < (66 MHz) => 4
+      case x if x < (101 MHz) => 5
       case _ => 6
     }
 
-    print(best)
+    println(best)
 
     SB_PLL40_PAD_CONFIG(
       B(best.divr, 4 bit),
@@ -145,14 +145,31 @@ object SB_PLL40_PAD_CONFIG_EXT {
   }
 }
 
-case class SB_PLL40_CORE(p: SB_PLL40_PAD_CONFIG) extends BlackBox {
-  val REFERENCECLK = in Bool()
-  val PLLOUTCORE = out Bool()
-  val PLLOUTGLOBAL = out Bool()
+class ICE40_PLL(p: SB_PLL40_PAD_CONFIG, withLock: Boolean=false) extends BlackBox {
   val RESETB = in Bool()
   val BYPASS = in Bool()
-  //val LOCK = out Bool()
-  //val LATCHINPUTVALUE = in Bool()
+  val EXTFEEDBACK = if (p.FEEDBACK_PATH == "EXTERNAL") in Bool() else null
+  val DYNAMICDELAY = if (p.DELAY_ADJUSTMENT_MODE_FEEDBACK == "DYNAMIC" || p.DELAY_ADJUSTMENT_MODE_RELATIVE == "DYNAMIC") in Bits (8 bit) else null
+  val LATCHINPUTVALUE = if (p.ENABLE_ICEGATE == True) in Bool() else null
+  val LOCK = if (withLock) out Bool() else null
+  val PLLOUTGLOBAL = out Bool()
+  val PLLOUTCORE = out Bool()
+
+  def clockInput: Bool = ???
+}
+
+case class SB_PLL40_CORE(p: SB_PLL40_PAD_CONFIG, withLock: Boolean=false) extends ICE40_PLL(p, withLock) {
+  val REFERENCECLK = in Bool()
 
   p.applyTo(this)
+
+  override def clockInput = REFERENCECLK
+}
+
+case class SB_PLL40_PAD(p: SB_PLL40_PAD_CONFIG, withLock: Boolean=false) extends ICE40_PLL(p, withLock) {
+  val PACKAGEPIN = in Bool()
+
+  p.applyTo(this)
+
+  override def clockInput = PACKAGEPIN
 }

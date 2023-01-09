@@ -39,42 +39,45 @@ case class IceStickIO() extends Bundle with IMasterSlave {
     val dcd = new Bool()
   }
 
-  override def asMaster() = {
+  override def asMaster(): Unit = {
     out(leds, ledGreen, irda.tx, irda.sd_n, ftdi1.tx, ftdi1.cts, ftdi1.dsr, ftdi1.dcd)
     in(irda.rx, ftdi0.ss, ftdi0.mosi, ftdi0.sck, ftdi1.rx, ftdi1.dtr, ftdi1.rts)
     master(pmod, t, b, ftdi0.miso)
+
+    leds.default(0)
+    ledGreen.default(False)
+
   }
 
-  def defaultConnections() = {
-    for (i <- 0 until 4)
-      if (leds(i).getSingleDriver.isEmpty) leds(i) := False
-    if (ledGreen.getSingleDriver.isEmpty) ledGreen := False
+  def defaultConnections(): Unit = {
+    if(!leds.hasAssignement)
+      leds.clearAll()
+    if (!ledGreen.hasAssignement) ledGreen := False
 
-    if (irda.tx.getSingleDriver.isEmpty) irda.tx := True
-    if (irda.sd_n.getSingleDriver.isEmpty) irda.sd_n := True
+    if (!irda.tx.hasAssignement) irda.tx := True
+    if (!irda.sd_n.hasAssignement) irda.sd_n := True
 
-    for (i <- 0 until 8) {
-      if (pmod.writeEnable(i).getSingleDriver.isEmpty) {
-        pmod.writeEnable(i) := False
-        pmod.write(i) := False
-      }
-      if (t.writeEnable(i).getSingleDriver.isEmpty) {
-        t.writeEnable(i) := False
-        t.write(i) := False
-      }
-      if (b.writeEnable(i).getSingleDriver.isEmpty) {
-        b.writeEnable(i) := False
-        b.write(i) := False
-      }
+    // TODO Check for BitsBitAssignmentFixed and assign leftovers only (for leds also)
+    if (!pmod.writeEnable.hasAssignement) {
+      pmod.writeEnable.clearAll()
+      pmod.write.clearAll()
+    }
+    if (!t.writeEnable.hasAssignement) {
+      t.writeEnable.clearAll()
+      t.write.clearAll()
+    }
+    if (!b.writeEnable.hasAssignement) {
+      b.writeEnable.clearAll()
+      b.write.clearAll()
     }
 
-    if (ftdi0.miso.writeEnable.getSingleDriver.isEmpty) ftdi0.miso.writeEnable := False
-    if (ftdi0.miso.write.getSingleDriver.isEmpty) ftdi0.miso.write := False
+    if (!ftdi0.miso.writeEnable.hasAssignement) ftdi0.miso.writeEnable := False
+    if (!ftdi0.miso.write.hasAssignement) ftdi0.miso.write := False
 
-    if (ftdi1.tx.getSingleDriver.isEmpty) ftdi1.tx := True
-    if (ftdi1.cts.getSingleDriver.isEmpty) ftdi1.cts := True
-    if (ftdi1.dsr.getSingleDriver.isEmpty) ftdi1.dsr := True
-    if (ftdi1.dcd.getSingleDriver.isEmpty) ftdi1.dcd := True
+    if (!ftdi1.tx.hasAssignement) ftdi1.tx := True
+    if (!ftdi1.cts.hasAssignement) ftdi1.cts := True
+    if (!ftdi1.dsr.hasAssignement) ftdi1.dsr := True
+    if (!ftdi1.dcd.hasAssignement) ftdi1.dcd := True
   }
 
   override def asSlave() = ???
