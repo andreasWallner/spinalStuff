@@ -34,8 +34,14 @@ object BlinkDemo extends App {
     fpgaPackage = "qn84",
     frequencyTarget = Some(100 MHz),
     pcfFile = Some("iceblink40.pcf"),
-    allowUnconstrained = true
+    allowUnconstrained = true,
+    yosysPath = "/opt/oss-cad-suite-20230105/bin/",
+    nextpnrPath = "/home/uhu01/git/nextpnr/",
+    icestormPath = "/opt/oss-cad-suite-20230105/bin/"
   )
   println(synth.getFMax())
   println(synth.getArea())
+
+  import scala.sys.process._
+  println("iceblink_demo/.env/bin/python -m iCEburn.__main__ -v -ew iceblink_demo/BlinkDemo.bin" !!)
 }
