@@ -1,6 +1,7 @@
 package andreasWallner.io.iomux
 
 import andreasWallner.registers.casemodel.Value
+import andreasWallner.registers.datamodel.BusComponent
 import andreasWallner.registers.{BusSlaveFactoryRecorder, RegisterRecorder}
 import spinal.core._
 import spinal.lib._
@@ -112,7 +113,7 @@ object IOMux {
       generics: Generics,
       busType: HardType[T],
       factory: T => BusSlaveFactory
-  ) extends Component {
+  ) extends Component with BusComponent {
     val io = new Bundle {
       val bus = slave(busType())
       val all = Vec(slave(MuxedPort(generics.portGenerics)), generics.inPorts)
@@ -140,7 +141,7 @@ object IOMux {
     if(generics.withSwap) {
       for((swapSels, inIdx) <- core.io.swapSel.get.zipWithIndex) {
         assert(swapSels.length * generics.swapWidth <= mapper.dataWidth, "currently not implemented to split to multiple registers")
-        val register = mapper.register(s"swap$inIdx", "Swap signals of input $inIdx")
+        val register = mapper.register(s"swap$inIdx", s"Swap signals of input $inIdx")
         for((swapSel, swapIdx) <- swapSels.zipWithIndex) {
           swapSel := register.createReadAndWrite(
             UInt(generics.swapWidth bits),
@@ -153,5 +154,10 @@ object IOMux {
         }
       }
     }
+
+    override def elements = mapper.elements
+    override def dataWidth = mapper.dataWidth
+    override def busComponentName = name
+    override def wordAddressInc = mapper.wordAddressInc
   }
 }
