@@ -11,13 +11,13 @@ import spinal.lib.{Flow, Stream}
 import scala.collection.mutable
 
 class RegisterRecorder(
-                        registers: mutable.Map[BigInt, Register],
-                        address: BigInt,
-                        factory: BusSlaveFactory
-                      ) {
+    registers: mutable.Map[BigInt, Register],
+    address: BigInt,
+    factory: BusSlaveFactory
+) {
   private def append(field: Field): Unit = {
     registers(address) = registers get address match {
-      case None => Register("", address.toLong, None, List(field))
+      case None    => Register("", address.toLong, None, List(field))
       case Some(r) => r.copy(fields = r.fields :+ field)
     }
   }
@@ -270,7 +270,10 @@ class BusSlaveFactoryRecorder(factory: BusSlaveFactory) extends BusComponent {
       doc: String
   ): RegisterRecorder = {
     assert(!registers.contains(address), s"address $address is already used")
-    assert(!registers.values.exists(reg => reg.name == name), s"Register named $name is already used")
+    assert(
+      !registers.values.exists(reg => reg.name == name),
+      s"Register named $name is already used"
+    )
     registers(address) = Register(name, address.toLong, Option(doc), List())
     new RegisterRecorder(registers, address, factory)
   }
@@ -278,10 +281,13 @@ class BusSlaveFactoryRecorder(factory: BusSlaveFactory) extends BusComponent {
   def register(address: BigInt, name: String): RegisterRecorder = register(address, name, null)
 
   def register(
-    name: String,
-    doc: String
+      name: String,
+      doc: String
   ): RegisterRecorder = {
-    assert(!registers.values.exists(reg => reg.name == name), s"Register named $name is already used")
+    assert(
+      !registers.values.exists(reg => reg.name == name),
+      s"Register named $name is already used"
+    )
     val address = if (registers.isEmpty) BigInt(0) else registers.keys.max + factory.wordAddressInc
     register(address, name, doc)
   }
@@ -291,9 +297,7 @@ class BusSlaveFactoryRecorder(factory: BusSlaveFactory) extends BusComponent {
   def f = factory
 
   override def elements =
-    registers.values.toList.sortWith((a: Register, b: Register) =>
-      a.address < b.address
-    )
+    registers.values.toList.sortWith((a: Register, b: Register) => a.address < b.address)
 
   override def busComponentName: String = ???
   override def dataWidth = factory.busDataWidth
