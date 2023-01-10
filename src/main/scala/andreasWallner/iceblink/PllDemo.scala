@@ -127,8 +127,6 @@ case class PllDemoIceStick() extends Component {
   }
   io.leds := pllArea.oneHz.counter.asBits
   io.ledGreen := True
-
-  io.defaultConnections()
 }
 
 object PllDemoIceStick extends App {
@@ -156,7 +154,7 @@ object PllDemoIceStick extends App {
   println(synth.getArea())
 
   import scala.sys.process._
-  //println(s"iceprog ${synth.bitstreamFile}" !!)
+  println(s"iceprog ${synth.bitstreamFile}" !!)
 }
 
 object PllDemo extends App {

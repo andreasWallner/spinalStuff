@@ -46,41 +46,26 @@ case class IceStickIO() extends Bundle with IMasterSlave {
 
     leds.default(0)
     ledGreen.default(False)
+    irda.tx.default(True)
+    irda.sd_n.default(True)
 
+    pmod.writeEnable.default(0)
+    pmod.write.default(0)
+    t.writeEnable.default(0)
+    t.write.default(0)
+    b.writeEnable.default(0)
+    b.write.default(0)
+
+    ftdi0.miso.writeEnable.default(False)
+    ftdi0.miso.write.default(False)
+
+    ftdi1.tx.default(True)
+    ftdi1.cts.default(True)
+    ftdi1.dsr.default(True)
+    ftdi1.dcd.default(True)
   }
 
-  def defaultConnections(): Unit = {
-    if(!leds.hasAssignement)
-      leds.clearAll()
-    if (!ledGreen.hasAssignement) ledGreen := False
-
-    if (!irda.tx.hasAssignement) irda.tx := True
-    if (!irda.sd_n.hasAssignement) irda.sd_n := True
-
-    // TODO Check for BitsBitAssignmentFixed and assign leftovers only (for leds also)
-    if (!pmod.writeEnable.hasAssignement) {
-      pmod.writeEnable.clearAll()
-      pmod.write.clearAll()
-    }
-    if (!t.writeEnable.hasAssignement) {
-      t.writeEnable.clearAll()
-      t.write.clearAll()
-    }
-    if (!b.writeEnable.hasAssignement) {
-      b.writeEnable.clearAll()
-      b.write.clearAll()
-    }
-
-    if (!ftdi0.miso.writeEnable.hasAssignement) ftdi0.miso.writeEnable := False
-    if (!ftdi0.miso.write.hasAssignement) ftdi0.miso.write := False
-
-    if (!ftdi1.tx.hasAssignement) ftdi1.tx := True
-    if (!ftdi1.cts.hasAssignement) ftdi1.cts := True
-    if (!ftdi1.dsr.hasAssignement) ftdi1.dsr := True
-    if (!ftdi1.dcd.hasAssignement) ftdi1.dcd := True
-  }
-
-  override def asSlave() = ???
+  override def asSlave(): Unit = ???
 }
 
 case class IrDaLaDemo() extends Component {
@@ -111,7 +96,6 @@ case class IrDaLaDemo() extends Component {
     io.irda.sd_n := False
     io.ftdi1.tx := uart.io.tx
   }
-  io.defaultConnections()
 }
 
 object IrDaLaDemo extends App {
