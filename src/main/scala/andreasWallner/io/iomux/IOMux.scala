@@ -24,7 +24,7 @@ object IOMux {
     val tri = TriStateArray(g.triCnt)
     val o = Bits(g.outCnt bits)
 
-    def asMaster() = {
+    def asMaster(): Unit = {
       master(tri)
       out(o)
     }
@@ -51,6 +51,14 @@ object IOMux {
     def swapMax = ((BigInt(1) << swapWidth) - 1).intValue()
   }
 
+  /**
+   * Multiplexer itself
+   *
+   * Connects one port from io.all with one port from io.muxeds, depending
+   * on io.sels.
+   * If g.withSwap is enabled, io.swapSel can be used to swap tristate
+   * pins of each individual io.all port.
+   */
   case class Core(g: Generics) extends Component {
     val io = new Bundle {
       val all = Vec(slave(MuxedPort(g.portGenerics)), g.inPorts)
@@ -61,25 +69,25 @@ object IOMux {
         else None
     }
 
-    val swappeds = g.withSwap match {
-      case false => io.all
-      case true =>
-        val swappeds = io.all.clone
-        for ((input, swapped, sel) <- (io.all, swappeds, io.swapSel.get).zipped) {
-          val inputWrites = for (i <- 0 until g.portGenerics.triCnt) yield (i, input.tri(i).write)
-          val inputWriteEnables = for (i <- 0 until g.portGenerics.triCnt) yield (i, input.tri(i).writeEnable)
-          val falseFill = for (i <- g.portGenerics.triCnt to g.swapMax) yield (i, False)
-          val swappedReads = for (i <- 0 until g.portGenerics.triCnt) yield (i, swapped.tri(i).read)
-          for (i <- 0 until g.portGenerics.triCnt) {
-            swapped.tri(i).write := sel(i).muxListDc(inputWrites)
-            swapped.tri(i).writeEnable := sel(i).muxList(
-              inputWriteEnables ++ falseFill
-            )
-            input.tri(i).read := sel(i).muxListDc(swappedReads)
-          }
-          swapped.o := input.o
+    val swappeds = if (g.withSwap) {
+      val swappeds = io.all.clone
+      for ((input, swapped, sel) <- (io.all, swappeds, io.swapSel.get).zipped) {
+        val inputWrites = for (i <- 0 until g.portGenerics.triCnt) yield (i, input.tri(i).write)
+        val inputWriteEnables = for (i <- 0 until g.portGenerics.triCnt) yield (i, input.tri(i).writeEnable)
+        val falseFill = for (i <- g.portGenerics.triCnt to g.swapMax) yield (i, False)
+        val swappedReads = for (i <- 0 until g.portGenerics.triCnt) yield (i, swapped.tri(i).read)
+        for (i <- 0 until g.portGenerics.triCnt) {
+          swapped.tri(i).write := sel(i).muxListDc(inputWrites)
+          swapped.tri(i).writeEnable := sel(i).muxList(
+            inputWriteEnables ++ falseFill
+          )
+          input.tri(i).read := sel(i).muxListDc(swappedReads)
         }
-        swappeds
+        swapped.o := input.o
+      }
+      swappeds
+    } else {
+      io.all
     }
 
     for ((muxed, sel) <- (io.muxeds, io.sels).zipped) {
@@ -109,10 +117,14 @@ object IOMux {
     }
   }
 
-  class Ctrl[T <: spinal.core.Data with IMasterSlave]( // TODO make this a case class
+  /**
+   * Bus connected IO multiplexer
+   */
+  case class Ctrl[T <: spinal.core.Data with IMasterSlave](
       generics: Generics,
       busType: HardType[T],
-      factory: T => BusSlaveFactory
+      factory: T => BusSlaveFactory,
+      defaultPort: Int = 0
   ) extends Component with BusComponent {
     val io = new Bundle {
       val bus = slave(busType())
@@ -125,7 +137,7 @@ object IOMux {
     core.io.muxeds <> io.muxeds
 
     val mapper = new BusSlaveFactoryRecorder(factory(io.bus))
-    var register:RegisterRecorder = null// TODO improve this shameful thing
+    var register: RegisterRecorder = null// TODO improve this shameful thing
     for ((sel, idx) <- core.io.sels.zipWithIndex) {
       if(idx % 4 == 0) {
         val regIdx = idx / 4
@@ -135,7 +147,7 @@ object IOMux {
         UInt(generics.selWidth bits),
         8 * (idx % 4),
         s"out$idx"
-      ) init 0
+      ) init defaultPort
     }
 
     if(generics.withSwap) {
@@ -150,7 +162,7 @@ object IOMux {
             values=List(
               Value(swapSel.maxValue.toLong, "dis", "Disable driver")
             )
-          )
+          ) init swapIdx
         }
       }
     }
