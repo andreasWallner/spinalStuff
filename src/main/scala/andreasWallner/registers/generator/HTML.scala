@@ -2,7 +2,9 @@ package andreasWallner.registers.generator
 
 import andreasWallner.registers.datamodel._
 import spinal.core.GlobalData
-import java.io.{Writer, PrintWriter, File}
+
+import java.io.{File, PrintWriter, Writer}
+import java.nio.charset.StandardCharsets
 
 class HTML(intf: BusComponent, comments: Option[Seq[String]]=None) {
   private var name = intf.busComponentName
@@ -15,7 +17,7 @@ class HTML(intf: BusComponent, comments: Option[Seq[String]]=None) {
   def write(): Unit = write(f"${GlobalData.get.phaseContext.config.targetDirectory}/$name.html")
 
   def write(filename: String): Unit = {
-    val writer = new PrintWriter(new File(filename))
+    val writer = new PrintWriter(new File(filename), StandardCharsets.UTF_8)
     try {
       write(writer)
     } finally {
@@ -47,18 +49,18 @@ class HTML(intf: BusComponent, comments: Option[Seq[String]]=None) {
     val odd = if(((register.address / 4) % 2) != 0) "odd" else "even"
 
     writer.write(s"""
-        |          <tr class="reg $odd" align="left">
-        |            <td align="center" rowspan="$fieldCnt">0x${register.address.toHexString}</td>
-        |            <td align="left" rowspan="$fieldCnt">${register.name.toUpperCase()}</td>
-        |            <td class="fixWidth" align="center" rowspan="$fieldCnt">${register.doc.getOrElse("&nbsp;")} </td>
-        |            <td align="center" rowspan="$fieldCnt"></td>
+        |          <tr class="reg $odd">
+        |            <td class="addr" rowspan="$fieldCnt">0x${register.address.toHexString}</td>
+        |            <td class="name" rowspan="$fieldCnt">${register.name.toUpperCase()}</td>
+        |            <td class="doc" rowspan="$fieldCnt">${register.doc.getOrElse("&nbsp;")} </td>
+        |            <td class="center" rowspan="$fieldCnt"></td>
         """.stripMargin)
 
     if(register.fields.nonEmpty) {
       writeField(register.fields.last, writer)
 
       register.fields.toList.reverse.tail.foreach(field => {
-        writer.write(s"""</tr><tr class="$odd">""")
+        writer.write(s"""</tr><tr class="$odd">\n""")
         writeField(field, writer)
       })
     }
@@ -68,38 +70,31 @@ class HTML(intf: BusComponent, comments: Option[Seq[String]]=None) {
   def writeField(field: Field, writer: Writer): Unit = {
     val reserved = if (field.accessType == AccessType.NA) "reserved" else ""
     writer.write(s"""
-    |          <td class="$reserved" align="right">${field.section}</td>
-    |          <td class="$reserved" >${field.name}</td>
-    |          <td class="$reserved" align="center">${field.accessType}</td>
-    |          <td class="$reserved" align="right">${formatResetValue(field.resetValue, field.section.width)}</td>
-    |          <td class="$reserved fixWidth2" align="left">${field.doc.getOrElse("")}</td>
+    |          <td class="section $reserved">${field.section}</td>
+    |          <td class="field $reserved">${field.name}</td>
+    |          <td class="accessType $reserved">${field.accessType}</td>
+    |          <td class="reset $reserved">${formatResetValue(field.resetValue, field.section.width)}</td>
+    |          <td class="fielddoc $reserved fixWidth2">${field.doc.getOrElse("")}</td>
     |""".stripMargin)
   }
 
   val commentLines = comments.map(_.map("# " + _)).map("\n<!--\n" + _.mkString("\n") + "\n-->").getOrElse("")
   def writeHeader(writer: Writer): Unit = writer.write(s"""
       |<!DOCTYPE html>$commentLines
-      |<html>
+      |<html lang="en">
       |  <head>
-      |    <title>
-      |      $name
-      |    </title>
+      |    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+      |    <title>$name Register Interface</title>
       |    <style>
-      |      div{
-      |          text-align: center;
-      |      }
       |$commonCSS
       |$Default
-      |$Spring
       |    </style>
       |  </head>
       |  <body>
-      |  <header align="center">
-      |  <p class="regif-title"> $name Interface Document </p>
+      |  <header>
+      |  <p class="title">$name Register Interface </p>
       |  </header>
-      |  <div class="table">
-      |  <table  align="center" class="theme-default">
-      |      <br/>
+      |  <table class="registers">
       |$tableHead
       |      <tbody>
       """.stripMargin)
@@ -107,32 +102,38 @@ class HTML(intf: BusComponent, comments: Option[Seq[String]]=None) {
   def writeFooter(writer: Writer): Unit = writer.write("""
       |      </tbody>
       |  </table>
-      |  </div>
-      |  <footer align="center">
-      |  <div> <p class="info">Powered By <a href="https://spinalhdl.github.io/SpinalDoc-RTD/"> SpinalHDL </a> </p> </div>
+      |  <footer>
+      |  <p class="info">Powered by <a href="https://spinalhdl.github.io/SpinalDoc-RTD/">SpinalHDL</a></p>
       |  </footer>
       |  </body>
       |</html>
       |""".stripMargin)
 
   val commonCSS = """
-      |      body{ font-size: 0.8em; }
-      |      p.regif-title{
+      |      body {
+      |        font-size: 0.8em;
+      |        font-family: sans-serif;
+      |      }
+      |      p.title {
       |          font-weight:800;
       |          font-size:1.2em;
+      |          text-align: center;
       |      }
-      |      td{
+      |      p.info {
+      |          text-align: center;
+      |      }
+      |      td {
       |          white-space:pre-line; word-wrap: break-word; word-break: break-all;
       |      }
-      |      td.fixWidth{
+      |      td.fixWidth {
       |          min-width:50px;
       |          max-width:300px;
       |      }
-      |      td.fixWidth2{
+      |      td.fixWidth2 {
       |          min-width:50px;
       |          max-width:400px;
       |      }
-      |      footer div p.info{
+      |      footer div p.info {
       |          font-weight:300;
       |          font-size:0.7em;
       |      }
@@ -146,92 +147,54 @@ class HTML(intf: BusComponent, comments: Option[Seq[String]]=None) {
 
   val tableHead = """
       |      <thead>
-      |        <tr align="center" >
-      |          <th>AddressOffset</th>
-      |          <th>RegName</th>
+      |        <tr>
+      |          <th>Offset</th>
+      |          <th>Register</th>
       |          <th>Description</th>
       |          <th>Width</th>
       |          <th>Section</th>
-      |          <th>FieldName</th>
+      |          <th>Field</th>
       |          <th>R/W</th>
-      |          <th>Reset value</th>
-      |          <th>Field-Description</th>
+      |          <th>Reset</th>
+      |          <th>Field Description</th>
       |        </tr>
-      |      <thead>
+      |      </thead>
       |""".stripMargin
 
   val Default =
     """
-      |      .theme-default {
-      |          border: 3px solid #000;
+      |      table.registers {
+      |          border-top: 3px solid #000;
+      |          border-bottom: 3px solid #000;
       |          border-collapse: collapse;
+      |          margin-left: auto;
+      |          margin-right: auto;
       |      }
-      |      .theme-default td,
-      |      .theme-default th{
-      |          border: 1px solid #000;
+      |      table.registers td, table.registers th {
       |          border-top: 1px dashed #555;
       |          border-bottom: 1px dashed #555;
       |          padding: 3px;
       |      }
-      |      .theme-default th{
+      |      table.registers th {
       |          background: #bbb;
       |      }
-      |      .theme-default tbody td.reserved{
+      |      table.registers tbody td.reserved {
       |          color: #bbb;
       |          font-weight:200;
       |          background : #eee;
-      |          /* text-decoration:line-through; */
       |          text-decoration-color:#888;
       |      }
-      |      .theme-default tbody tr.reg{
-      |          border-top: 2px solid #000;
+      |      table.registers tbody tr.reg {
+      |          border-top: 1px solid #000;
       |      }
-      |      .theme-default tbody tr.odd {
-      |         background: #ddd
+      |      table.registers tbody tr.odd {
+      |         background: #ddd;
       |      }
-      |""".stripMargin
-  val Spring =
-    """
-      |      .theme-spring{
-      |          border-collapse: collapse;
-      |          font-size: 1.em;
-      |          min-width: 800px;
-      |          border-radius: 5px 5px 0 0 ;
-      |          overflow: hidden;
-      |          box-shadow: 0 -10px 20px rgba(0,0,0,0.15);
+      |      table.registers tbody tr td.section, table.registers tbody tr td.reset {
+      |         text-align: right;
       |      }
-      |      .theme-spring th,
-      |      .theme-spring td {
-      |          padding:5px 10px;
-      |      }
-      |      .theme-spring thead tr {
-      |          background-color: #009879;
-      |          color: #ffffff;
-      |          text-align:center;
-      |          font-weight: bold;
-      |      }
-      |      .theme-spring tbody tr{
-      |          border-bottom: 1px solid #ddd;
-      |      }
-      |      .theme-spring tbody td{
-      |          border: 1px solid #ddd;
-      |      }
-      |      .theme-spring tbody tr:last-of-type{
-      |          border-bottom: 3px solid #009879;
-      |      }
-      |      .theme-spring tbody tr.active-row {
-      |          font-weight: blod;
-      |          color: #009879;
-      |      }
-      |      .theme-spring tbody td.reserved{
-      |          color: #aaa;
-      |          background : #fffff0;
-      |          /* font-style:italic; */
-      |          font-weight:200;
-      |          font-size:1.0em;
-      |      }
-      |      .theme-spring tbody tr.green{
-      |          background :#fffff0 ;
+      |      table.registers tbody tr td.accessType {
+      |         text-align: center;
       |      }
       |""".stripMargin
 }
