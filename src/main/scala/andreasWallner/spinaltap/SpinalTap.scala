@@ -3,15 +3,15 @@ package andreasWallner.spinaltap
 import andreasWallner.io.Gpio
 import andreasWallner.io.iomux.IOMux
 import andreasWallner.io.spi.SpiMaster
-import andreasWallner.registers.datamodel.{Bus, BusElement, BusComponent}
+import andreasWallner.registers.datamodel.{Bus, BusComponent, BusElement}
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Decoder, Apb3SlaveFactory}
 import spinal.lib.bus.misc.{BusSlaveFactory, SizeMapping}
 import spinal.lib.io.TriStateArray
 
+import scala.collection.mutable
 import scala.language.postfixOps
-import scala.collection.mutable.MutableList
 
 trait ISpinalTAPModule[T <: spinal.core.Data with IMasterSlave] {
   def init(busType: HardType[T], factory: T => BusSlaveFactory): Unit
@@ -26,11 +26,8 @@ trait ISpinalTAPCommModule[T <: spinal.core.Data with IMasterSlave]
   def init(busType: HardType[T], factory: T => BusSlaveFactory): Unit
 
   def triggerInputs(): List[Bool] = List()
-
   def triggerOutputs(): List[Bool] = List()
-
   def ports(): TriStateArray
-
   def vcc(): Bool
 }
 
@@ -86,7 +83,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     // the lower portWidth bits are I/Os and mapped
     // to tri-state signals, remaining bits to outputs
     val port = IOMux.MuxedPort(portGenerics)
-    // assign seperately since TriStateArray can't be sliced
+    // assign separately since TriStateArray can't be sliced
     for (i <- 0 until portWidth) {
       port.tri(i).write := gpio(i).write
       port.tri(i).writeEnable := gpio(i).writeEnable
@@ -132,14 +129,14 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
       moduleAddressSpace
     )
   for (module <- allModules) {
-    for (subIO <- module.otherIO) {
+    for (subIO <- module.otherIO()) {
       val topIO = cloneOf(subIO).setPartialName(
         module.wrapped(),
         subIO.getPartialName(),
-        true
+        weak = true
       )
       topIO.copyDirectionOf(subIO)
-      for ((s, t) <- (subIO.flatten zip topIO.flatten) if s.isAnalog)
+      for ((s, t) <- subIO.flatten zip topIO.flatten if s.isAnalog)
         t.setAsAnalog()
       topIO <> subIO
     }
@@ -151,9 +148,9 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     case (b: BusElement, idx: Int) => Some((b, 0x43c00000 + moduleAddressSpace * idx))
   }*/
   override def elements: List[(BusElement, Long)] = {
-    val l = MutableList[(BusElement, Long)]()
+    val l = mutable.MutableList[(BusElement, Long)]()
     for ((m, idx) <- allModules.zipWithIndex) {
-      m.wrapped match {
+      m.wrapped() match {
         case b: BusElement =>
           l += ((b, (0x43c00000 + moduleAddressSpace * idx).toLong))
         case _ =>
