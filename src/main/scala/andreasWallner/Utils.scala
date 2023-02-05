@@ -54,6 +54,7 @@ object Utils {
   class DumpAST(indent: String) {
     import spinal.core._
     import spinal.core.internals._
+    private lazy val cleanIndent = " " * (indent.length - 1 + 2)
     private lazy val indented = new DumpAST(indent + "  ")
 
     def printFlags(d: Data): Unit = {
@@ -89,7 +90,13 @@ object Utils {
       }
       println(")")
       indented.printTags(e)
-      e.foreachExpression(indented.dump)
+      e match {
+        case bm: BinaryMultiplexer =>
+          new DumpAST(cleanIndent + "?").dump(bm.cond)
+          new DumpAST(cleanIndent + "T").dump(bm.whenTrue)
+          new DumpAST(cleanIndent + "F").dump(bm.whenFalse)
+        case _ => e.foreachExpression(indented.dump)
+      }
     }
 
     val sMark = s"${Console.RED}S${Console.RESET}"
@@ -112,7 +119,7 @@ object Utils {
 
     val cMark = s"${Console.BLUE}C${Console.RESET}"
     def dump(c: Component): Unit = {
-      println(s"$cMark $indent ${c.toString()}")
+      println(s"$cMark $indent ${c.getName()}")
       indented.printTags(c)
       c.dslBody.foreachStatements(indented.dump)
       c.children.foreach(indented.dump)
