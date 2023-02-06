@@ -27,6 +27,7 @@ import spinal.core.internals.{
 }
 
 import java.io.{File, PrintWriter, Writer}
+import scala.language.postfixOps
 
 case class Diagrammer(c: Component) {
   def draw(filename: String, openViewer: Boolean = false): Unit = {
@@ -52,51 +53,35 @@ case class Diagrammer(c: Component) {
   }
 
   def draw(c: Component, w: Writer): Unit = {
-    w.write(
-      s"""subgraph cluster_${c.hashCode()} {
+    w.write(s"""subgraph cluster_${c.hashCode()} {
          |  label = "${c.getName()}"
          |  style = solid
          |""".stripMargin)
 
-    def connectReg(x: BaseType) = {
-      w.write(
-        s"""  sig_${x.clockDomain.clock.hashCode()} -> sig_${
-          x
-            .hashCode()
-        } [color=red]\n""")
+    def connectReg(x: BaseType): Unit = {
+      w.write(s"""  sig_${x.clockDomain.clock.hashCode()} -> sig_${x
+        .hashCode()} [color=red]\n""")
       if (x.clockDomain.hasClockEnableSignal)
-        w.write(
-          s"""  sig_${x.clockDomain.clockEnable.hashCode()} -> sig_${
-            x
-              .hashCode()
-          } [color=aqua]\n""")
+        w.write(s"""  sig_${x.clockDomain.clockEnable.hashCode()} -> sig_${x
+          .hashCode()} [color=aqua]\n""")
       if (x.clockDomain.hasResetSignal)
-        w.write(
-          s"""  sig_${x.clockDomain.reset.hashCode()} -> sig_${
-            x
-              .hashCode()
-          } [color=crimson]\n""")
+        w.write(s"""  sig_${x.clockDomain.reset.hashCode()} -> sig_${x
+          .hashCode()} [color=crimson]\n""")
       if (x.clockDomain.hasSoftResetSignal)
-        w.write(
-          s"""  sig_${x.clockDomain.softReset.hashCode()} -> sig_${
-            x
-              .hashCode()
-          } [color=brown]\n""")
+        w.write(s"""  sig_${x.clockDomain.softReset.hashCode()} -> sig_${x
+          .hashCode()} [color=brown]\n""")
     }
 
     for (x <- c.getAllIo) {
       val (rank, color, shape) = x match {
         case xx if xx.isOutput => ("sink", "#e2cbc1", "rectangle")
-        case xx if xx.isInOut => ("sink", "#e2cbc1", "circle")
+        case xx if xx.isInOut  => ("sink", "#e2cbc1", "circle")
         case xx if xx.isAnalog => ("sink", "#e2cbc1", "doublecircle")
-        case xx if xx.isInput => ("source", "#b5fed9", "rectangle")
+        case xx if xx.isInput  => ("source", "#b5fed9", "rectangle")
       }
       val style = if (x.isReg) "filled, bold" else "filled"
-      w.write(
-        s"""  { rank=$rank; sig_${x.hashCode()} [label="${
-          x
-            .getName()
-        }" style="$style" fillcolor="$color" shape=$shape] }\n""")
+      w.write(s"""  { rank=$rank; sig_${x.hashCode()} [label="${x
+        .getName()}" style="$style" fillcolor="$color" shape=$shape] }\n""")
       if (x.isReg)
         connectReg(x)
     }
@@ -117,20 +102,14 @@ case class Diagrammer(c: Component) {
         case l: Literal =>
           w.write(s""" {sig_${l.hashCode()} [label="${l.getValue()}"]}\n""")
         case uop: UnaryOperator =>
-          w.write(
-            s"""  {sig_${
-              uop
-                .hashCode()
-            } [label="${uop.opName}" style="$style"]}\n""")
+          w.write(s"""  {sig_${uop
+            .hashCode()} [label="${uop.opName}" style="$style"]}\n""")
           w.write(
             s"""  sig_${uop.source.hashCode()} -> sig_${uop.hashCode()}\n"""
           )
         case bop: BinaryOperator =>
-          w.write(
-            s"""  {sig_${
-              bop
-                .hashCode()
-            } [label="${bop.opName}" style="$style"]}\n""")
+          w.write(s"""  {sig_${bop
+            .hashCode()} [label="${bop.opName}" style="$style"]}\n""")
           w.write(
             s"""  sig_${bop.left.hashCode()} -> sig_${bop.hashCode()}\n"""
           )
@@ -140,26 +119,17 @@ case class Diagrammer(c: Component) {
         case cop: ConstantOperator => ???
 
         case c: Cast =>
-          w.write(
-            s"""  {sig_${
-              c
-                .hashCode()
-            } [label="${c.opName}" style="$style"]}\n""")
+          w.write(s"""  {sig_${c
+            .hashCode()} [label="${c.opName}" style="$style"]}\n""")
           w.write(s"""  sig_${c.input.hashCode()} -> sig_${c.hashCode()}\n""")
 
         case a: BitVectorBitAccessFixed => // stop decent here?
-          w.write(
-            s"""  {sig_${
-              a
-                .hashCode()
-            } [label="x[${a.bitId}]" style="$style"]}\n""")
+          w.write(s"""  {sig_${a
+            .hashCode()} [label="x[${a.bitId}]" style="$style"]}\n""")
           w.write(s"""  sig_${a.source.hashCode()} -> sig_${a.hashCode()}\n""")
         case a: BitVectorRangedAccessFixed =>
-          w.write(
-            s"""  {sig_${
-              a
-                .hashCode()
-            } [label="x[${a.hi}:${a.lo}]" style="$style"]}\n""")
+          w.write(s"""  {sig_${a
+            .hashCode()} [label="x[${a.hi}:${a.lo}]" style="$style"]}\n""")
           w.write(s"""  sig_${a.source.hashCode()} -> sig_${a.hashCode()}\n""")
 
         case bt: BaseType =>
@@ -172,11 +142,8 @@ case class Diagrammer(c: Component) {
     c.dslBody.walkStatements {
       case d: BaseType with DeclarationStatement =>
         val style = if (d.isReg) "bold" else ""
-        w.write(
-          s"""  {sig_${d.hashCode()} [label="${
-            d
-              .getName()
-          }" style="$style"]}\n""")
+        w.write(s"""  {sig_${d.hashCode()} [label="${d
+          .getName()}" style="$style"]}\n""")
       case da: DataAssignmentStatement =>
         da.walkDrivingExpressions(writeTargets)
         w.write(
