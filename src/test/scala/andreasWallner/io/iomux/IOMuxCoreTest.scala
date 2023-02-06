@@ -47,7 +47,7 @@ class IOMuxCoreTest extends SpinalFunSuite {
     .withWaveOverride("fst")
     .compile(IOMux.Core(g))
 
-  test(dut, "test connections", seed=1047363851) { dut =>
+  test(dut, "test connections") { dut =>
     val h = Helper(dut.io.all, dut.io.muxeds, dut.clockDomain, this)
     import h._
 
