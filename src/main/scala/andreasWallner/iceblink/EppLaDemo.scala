@@ -13,12 +13,12 @@ object UartTransmitter {
   def apply[T <: Data](baudrate: Int, data: Stream[T]): Bool = {
     val payload = data.payload match {
       case b: Bits => b
-      case f: Fragment[Bits] => f.fragment
+      case f: Fragment[_] => f.fragment
     }
-    assert(payload.getWidth == 8, "Uart can only send 8 bit wide data")
+    assert(payload.getBitsWidth == 8, "Uart can only send 8 bit wide data")
     val module = UartTransmitter(baudrate)
     module.io.data.arbitrationFrom(data)
-    module.io.data.payload := payload
+    module.io.data.payload := payload.asBits
     module.io.tx
   }
 }
