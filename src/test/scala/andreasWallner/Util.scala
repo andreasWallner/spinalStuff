@@ -61,19 +61,31 @@ case class PayloadRandmizer(elementCnt: Long) {
 }
 
 object LoggingScoreboardInOrder {
-  def apply[T]() = new LoggingScoreboardInOrder[T]("")
-  def apply[T](name:String) = new LoggingScoreboardInOrder[T](name)
+  def simLogFn[T](name: String)(isRef: Boolean, data: T): Unit = {
+    val color = if (isRef) Console.BLUE else Console.GREEN
+    val dirStr = if (isRef) "ref" else "dut"
+    simLog(s"$name$color$dirStr${Console.RESET}", data)
+  }
+  def fmtLogFn[T](name: String, fmtFn: T => String)(isRef: Boolean, data: T): Unit = {
+    val color = if (isRef) Console.BLUE else Console.GREEN
+    val dirStr = if (isRef) "ref" else "dut"
+    simLog(s"$name$color$dirStr${Console.RESET}", fmtFn(data))
+  }
+  def apply[T]() = new LoggingScoreboardInOrder[T](simLogFn[T](""))
+  def apply[T](name: String) = new LoggingScoreboardInOrder[T](simLogFn[T](name + " "))
+  def apply[T](logFn: (Boolean, T) => Unit) = new LoggingScoreboardInOrder[T](logFn)
+  def apply[T](name: String, fmtFn: T => String) =
+    new LoggingScoreboardInOrder[T](fmtLogFn(name + " ", fmtFn))
 }
 
-class LoggingScoreboardInOrder[T](name:String) extends ScoreboardInOrder[T] {
-  val spacedName = if(name != "") name + " " else ""
+class LoggingScoreboardInOrder[T](logFn: (Boolean, T) => Unit) extends ScoreboardInOrder[T] {
   override def pushRef(that: T): Unit = {
-    simLog(spacedName + s"${Console.BLUE}ref${Console.RESET}", that)
+    logFn(true, that)
     super.pushRef(that)
   }
 
   override def pushDut(that: T): Unit = {
-    simLog(spacedName + s"${Console.GREEN}dut${Console.RESET}", that)
+    logFn(false, that)
     super.pushDut(that)
   }
 }
