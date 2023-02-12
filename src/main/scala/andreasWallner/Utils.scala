@@ -35,6 +35,50 @@ object Utils {
   def gcd(a: Int, b: Int): Int = gcd(BigInt(a), BigInt(b)).intValue()
   def gcd(a: Long, b: Long): Long = gcd(BigInt(a), BigInt(b)).longValue()
 
+  def divCeil(p: Int, q: Int) = {
+    assert(p >= 0)
+    assert(q > 0)
+    (p + (q - 1)) / q
+  }
+
+  object isPow2 {
+    def apply(bi: BigInt): Boolean = bi > 0 && ((bi & (bi - 1)) == 0)
+    def apply(i: Int): Boolean = isPow2(BigInt(i))
+  }
+
+  object popCount {
+    def apply(b: Byte): Integer = {
+      val x0 = ((b & 0xaa) >> 1) + (b & 0x55)
+      val x1 = ((x0 & 0xcc) >> 2) + (x0 & 0x33)
+      ((x1 & 0xf0) >> 4) + (x1 & 0x0f)
+    }
+    def apply(bi: BigInt): Integer = bi.toByteArray.foldLeft(0)(_ + popCount(_))
+  }
+
+  object oddParity {
+
+    /**
+      * Calculate the parity bit for odd parity
+      *
+      * Warning: does not check the parity, but calculate it
+      */
+    def apply(b: Byte): Boolean = (0 until 8).map(s => (b >> s) & 1).reduce(_ ^ _) == 0
+    def apply(i: Int): Boolean = (0 until 32).map(s => (i >> s) & 1).reduce(_ ^ _) == 0
+    def apply(bi: BigInt) = (popCount(bi) & 1) == 0
+  }
+
+  object evenParity {
+
+    /**
+      * Calculate the parity bit for even parity
+      *
+      * Warning: does not check the parity, but calculate it
+      */
+    def apply(b: Byte): Boolean = !oddParity(b)
+    def apply(i: Int): Boolean = !oddParity(i)
+    def apply(bi: BigInt) = !oddParity(bi)
+  }
+
   /**
     * Use for memoization, e.g. during simulation
     *
@@ -76,7 +120,7 @@ object Utils {
     def printTags(bn: BaseNode): Unit = {
       bn match {
         case str: SpinalTagReady => printTags(str.asInstanceOf[SpinalTagReady])
-        case _ =>
+        case _                   =>
       }
     }
 
