@@ -1,6 +1,6 @@
 package andreasWallner.yosys
 
-import spinal.core.{HertzNumber, SpinalError, SpinalInfo}
+import spinal.core.{HertzNumber, SpinalError, SpinalInfo, TimeNumber}
 import spinal.lib.eda.bench.{Report, Rtl}
 
 import java.nio.file.Paths
@@ -8,8 +8,18 @@ import scala.collection.mutable
 import scala.language.postfixOps
 import scala.util.parsing.json.JSON
 
+case class CriticalPath(
+    clock: String,
+    from: String,
+    to: String,
+    delay: TimeNumber,
+    budget: Option[TimeNumber]
+)
+
 trait SynthesisReport extends Report {
-  def bitstreamFile: String
+  def fmax(clk: String = null): HertzNumber
+  def criticalPaths: Seq[CriticalPath]
+  def bitstreamFile: Option[String]
 }
 
 object YosysFlow {
@@ -67,13 +77,11 @@ object YosysFlow {
       if (verbose || exitCode != 0)
         println(output.result())
       if (exitCode != 0)
-        SpinalError(s"Command failed (${exitCode}): $process")
+        SpinalError(s"Command failed ($exitCode): $process")
       else
         SpinalInfo(s"Command succeeded: $process")
     }
 
-    val frequencyMHz =
-      frequencyTarget.map(x => x.toDouble / 1e6).getOrElse(100.0)
     val isVhdl = (file: String) => file.endsWith(".vhd") || file.endsWith(".vhdl")
     if (rtl.getRtlPaths().exists(file => isVhdl(file)))
       throw new RuntimeException("Yosys flow can only run with verilog sources")
@@ -82,6 +90,8 @@ object YosysFlow {
       throw new RuntimeException(
         "Currently only support for ice40 is implemented"
       )
+
+    val frequencyMHz = frequencyTarget.map(x => (x / 1e6).toDouble)
     val readRtl =
       rtl.getRtlPaths().map(file => s"${Paths.get(file).toAbsolutePath}")
     val dspArg = if (useDsp) " -dsp " else ""
@@ -91,7 +101,7 @@ object YosysFlow {
         "-l",
         "yosys.log",
         "-p",
-        s"synth_${family} $dspArg $additionalSynthArgs -top ${rtl
+        s"synth_$family $dspArg $additionalSynthArgs -top ${rtl
           .getTopModuleName()} -json ${rtl.getName()}.json"
       )
         ++ readRtl,
@@ -100,9 +110,7 @@ object YosysFlow {
 
     doCmd(
       Seq(
-        nextpnrPath + s"nextpnr-${family}",
-        "--freq",
-        s"$frequencyMHz",
+        nextpnrPath + s"nextpnr-$family",
         s"--$device",
         "--package",
         fpgaPackage,
@@ -113,6 +121,9 @@ object YosysFlow {
         "--report",
         s"${rtl.getName()}_report.json"
       )
+        ++ frequencyTarget
+          .map(x => Seq("--freq", "%f".format(x.toDouble / 1e6)))
+          .getOrElse(Seq())
         ++ pcfFile
           .map(x => Seq("--pcf", x))
           .getOrElse(Seq())
@@ -122,13 +133,15 @@ object YosysFlow {
       workspacePath
     )
 
-    doCmd(
-      Seq(icestormPath + "icetime", "-d", device)
-        ++ pcfFile.map(x => Seq("-p", x)).getOrElse(Seq())
-        ++ Seq("-c", s"${frequencyMHz}MHz")
-        ++ Seq("-mtr", s"${rtl.getName()}.rpt", s"${rtl.getName()}.asc"),
-      workspacePath
-    )
+    if(frequencyTarget.isDefined) {
+      doCmd(
+        Seq(icestormPath + "icetime", "-d", device)
+          ++ pcfFile.map(x => Seq("-p", x)).getOrElse(Seq())
+          ++ Seq("-c", s"${frequencyMHz.get}MHz")
+          ++ Seq("-mtr", s"${rtl.getName()}.rpt", s"${rtl.getName()}.asc"),
+        workspacePath
+      )
+    }
     if (pcfFile.isDefined)
       doCmd(
         Seq(
@@ -151,16 +164,19 @@ object YosysFlow {
       def unapply(a: Option[Any]): Option[T] = a.map(aa => aa.asInstanceOf[T])
     }
     object M extends CC[Map[String, Any]]
+    //object A extends CC[Seq[Any]]
     object D extends CC[Double]
+    //object S extends CC[String]
 
     new SynthesisReport {
+      override def fmax(clk: String = null) = HertzNumber(getFMax())
       override def getFMax(): Double = {
         try {
           val M(root) = json
           val M(fmax) = root.get("fmax")
           val M(clk) = fmax.get(fmax.keys.last)
           val D(achieved) = clk.get("achieved")
-          achieved
+          achieved * 1.0e6
         } catch {
           case _: Exception => 0.0
         }
@@ -182,7 +198,9 @@ object YosysFlow {
         }
       }
 
-      override def bitstreamFile: String = s"$workspacePath/${rtl.getName()}.bin"
+      override def criticalPaths = ???
+      override def bitstreamFile: Option[String] =
+        pcfFile.map(_ => s"$workspacePath/${rtl.getName()}.bin")
     }
   }
 }
