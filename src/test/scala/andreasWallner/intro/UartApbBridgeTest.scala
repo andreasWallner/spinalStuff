@@ -1,27 +1,17 @@
 package andreasWallner.intro
 
+import andreasWallner.Utils.{evenParity, oddParity}
 import andreasWallner.{LoggingScoreboardInOrder, SpinalFunSuite}
 import andreasWallner.sim._
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config}
-import spinal.lib.sim.ScoreboardInOrder
+import spinal.sim.SimManagerContext
 
+import org.scalactic.TimesOnInt.convertIntToRepeater
 import scala.collection.mutable
 import scala.language.postfixOps
 import scala.util.Random
-
-object Util {
-  def oddParity(b: Byte): Boolean = {
-    (0 until 8).map(s => (b >> s) & 1).reduce(_ ^ _) == 0
-  }
-  def evenParity(b: Byte): Boolean = !oddParity(b)
-
-  def oddParity(i: Int) = {
-    (0 until 32).map(s => (i >> s) & 1).reduce(_ ^ _) == 0
-  }
-  def evenParity(i: Int): Boolean = !oddParity(i)
-}
 
 class UartSimDriver(
     pin: Bool,
@@ -42,8 +32,8 @@ class UartSimDriver(
       sleep(baudPeriod)
     }
     parity match {
-      case "odd"   => pin #= Util.oddParity(b)
-      case "even"  => pin #= Util.evenParity(b)
+      case "odd"   => pin #= oddParity(b)
+      case "even"  => pin #= evenParity(b)
       case "mark"  => pin #= true
       case "space" => pin #= false
     }
@@ -65,16 +55,15 @@ class UartSimMonitor(
     pin: Bool,
     baudrate: HertzNumber,
     parity: String = "odd",
-    stopBits: Double = 1.0,
-    timeScale: TimeNumber = 1 ps
+    stopBits: Double = 1.0
 ) {
-  val baudPeriod = (baudrate.toTime / timeScale).toLong
+  val baudPeriod =
+    (baudrate.toTime / TimeNumber(SimManagerContext.current.manager.timePrecision)).toLong
   assert(baudPeriod > 0, "can't simulate uart datarate with given simulator timescale")
-  simLog(baudPeriod)
 
   def run(cb: (BigInt, Boolean) => Unit) = {
-    sleep(1)
     fork {
+      sleep(1)
       while (true) {
         val (data, parityValid) = rxByte()
         cb(data, parityValid)
@@ -222,7 +211,48 @@ abstract class Apb3Monitor(apb: Apb3, clockDomain: ClockDomain, individualBytes:
 }
 
 class UartApbBridgeTest extends SpinalFunSuite {
-  val baudrate = 20 MHz
+  val baudrate = 100 MHz
+
+  case class Bench(private val dut: UartApbBridge) {
+    val tx = new UartSimDriver(dut.io.uart.rxd, baudrate)
+
+    val rxBytes = mutable.ArrayBuffer[BigInt]()
+    new UartSimMonitor(dut.io.uart.txd, baudrate).run { (data, parityValid) =>
+      assert(parityValid, "data received with invalid parity")
+      rxBytes.append(data)
+    }
+    def rx(byteCnt: Int) = {
+      waitUntil(rxBytes.length >= byteCnt)
+      val result = rxBytes.take(byteCnt).reduceLeft[BigInt]((old, bytes) => (old << 8) + bytes)
+      rxBytes.trimStart(byteCnt)
+      result
+    }
+
+    val readScoreboard = LoggingScoreboardInOrder[(BigInt, BigInt)]("read")
+    val writeScoreboard = LoggingScoreboardInOrder[(BigInt, BigInt)]("write")
+    new Apb3Monitor(dut.io.apb, dut.clockDomain, individualBytes = false) {
+      override def onProtocolError(text: String): Unit = fail(text)
+
+      override def onRead(address: BigInt) = {
+        val result = dut.io.apb.PWDATA.randomizedBigInt()
+        readScoreboard.pushDut((address, result))
+        result
+      }
+
+      override def onWrite(address: BigInt, value: BigInt): Unit = {
+        writeScoreboard.pushDut((address, value))
+      }
+    }
+
+    dut.clockDomain.forkStimulus(10)
+    dut.clockDomain.waitSampling(10)
+
+    def finish(): Unit = {
+      sleep(1000)
+      readScoreboard.checkEmptyness()
+      writeScoreboard.checkEmptyness()
+    }
+  }
   val dut = SpinalSimConfig()
     .withWaveOverride("fst")
     .withConfig(
@@ -230,47 +260,46 @@ class UartApbBridgeTest extends SpinalFunSuite {
     )
     .compile(
       UartApbBridge(
-        UartApbBridgeGenerics(Apb3Config(addressWidth = 8, dataWidth = 16), baudrate = baudrate.toInt)
+        UartApbBridgeGenerics(
+          Apb3Config(addressWidth = 8, dataWidth = 16),
+          baudrate = baudrate.toInt
+        )
       )
     )
 
-  test(dut, "read one register", seed = 1) { dut =>
-    SimTimeout(1 sec)
-    val tx = new UartSimDriver(dut.io.uart.rxd, baudrate)
-    val rxBytes = mutable.ArrayBuffer[BigInt]()
-    new UartSimMonitor(dut.io.uart.txd, baudrate).run { (data, parityValid) =>
-      assert(parityValid, "data received with invalid parity")
-      rxBytes.append(data)
-    }
-    def doRx(bytes: Int) = {
-      waitUntil(rxBytes.length >= bytes)
-      val result = rxBytes.take(bytes).reduceLeft[BigInt]((old, bytes) => (old << 8) + bytes)
-      rxBytes.trimStart(bytes)
-      result
-    }
+  test(dut, "read one register") { dut =>
+    val bench = Bench(dut)
+    import bench._
 
-    val scoreboard = LoggingScoreboardInOrder[(BigInt, BigInt)]()
-    new Apb3Monitor(dut.io.apb, dut.clockDomain, individualBytes = false) {
-      override def onProtocolError(text: String): Unit = fail(text)
-      override def onRead(address: BigInt) = {
-        val result = dut.io.apb.PWDATA.randomizedBigInt()
-        scoreboard.pushDut((address, result))
-        result
-      }
-      override def onWrite(address: BigInt, value: BigInt): Unit = ???
-    }
+    SimTimeout(100 us)
 
-    dut.clockDomain.forkStimulus(10)
-    dut.clockDomain.waitSampling(10)
-
-    for (_ <- 0 to 10) {
+    10 times {
       val address = Random.nextInt(0xff)
       tx.send(0x2000 + address) // read
-      assert(doRx(1) == 0x20, "response header not received")
-      val read = doRx(2)
-      scoreboard.pushRef((address, read))
+      assert(rx(1) == 0x20, "response header not received")
+      val read = rx(2)
+      readScoreboard.pushRef((address, read))
     }
 
-    sleep(10000)
+    finish()
+  }
+
+  test(dut, "write one register") { dut =>
+    val bench = Bench(dut)
+    import bench._
+
+    SimTimeout(100 us)
+
+    10 times {
+      val address = Random.nextInt(0xff)
+      val data = Random.nextInt(0xffff) | 0x8001
+      simLog(f"writing $address%04x = $data%04x")
+      tx.send(0x4000 + address) // write
+      tx.send(data)
+      assert(rx(1) == 0x40, "response header not received")
+      writeScoreboard.pushRef((address, data))
+    }
+
+    finish()
   }
 }

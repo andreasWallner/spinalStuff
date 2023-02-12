@@ -9,12 +9,12 @@ import spinal.lib.fsm._
 import scala.language.postfixOps
 
 object Action extends SpinalEnum {
-  val IDLE, READ, WRITE, RESET = newElement()
+  val NOOP, READ, WRITE, RESET = newElement()
   defaultEncoding = SpinalEnumEncoding("staticEncoding")(
-    IDLE -> 0x00,
-    READ -> 0x01,
-    WRITE -> 0x02,
-    RESET -> 0x07
+    NOOP -> 0x0,
+    READ -> 0x1,
+    WRITE -> 0x2,
+    RESET -> 0x7
   )
 }
 
@@ -26,7 +26,7 @@ case class UartApbBridgeGenerics(
   private def bytes(i: Int): Int = (i + 7) / 8
   private val plainAddressBytes = bytes(apbConfig.addressWidth)
 
-  val actionBits = 3
+  val actionBits = 3 // get from action
   val addressBitsInAction = {
     val candidate = apbConfig.addressWidth - (plainAddressBytes - 1) * 8
     if (candidate > (8 - actionBits)) 0 else candidate
@@ -64,11 +64,12 @@ case class UartApbBridge(g: UartApbBridgeGenerics) extends Module {
   io.apb.PWDATA.setAsReg()
   io.apb.PENABLE.setAsReg() init False
   io.apb.PWRITE := action === Action.WRITE.asBits
-  val pwdataBytes = io.apb.PWDATA.subdivideIn(8 bit)
+  val pwdataBytes = io.apb.PWDATA.subdivideIn(8 bit).reverse
 
   uart.read.ready := True // TODO - should always be fast enough...
   uart.write.payload.clearAll()
   uart.write.valid := False
+
   //noinspection ForwardReference
   val fsm = new StateMachine {
     val idle = new State() with EntryPoint {
@@ -151,7 +152,18 @@ case class UartApbBridge(g: UartApbBridgeGenerics) extends Module {
       }
       onExit(io.apb.PENABLE := False)
     }
-    val doWrite: State = new State()
+    val doWrite: State = new State() {
+      whenIsActive {
+        io.apb.PSEL(0) := True
+        io.apb.PENABLE := io.apb.PSEL(0)
+
+        when(io.apb.PENABLE && io.apb.PREADY) {
+          sendBytes := 0
+          goto(txResponse)
+        }
+      }
+      onExit(io.apb.PENABLE := False)
+    }
     val doReset: State = new State() {}
 
     val sendBufferBytes = sendBuffer.subdivideIn(8 bit)
