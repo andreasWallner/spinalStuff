@@ -45,6 +45,7 @@ bin/
 !tester/src/test/resources/*.vhd
 
 simWorkspace/
+benchmarkWorkspace/
 tmp/
 
 # Project folder
