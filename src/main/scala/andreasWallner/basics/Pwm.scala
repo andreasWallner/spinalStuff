@@ -3,21 +3,23 @@ package andreasWallner.basics
 import spinal.core._
 import spinal.lib._
 
+import scala.language.postfixOps
+
 case class PwmGenerics(counterWidth: Int = 32, channelCnt: Int = 1) {}
 
 case class Pwm(generics: PwmGenerics) extends Component {
   val io = new Bundle {
     val max_count = in UInt (generics.counterWidth bits)
     val levels = in Vec (UInt(generics.counterWidth bits), generics.channelCnt)
-    val pwms = out Vec (Bool, generics.channelCnt)
+    val pwms = out Vec (Bool(), generics.channelCnt)
   }
-  val counter = Reg(UInt(generics.counterWidth bits)) init (0)
+  val counter = Reg(UInt(generics.counterWidth bits)) init 0
   val levelsLatched = Vec(Reg(UInt(generics.counterWidth bits)), generics.channelCnt)
-  levelsLatched.foreach((l) => l init(0))
-  
-  val pwmsNext = Vec(Bool, generics.channelCnt)
+  levelsLatched.foreach(l => l init 0)
+
+  val pwmsNext = Vec(Bool(), generics.channelCnt)
   val pwmsRegs = RegNext(pwmsNext)
-  pwmsRegs.foreach((p) => p init(False))
+  pwmsRegs.foreach(p => p init False)
   io.pwms := pwmsRegs
 
   val counter_next = UInt(generics.counterWidth bits)

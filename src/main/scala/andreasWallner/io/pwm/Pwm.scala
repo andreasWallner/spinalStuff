@@ -6,8 +6,9 @@ import spinal.lib.bus.amba3.apb._
 import spinal.lib.bus.misc.BusSlaveFactory
 import andreasWallner.registers.BusSlaveFactoryRecorder
 import andreasWallner.registers.datamodel.BusComponent
-import andreasWallner.registers.casemodel.Value
+import andreasWallner.registers.casemodel.{Register, Value}
 
+import scala.collection.immutable
 import scala.language.postfixOps
 
 object Pwm {
@@ -37,7 +38,7 @@ object Pwm {
 
     val ctrl = factory.register(0x0, "ctrl")
     val run = ctrl.createReadAndWrite(
-      Bool,
+      Bool(),
       0,
       "run",
       "Enable or disable counter and module output",
@@ -82,7 +83,7 @@ object Pwm {
     ) init 0
     val levels =
       for (i <- 0 until p.core.channelCnt)
-        yield factory.register(0x0c + 4 * i, s"level${i}").createReadAndWrite(
+        yield factory.register(0x0c + 4 * i, s"level$i").createReadAndWrite(
           UInt(p.core.counterWidth bits),
           0,
           "val"
@@ -100,17 +101,17 @@ object Pwm {
         updateValues
       ) init 0
 
-    override def elements = factory.elements
+    override def elements: immutable.Seq[Register] = factory.elements
     override def busComponentName = "PWM"
-    override def dataWidth = factory.dataWidth
-    override def wordAddressInc = factory.wordAddressInc
+    override def dataWidth: Long = factory.dataWidth
+    override def wordAddressInc: Long = factory.wordAddressInc
   }
 
   case class Core(parameters: Pwm.CoreParameters) extends Component {
     val io = new Bundle {
       val max_count = in UInt (parameters.counterWidth bits)
       val levels = in Vec (UInt(parameters.counterWidth bits), parameters.channelCnt)
-      val pwm = out Vec (Bool, parameters.channelCnt) setAsReg
+      val pwm = out Vec(Bool(), parameters.channelCnt) setAsReg()
       val run = in Bool()
       val willOverflow = out Bool()
     }
