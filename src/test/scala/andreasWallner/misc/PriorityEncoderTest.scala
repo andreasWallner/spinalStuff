@@ -26,7 +26,7 @@ class PriorityEncoderTest extends SpinalFunSuite {
   }
 }
 
-@Ignore("does not work yet")
+@Ignore
 class RecursivePriorityEncoderTest extends SpinalFunSuite {
   val dut = SpinalSimConfig()
     .withWaveOverride("fst")
