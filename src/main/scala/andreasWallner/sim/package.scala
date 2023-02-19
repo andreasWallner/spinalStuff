@@ -3,6 +3,7 @@ package andreasWallner
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib.io.TriState
+import spinal.sim.SimManagerContext
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -40,6 +41,10 @@ package object sim {
       )
     }
   }
+
+  /** calculate number of simulation cycles for given frequency */
+  def simCycles(f: HertzNumber) =
+    (f.toTime / TimeNumber(SimManagerContext.current.manager.timePrecision)).toLong
 
   implicit class SimTriStatePimperBitVector[T <: BitVector](tri: TriState[T]) {
     def simulatePullup(readDelay: Int = 0): Unit = {
@@ -242,7 +247,7 @@ package object sim {
       bv.getWidth match {
         case x if x < 32 => changedInt()
         case x if x < 64 => changedLong()
-        case _ => changedBigInt()
+        case _           => changedBigInt()
       }
     }
   }

@@ -1,27 +1,24 @@
 package andreasWallner.intro
 
 import andreasWallner.Utils.{evenParity, oddParity}
-import andreasWallner.{LoggingScoreboardInOrder, SpinalFunSuite}
 import andreasWallner.sim._
+import andreasWallner.{LoggingScoreboardInOrder, SpinalFunSuite}
+import org.scalactic.TimesOnInt.convertIntToRepeater
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config}
-import spinal.sim.SimManagerContext
 
-import org.scalactic.TimesOnInt.convertIntToRepeater
 import scala.collection.mutable
 import scala.language.postfixOps
 import scala.util.Random
 
 class UartSimDriver(
     pin: Bool,
-    baudrate: HertzNumber,
+    baudPeriod: Long,
     parity: String = "odd",
-    stopBits: Double = 2.0,
-    timeScale: TimeNumber = 1 ps
+    stopBits: Double = 2.0
 ) {
-  val baudPeriod = (baudrate.toTime / timeScale).toLong
-  assert(baudPeriod > 0, "can't simulate uart datarate with given simulator timescale")
+  assert(baudPeriod > 0, f"number of cycles per period must be > 0, not $baudPeriod")
   pin #= true
 
   def send(b: Byte): Unit = {
@@ -49,17 +46,22 @@ class UartSimDriver(
       sleep(idleTime())
     }
   }
+
+  def break(cycles: Long, postCycles: Long = 2 * baudPeriod): Unit = {
+    pin #= false
+    sleep(cycles)
+    pin #= true
+    sleep(postCycles)
+  }
 }
 
 class UartSimMonitor(
     pin: Bool,
-    baudrate: HertzNumber,
+    baudPeriod: Long,
     parity: String = "odd",
     stopBits: Double = 1.0
 ) {
-  val baudPeriod =
-    (baudrate.toTime / TimeNumber(SimManagerContext.current.manager.timePrecision)).toLong
-  assert(baudPeriod > 0, "can't simulate uart datarate with given simulator timescale")
+  assert(baudPeriod > 0, f"number of cycles per period must be > 0, not $baudPeriod")
 
   def run(cb: (BigInt, Boolean) => Unit) = {
     fork {
@@ -214,10 +216,10 @@ class UartApbBridgeTest extends SpinalFunSuite {
   val baudrate = 100 MHz
 
   case class Bench(private val dut: UartApbBridge) {
-    val tx = new UartSimDriver(dut.io.uart.rxd, baudrate)
+    val tx = new UartSimDriver(dut.io.uart.rxd, simCycles(baudrate))
 
     val rxBytes = mutable.ArrayBuffer[BigInt]()
-    new UartSimMonitor(dut.io.uart.txd, baudrate).run { (data, parityValid) =>
+    new UartSimMonitor(dut.io.uart.txd, simCycles(baudrate)).run { (data, parityValid) =>
       assert(parityValid, "data received with invalid parity")
       rxBytes.append(data)
     }
@@ -253,6 +255,7 @@ class UartApbBridgeTest extends SpinalFunSuite {
       writeScoreboard.checkEmptyness()
     }
   }
+
   val dut = SpinalSimConfig()
     .withWaveOverride("fst")
     .withConfig(
@@ -301,5 +304,68 @@ class UartApbBridgeTest extends SpinalFunSuite {
     }
 
     finish()
+  }
+
+  test(dut, "break to abort") { dut =>
+    val bench = Bench(dut)
+    import bench._
+
+    SimTimeout(2 us)
+
+    dut.clockDomain.waitSampling(100)
+
+    tx.send(0x400000)
+    simLog("starting wait")
+    simLog(f"period ${simCycles(baudrate)}")
+    simLog("stopping wait")
+    sleep(simCycles(baudrate) * 5)
+    tx.break(simCycles(baudrate) * 20)
+
+    tx.send(0x4000 + 0x04)
+    tx.send(0x1234)
+    assert(rx(1) == 0x40, "response header not received")
+    writeScoreboard.pushRef((0x04, 0x1234))
+
+    finish()
+  }
+}
+
+class TestIceStickUartPwm extends SpinalFunSuite {
+  val dut = SpinalSimConfig()
+    .withWaveOverride("fst")
+    .withConfig(
+      SpinalConfig(defaultClockDomainFrequency = FixedFrequency(12 MHz))
+    )
+    .compile(new IceStickUartPwm)
+
+  test(dut, "foo") { dut =>
+    val baudPeriod = ((12 MHz) / (115200 Hz)).toLong * 10
+    val tx = new UartSimDriver(dut.io.ftdi1.rx, baudPeriod, stopBits = 2.0)
+    new UartSimMonitor(dut.io.ftdi1.tx, baudPeriod, stopBits = 2.0).run { (data, parityValid) =>
+      assert(parityValid, "data received with invalid parity")
+      simLog(f"rx: $data%02x")
+    }
+
+    dut.clockDomain.forkStimulus(10)
+    dut.clockDomain.waitSampling(10)
+
+    tx.send(0x22)
+    sleep(baudPeriod * 4 * 10)
+    tx.send(0x440020)
+    sleep(baudPeriod * 4 * 10)
+    tx.send(0x4800ff)
+    sleep(baudPeriod * 4 * 10)
+    tx.send(0x4C0080)
+    sleep(baudPeriod * 4 * 10)
+    tx.send(0x400001)
+    sleep(baudPeriod * 4 * 10)
+
+    tx.send(0x40)
+    tx.break(baudPeriod * 10)
+
+    tx.send(0x400001)
+    sleep(baudPeriod * 4 * 10)
+
+    sleep(baudPeriod * 1000)
   }
 }

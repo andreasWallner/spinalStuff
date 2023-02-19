@@ -1,5 +1,6 @@
 package andreasWallner.intro
 
+import andreasWallner.Utils.divCeil
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config}
@@ -23,7 +24,7 @@ case class UartApbBridgeGenerics(
     baudrate: Int = 115200,
     irqBits: BitCount = 0 bit
 ) {
-  private def bytes(i: Int): Int = (i + 7) / 8
+  private def bytes(i: Int): Int = divCeil(i, 8)
   private val plainAddressBytes = bytes(apbConfig.addressWidth)
 
   val actionBits = 3 // get from action
@@ -43,6 +44,7 @@ case class UartApbBridge(g: UartApbBridgeGenerics) extends Module {
     val uart = master port Uart()
     val apb = master port Apb3(g.apbConfig)
     val irqs = in port Bits(g.irqBits)
+    val doRst = out port Bool()
   }
 
   val uart = UartCtrl(
@@ -70,16 +72,27 @@ case class UartApbBridge(g: UartApbBridgeGenerics) extends Module {
   uart.write.payload.clearAll()
   uart.write.valid := False
 
+  io.doRst := False
+
   //noinspection ForwardReference
   val fsm = new StateMachine {
+    always {
+      when(uart.readBreak || uart.readError) {
+        forceGoto(idle)
+      }
+    }
+
     val idle = new State() with EntryPoint {
       whenIsActive {
         when(uart.read.valid) {
           action := slicedAction
           when((slicedAction === Action.READ.asBits) || (slicedAction === Action.WRITE.asBits)) {
-            if (g.addressBitsInAction != 0)
-              io.apb.PADDR.takeHigh(g.addressBitsInAction) := uart.read.payload
+            if (g.addressBitsInAction != 0) {
+              val paddrSlice = io.apb.PADDR.high downto (io.apb.PADDR.high - g.addressBitsInAction + 1)
+              io.apb.PADDR(paddrSlice) := uart.read.payload
                 .takeLow(g.addressBitsInAction)
+                .asUInt
+            }
 
             if (g.addressBytes > 0) {
               goto(rxAddress)
@@ -98,7 +111,7 @@ case class UartApbBridge(g: UartApbBridgeGenerics) extends Module {
     }
 
     val addressByte = Reg(UInt(log2Up(g.addressBytes) + 1 bit))
-    val rxAddress: State = new State() {
+    val rxAddress: State = if (g.addressBytes > 0) new State() {
       onEntry(addressByte := 0)
       whenIsActive {
         when(uart.read.valid) {
@@ -119,6 +132,7 @@ case class UartApbBridge(g: UartApbBridgeGenerics) extends Module {
         }
       }
     }
+    else null
 
     val dataByte = Reg(UInt(log2Up(g.dataBytes) bit))
     val rxData: State = new State() {
@@ -164,7 +178,13 @@ case class UartApbBridge(g: UartApbBridgeGenerics) extends Module {
       }
       onExit(io.apb.PENABLE := False)
     }
-    val doReset: State = new State() {}
+    val doReset: State = new State() {
+      whenIsActive {
+        io.doRst := True
+        sendBytes := 0
+        goto(txResponse)
+      }
+    }
 
     val sendBufferBytes = sendBuffer.subdivideIn(8 bit)
     val sentBytes = Reg(UInt(2 bit))
