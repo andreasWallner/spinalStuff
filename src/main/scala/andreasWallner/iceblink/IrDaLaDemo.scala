@@ -7,6 +7,7 @@ import spinal.lib.eda.bench.Rtl
 import spinal.lib.io.{InOutWrapper, TriState, TriStateArray}
 import spinal.lib._
 import spinal.lib.blackbox.lattice.ice40.SB_GB
+import spinal.lib.com.uart.Uart
 
 import scala.language.postfixOps
 
@@ -37,6 +38,16 @@ case class IceStickIO() extends Bundle with IMasterSlave {
     val dtr = new Bool()
     val dsr = new Bool()
     val dcd = new Bool()
+
+    def asUart(ctsGen: Boolean = false, rtsGen: Boolean = false) = {
+      assert(rx.isInput, "asUart can only be used if IceStickIO is a master port")
+      val uart = master(Uart(ctsGen, rtsGen))
+      uart.rxd := rx
+      tx := uart.txd
+      if (ctsGen) uart.cts := cts
+      if (rtsGen) rts := uart.rts
+      uart
+    }
   }
 
   override def asMaster(): Unit = {
