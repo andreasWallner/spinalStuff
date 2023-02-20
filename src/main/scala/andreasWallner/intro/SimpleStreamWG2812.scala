@@ -1,6 +1,7 @@
 package andreasWallner.intro
 
 
+import andreasWallner.ext.PimpedPhysicalNumber
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib._
