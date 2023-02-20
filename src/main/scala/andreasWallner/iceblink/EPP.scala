@@ -5,10 +5,13 @@ import spinal.lib._
 import spinal.lib.bus.misc.{AddressMapping, BusSlaveFactoryDelayed, BusSlaveFactoryElement, SingleMapping}
 import spinal.lib.io.TriState
 
+import scala.language.postfixOps
+
 case class EppGenerics(
     withInt:Boolean = false,
     withReset:Boolean = false) {}
 
+/** EPP interface as provided on the ICEBlink board */
 case class EPP(gen:EppGenerics = EppGenerics()) extends Bundle with IMasterSlave {
   val DB = TriState(Bits(8 bit))
   val WRITE = Bool()
@@ -18,7 +21,7 @@ case class EPP(gen:EppGenerics = EppGenerics()) extends Bundle with IMasterSlave
   val INT = gen.withInt generate Bool()
   val RESET = gen.withReset generate Bool()
 
-  override def asMaster() = {
+  override def asMaster(): Unit = {
     master(DB)
     out(WRITE, ASTB, DSTB)
     in(WAIT)
@@ -26,7 +29,7 @@ case class EPP(gen:EppGenerics = EppGenerics()) extends Bundle with IMasterSlave
     if(gen.withReset) out(RESET)
   }
 
-  override def asSlave() = {
+  override def asSlave(): Unit = {
     master(DB)
     out(WAIT)
     in(WRITE, ASTB, DSTB)
@@ -34,8 +37,8 @@ case class EPP(gen:EppGenerics = EppGenerics()) extends Bundle with IMasterSlave
     if(gen.withReset) in(RESET)
   }
 
+  @deprecated("not fully implemented")
   def withSync(): EPP = {
-    assert(false, "do not use this ATM")
     val synced = EPP()
     if(isMasterInterface) {
       synced.asMaster()
@@ -101,8 +104,8 @@ case class EPPStateMachine(gen:EppGenerics = EppGenerics()) extends Component {
 }
 
 class EppBusFactory(bus: EPP) extends BusSlaveFactoryDelayed {
-  override def readHalt() = ???
-  override def writeHalt() = ???
+  override def readHalt(): Unit = ???
+  override def writeHalt(): Unit = ???
 
   val address = Reg(UInt(8 bit))
   override def readAddress() = address
@@ -114,7 +117,7 @@ class EppBusFactory(bus: EPP) extends BusSlaveFactoryDelayed {
   assert(!bus.isMasterInterface, "BusFactory can only be used to generate slaves")
 
   override def multiCycleRead(address: AddressMapping, cycles: BigInt): Unit = {
-    assert(false, "EPP interface can't handle multi-cycle reads in the current configuration (faster single cycle reads)")
+    assert(assertion = false, "EPP interface can't handle multi-cycle reads in the current configuration (faster single cycle reads)")
   }
 
   def build(): Unit = {
@@ -133,7 +136,7 @@ class EppBusFactory(bus: EPP) extends BusSlaveFactoryDelayed {
 
     val doWrite = (!syncDStb && !bus.WRITE && !bus.WAIT).allowPruning()
     val doRead = (!syncDStb && bus.WRITE && !bus.WAIT).allowPruning()
-    def doMappedElements(jobs: Seq[BusSlaveFactoryElement]) = super.doMappedElements(
+    def doMappedElements(jobs: Seq[BusSlaveFactoryElement]): Unit = super.doMappedElements(
       jobs = jobs,
       askWrite = False,
       askRead = False,
