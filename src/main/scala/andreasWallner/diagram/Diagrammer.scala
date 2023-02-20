@@ -1,37 +1,13 @@
 package andreasWallner.diagram
 
-import spinal.core.{BaseType, Component}
-import spinal.core.internals.{
-  AssignmentExpression,
-  BinaryOperator,
-  BitVectorBitAccessFixed,
-  BitVectorRangedAccessFixed,
-  BitsBitAccessFixed,
-  Cast,
-  CastUIntToBits,
-  ConstantOperator,
-  DataAssignmentStatement,
-  DeclarationStatement,
-  Expression,
-  InitAssignmentStatement,
-  LeafStatement,
-  Literal,
-  Operator,
-  Resize,
-  SubAccess,
-  SwitchStatement,
-  SwitchStatementKeyBool,
-  TreeStatement,
-  UnaryOperator,
-  WhenStatement
-}
+import spinal.core.{BaseType, Component, Data, ExternalDriverTag}
+import spinal.core.internals.{AssignmentExpression, BinaryOperator, BitVectorBitAccessFixed, BitVectorRangedAccessFixed, BitsBitAccessFixed, Cast, CastUIntToBits, ConstantOperator, DataAssignmentStatement, DeclarationStatement, Expression, InitAssignmentStatement, LeafStatement, Literal, Operator, Resize, SubAccess, SwitchStatement, SwitchStatementKeyBool, TreeStatement, UnaryOperator, WhenStatement}
 
 import java.io.{File, PrintWriter, Writer}
 import scala.language.postfixOps
 
-case class Diagrammer(c: Component) {
-  def draw(filename: String, openViewer: Boolean = false): Unit = {
-    val writer = new PrintWriter(new File(filename))
+class Graph(writer: Writer) {
+  def openDigraph(): Unit = {
     writer.write(
       """digraph root {
         |  node [fontsize=8 margin=".1,.01" width=.5 height=.5 shape=box]
@@ -42,8 +18,56 @@ case class Diagrammer(c: Component) {
         |
         |""".stripMargin
     )
-    draw(c, writer)
+  }
+
+  def closeDigraph(): Unit = {
     writer.write("}")
+  }
+
+  def openSubgraph(id: String, name: String): Unit = {
+    writer.write(
+      s"""{ subgraph cluster_$id {
+         |  label = "$name"
+         |  style = solid
+         |""".stripMargin)
+  }
+
+  def closeSubgraph(): Unit = {
+    writer.write("}}")
+  }
+
+  def connection(from: Any, to: Any, attributes: (String, String)*): Unit = {
+    val f = s"sig_${Integer.toHexString(System.identityHashCode(from))}"
+    val t = s"sig_${Integer.toHexString(System.identityHashCode(to))}"
+    val attr = attributes.map(a => a._1 + "=\"" + a._2 + "\"").mkString(" ")
+    writer.write(s"""   $f -> $t [$attr]\n""")
+  }
+
+  def node(x: Expression, rank: String, attributes: (String, String)*): Unit = { // make rank enum
+    val xx = s"sig_${Integer.toHexString(System.identityHashCode(x))}"
+    val attr = attributes.map(a => a._1 + "=\"" + a._2 + "\"").mkString(" ")
+    writer.write(s"  { rank=$rank; $xx [$attr] }\n")
+  }
+  def node(x: Expression, attributes: (String, String)*): Unit = {
+    val xx = s"sig_${Integer.toHexString(System.identityHashCode(x))}"
+    val attr = attributes.map(a => a._1 + "=\"" + a._2 + "\"").mkString(" ")
+    writer.write(s"  { $xx [$attr] }\n")
+  }
+
+  def node(x: Any, attributes: (String, String)*): Unit = {
+    val xx = s"sig_${Integer.toHexString(System.identityHashCode(x))}"
+    val attr = attributes.map(a => a._1 + "=\"" + a._2 + "\"").mkString(" ")
+    writer.write(s"  { $xx [$attr] }\n")
+  }
+}
+
+case class Diagrammer(c: Component) {
+  def draw(filename: String, openViewer: Boolean = false): Unit = {
+    val writer = new PrintWriter(new File(filename))
+    val graph = new Graph(writer)
+    graph.openDigraph()
+    draw(c, graph)
+    graph.closeDigraph()
     writer.close()
 
     if (openViewer) {
@@ -52,24 +76,17 @@ case class Diagrammer(c: Component) {
     }
   }
 
-  def draw(c: Component, w: Writer): Unit = {
-    w.write(s"""subgraph cluster_${c.hashCode()} {
-         |  label = "${c.getName()}"
-         |  style = solid
-         |""".stripMargin)
+  def draw(c: Component, graph: Graph): Unit = {
+    graph.openSubgraph(c.hashCode().toString, c.getName())
 
     def connectReg(x: BaseType): Unit = {
-      w.write(s"""  sig_${x.clockDomain.clock.hashCode()} -> sig_${x
-        .hashCode()} [color=red]\n""")
+      graph.connection(x.clockDomain.clock, x, "color" -> "red")
       if (x.clockDomain.hasClockEnableSignal)
-        w.write(s"""  sig_${x.clockDomain.clockEnable.hashCode()} -> sig_${x
-          .hashCode()} [color=aqua]\n""")
+        graph.connection(x.clockDomain.clockEnable, x, "color" -> "aqua")
       if (x.clockDomain.hasResetSignal)
-        w.write(s"""  sig_${x.clockDomain.reset.hashCode()} -> sig_${x
-          .hashCode()} [color=crimson]\n""")
+        graph.connection(x.clockDomain.reset, x, "color" -> "crimson")
       if (x.clockDomain.hasSoftResetSignal)
-        w.write(s"""  sig_${x.clockDomain.softReset.hashCode()} -> sig_${x
-          .hashCode()} [color=brown]\n""")
+        graph.connection(x.clockDomain.softReset, x, "color" -> "brown")
     }
 
     for (x <- c.getAllIo) {
@@ -80,8 +97,7 @@ case class Diagrammer(c: Component) {
         case xx if xx.isInput  => ("source", "#b5fed9", "rectangle")
       }
       val style = if (x.isReg) "filled, bold" else "filled"
-      w.write(s"""  { rank=$rank; sig_${x.hashCode()} [label="${x
-        .getName()}" style="$style" fillcolor="$color" shape=$shape] }\n""")
+      graph.node(x, rank, "style"->style, "fillcolor"->color, "shape"->shape)
       if (x.isReg)
         connectReg(x)
     }
@@ -100,37 +116,26 @@ case class Diagrammer(c: Component) {
         case io: BaseType if !io.isDirectionLess =>
           println(s"io ${io.getClass} $io ${io.hashCode()}")
         case l: Literal =>
-          w.write(s""" {sig_${l.hashCode()} [label="${l.getValue()}"]}\n""")
+          graph.node(l, "label"->l.getValue().toString()) // TODO intelligent radix?
         case uop: UnaryOperator =>
-          w.write(s"""  {sig_${uop
-            .hashCode()} [label="${uop.opName}" style="$style"]}\n""")
-          w.write(
-            s"""  sig_${uop.source.hashCode()} -> sig_${uop.hashCode()}\n"""
-          )
+          graph.node(uop, "label"->uop.opName, "style"->style)
+          graph.connection(uop.source, uop)
         case bop: BinaryOperator =>
-          w.write(s"""  {sig_${bop
-            .hashCode()} [label="${bop.opName}" style="$style"]}\n""")
-          w.write(
-            s"""  sig_${bop.left.hashCode()} -> sig_${bop.hashCode()}\n"""
-          )
-          w.write(
-            s"""  sig_${bop.right.hashCode()} -> sig_${bop.hashCode()}\n"""
-          )
+          graph.node(bop, "label"->bop.opName, "style"->style)
+          graph.connection(bop.left, bop)
+          graph.connection(bop.right, bop)
         case cop: ConstantOperator => ???
 
         case c: Cast =>
-          w.write(s"""  {sig_${c
-            .hashCode()} [label="${c.opName}" style="$style"]}\n""")
-          w.write(s"""  sig_${c.input.hashCode()} -> sig_${c.hashCode()}\n""")
+          graph.node(c, "label"->c.opName, "style"->style)
+          graph.connection(c.input, c)
 
         case a: BitVectorBitAccessFixed => // stop decent here?
-          w.write(s"""  {sig_${a
-            .hashCode()} [label="x[${a.bitId}]" style="$style"]}\n""")
-          w.write(s"""  sig_${a.source.hashCode()} -> sig_${a.hashCode()}\n""")
+          graph.node(a, "label"->s"x[${a.bitId}", "style"->style)
+          graph.connection(a.source, a)
         case a: BitVectorRangedAccessFixed =>
-          w.write(s"""  {sig_${a
-            .hashCode()} [label="x[${a.hi}:${a.lo}]" style="$style"]}\n""")
-          w.write(s"""  sig_${a.source.hashCode()} -> sig_${a.hashCode()}\n""")
+          graph.node(a, "label"->s"x[${a.hi}:${a.lo}]", "style"->style)
+          graph.connection(a.source, a)
 
         case bt: BaseType =>
           println(s"! ${bt.getClass} $bt ${bt.hashCode()}")
@@ -142,29 +147,25 @@ case class Diagrammer(c: Component) {
     c.dslBody.walkStatements {
       case d: BaseType with DeclarationStatement =>
         val style = if (d.isReg) "bold" else ""
-        w.write(s"""  {sig_${d.hashCode()} [label="${d
-          .getName()}" style="$style"]}\n""")
+        graph.node(d, "label"->d.getName(), "style"->style)
+        if(d.hasTag(classOf[ExternalDriverTag]))
+          graph.connection(d.getTag(classOf[ExternalDriverTag]).get.driver, d)
       case da: DataAssignmentStatement =>
         da.walkDrivingExpressions(writeTargets)
-        w.write(
-          s"""  sig_${da.source.hashCode()} -> sig_${da.target.hashCode()}"""
-        )
+        graph.connection(da.source, da.target)
 
       case ia: InitAssignmentStatement =>
       case s: SwitchStatement =>
-        w.write(s"""  {sig_${s.hashCode()} [label="switch" color=blue]}\n""")
+        graph.node(s, "label"->"switch", "color"->"blue")
       case w: WhenStatement =>
         println(s">> w ${w}")
       case t =>
         println(s">> t ${t}")
     }
 
-    if (c.children.nonEmpty) {
-      w.write("{\n")
-      c.children.foreach(cc => draw(cc, w))
-      w.write("}\n")
-    }
+    if (c.children.nonEmpty)
+      c.children.foreach(cc => draw(cc, graph))
 
-    w.write("}\n")
+    graph.closeSubgraph()
   }
 }

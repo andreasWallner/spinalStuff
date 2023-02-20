@@ -95,12 +95,19 @@ object Utils {
     override def apply(key: I) = getOrElseUpdate(key, f(key))
   }
 
-  class DumpAST(indent: String) {
+  class DumpAST(indent: String, withHashCode: Boolean = false) {
     import spinal.core._
     import spinal.core.internals._
     private lazy val cleanIndent = " " * (indent.length - 1 + 2)
-    private lazy val indented = new DumpAST(indent + "  ")
+    private lazy val indented = new DumpAST(indent + "  ", withHashCode)
 
+    def hash(x: Any): String = {
+      if (withHashCode) {
+        s"${Integer.toHexString(System.identityHashCode(x))} "
+      } else {
+        ""
+      }
+    }
     def printFlags(d: Data): Unit = {
       print(if (d.isInOut) d.dirString() + " " else "")
       print(if (d.isAnalog) "ANA " else "")
@@ -108,13 +115,18 @@ object Utils {
     }
     def printAttributes(bt: BaseType): Unit = {
       printFlags(bt.asInstanceOf[Data])
-      print(if (bt.isReg) s"${bt.clockDomain} " else "")
+      print(if (bt.isReg) s"${bt.clockDomain} ${Integer.toHexString(bt.clockDomain.clock.hashCode())}" else "")
     }
 
     val tMark = s"${Console.GREEN}T${Console.RESET}"
     def printTags(str: SpinalTagReady): Unit = {
       for (tag <- str.getTags()) {
         println(s"$tMark $indent ${tag.getClass.getName} ${tag.toString}")
+        tag match {
+          case edt: ExternalDriverTag => println(indent + " driver" + edt.driver.toString + " " + Integer.toHexString(edt.driver.hashCode()))
+          case _ =>
+        }
+
       }
     }
     def printTags(bn: BaseNode): Unit = {
@@ -126,7 +138,7 @@ object Utils {
 
     val eMark = s"${Console.YELLOW}E${Console.RESET}"
     def dump(e: Expression): Unit = {
-      print(s"$eMark $indent ${e.getClass.toString} ${e.toString} (")
+      print(s"$eMark $indent ${e.getClass.toString} ${e.toString} ${hash(e)}(")
       e match {
         case bt: BaseType => printAttributes(bt)
         case d: Data      => printFlags(d)
@@ -145,7 +157,7 @@ object Utils {
 
     val sMark = s"${Console.RED}S${Console.RESET}"
     def dump(s: Statement): Unit = {
-      print(s"$sMark $indent ${s.getClass.toString} ${s.toString} (")
+      print(s"$sMark $indent ${s.getClass.toString} ${s.toString} ${hash(s)}(")
       s match {
         case bt: BaseType => printAttributes(bt)
         case d: Data      => printFlags(d)
@@ -159,11 +171,15 @@ object Utils {
         case _ => s.foreachExpression(indented.dump)
       }
       indented.printTags(s)
+      s match {
+        case s: TreeStatement => s.foreachStatements(indented.dump)
+        case _                =>
+      }
     }
 
     val cMark = s"${Console.BLUE}C${Console.RESET}"
     def dump(c: Component): Unit = {
-      println(s"$cMark $indent ${c.getName()}")
+      println(s"$cMark $indent ${c.getName()} ${hash(c)} ")
       indented.printTags(c)
       c.dslBody.foreachStatements(indented.dump)
       c.children.foreach(indented.dump)
@@ -172,9 +188,14 @@ object Utils {
   object DumpAST {
     import spinal.core.Component
     import spinal.core.internals.{Statement, Expression}
-    private val d = new DumpAST("")
-    def apply(c: Component): Unit = d.dump(c)
-    def apply(s: Statement): Unit = d.dump(s)
-    def apply(e: Expression): Unit = d.dump(e)
+    def apply(c: Component): Unit = apply(c, withHashCode = false)
+    def apply(c: Component, withHashCode: Boolean): Unit =
+      new DumpAST("", withHashCode).dump(c)
+    def apply(s: Statement): Unit = apply(s, withHashCode = false)
+    def apply(s: Statement, withHashCode: Boolean): Unit =
+      new DumpAST("", withHashCode).dump(s)
+    def apply(e: Expression): Unit = apply(e, withHashCode = false)
+    def apply(e: Expression, withHashCode: Boolean): Unit =
+      new DumpAST("", withHashCode).dump(e)
   }
 }
