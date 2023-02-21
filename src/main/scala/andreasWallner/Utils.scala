@@ -35,7 +35,7 @@ object Utils {
   def gcd(a: Int, b: Int): Int = gcd(BigInt(a), BigInt(b)).intValue()
   def gcd(a: Long, b: Long): Long = gcd(BigInt(a), BigInt(b)).longValue()
 
-  def divCeil(p: Int, q: Int) = {
+  def divCeil(p: Int, q: Int): Int = {
     assert(p >= 0)
     assert(q > 0)
     (p + (q - 1)) / q
@@ -64,7 +64,7 @@ object Utils {
       */
     def apply(b: Byte): Boolean = (0 until 8).map(s => (b >> s) & 1).reduce(_ ^ _) == 0
     def apply(i: Int): Boolean = (0 until 32).map(s => (i >> s) & 1).reduce(_ ^ _) == 0
-    def apply(bi: BigInt) = (popCount(bi) & 1) == 0
+    def apply(bi: BigInt): Boolean = (popCount(bi) & 1) == 0
   }
 
   object evenParity {
@@ -76,7 +76,7 @@ object Utils {
       */
     def apply(b: Byte): Boolean = !oddParity(b)
     def apply(i: Int): Boolean = !oddParity(i)
-    def apply(bi: BigInt) = !oddParity(bi)
+    def apply(bi: BigInt): Boolean = !oddParity(bi)
   }
 
   /**
@@ -92,7 +92,7 @@ object Utils {
     *  Implementation taken from pathikrit (https://stackoverflow.com/a/36960228, CC-BY-SA 3.0)
     */
   def memoize[I, O](f: I => O): I => O = new mutable.HashMap[I, O]() {
-    override def apply(key: I) = getOrElseUpdate(key, f(key))
+    override def apply(key: I): O = getOrElseUpdate(key, f(key))
   }
 
   class DumpAST(indent: String, withHashCode: Boolean = false) {
@@ -168,6 +168,12 @@ object Utils {
         case das: DataAssignmentStatement =>
           new DumpAST(indent + "   source ").dump(das.source)
           new DumpAST(indent + "   target ").dump(das.target)
+        case ss: SwitchStatement =>
+          new DumpAST(cleanIndent + "  value ").dump(ss.value)
+          ss.elements.foreach { se =>
+            se.keys.foreach(new DumpAST(cleanIndent + "  is ").dump)
+            se.scopeStatement.foreachStatements(new DumpAST(cleanIndent + "    then").dump)
+          }
         case _ => s.foreachExpression(indented.dump)
       }
       indented.printTags(s)
