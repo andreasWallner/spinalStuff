@@ -3,6 +3,7 @@ package andreasWallner.misc
 import andreasWallner.Utils.divCeil
 import andreasWallner.yosys.YosysBenchmark
 import spinal.core._
+import spinal.lib._
 
 import scala.language.postfixOps
 
@@ -67,6 +68,94 @@ case class RecursivePriorityEncoder(width: Int, muxWidth: Int) extends Component
     (valid, (encoded ## muxed).asUInt)
   }
 }
+
+@deprecated("not verified")
+object PriorityBundle {
+  def apply(prioWidth: Int, signalWidth: Int) = new PriorityBundle(prioWidth, signalWidth)
+  def apply(any: Bool, prio: UInt, signals: Bits) = {
+    val bundle = new PriorityBundle(prio.getWidth, signals.getWidth)
+    bundle.any := any
+    bundle.prio := prio
+    bundle.signals := signals
+    bundle
+  }
+}
+
+@deprecated("not verified")
+class PriorityBundle(prioWidth: Int, signalWidth: Int) extends Bundle {
+  val any = Bool()
+  val prio = UInt(prioWidth bit)
+  val signals = Bits(signalWidth bit)
+}
+
+@deprecated("not verified")
+case class PriorityMaskCell(prioWidth: Int, widthA: Int, widthB: Int) extends Component {
+  val io = new Bundle {
+    val a = in port PriorityBundle(prioWidth, widthA)
+    val b = in port PriorityBundle(prioWidth, widthB)
+    val result = out port PriorityBundle(prioWidth, widthA + widthB)
+  }
+  val aGtB = io.a.prio > io.b.prio
+  val allowA = (aGtB & io.a.any) | !io.b.any
+  val allowB = (aGtB & io.b.any) | !io.a.any
+
+  io.result.any := io.a.any | io.b.any
+  io.result.prio := (aGtB | (io.b.any & !aGtB)) ? io.a.prio | io.b.prio
+  io.result.signals :=
+    (allowA ? io.a.signals | B(0, widthA bit)) ##
+      (allowB ? io.b.signals | B(0, widthB bit))
+}
+
+@deprecated("not verified")
+case class PriorityGate(prioWidth: Int, width: Int) extends Component {
+  val io = new Bundle {
+    val signals = in port Bits(width bit)
+    val priorities = in port Vec(UInt(prioWidth bit), width)
+    val masked = out port Bits(width bit)
+  }
+
+  val inputs = Vec.tabulate(width) { i =>
+    PriorityBundle(io.signals(i), io.priorities(i), io.signals(i, 1 bit))
+  }
+  val lastStage = inputs.reduceBalancedTree { (a, b) =>
+    val cell = PriorityMaskCell(prioWidth, a.signals.getWidth, b.signals.getWidth)
+    cell.io.a := a
+    cell.io.b := b
+    cell.io.result
+  }
+  io.masked := lastStage.signals
+}
+
+@deprecated("not verified")
+case class OneHotPriorityGate(prioWidth: Int, width: Int) extends Component {
+  val io = new Bundle {
+    val signals = in port Bits(width bit)
+    val priorities = in port Vec(UInt(prioWidth bit), width)
+    val masked = out port Bits(width bit)
+  }
+  val onehot = Vec.tabulate(width) { i =>
+    val oh = (B"1" << io.priorities(i)).take(width)
+    oh & B(io.signals(i), oh.getWidth)
+  }
+  val all = onehot.reduce(_ | _)
+  val prioritized = OHMasking.first(all)
+  io.masked := all & prioritized
+}
+
+@deprecated("not verified")
+case class EqualityGate(prioWidth: Int, width: Int) extends Component {
+  val io = new Bundle {
+    val signals = in port Bits(width bit)
+    val priorities = in port Vec(UInt(prioWidth bit), width)
+    val masked = out port Bits(width bit)
+  }
+  val maxPrio = io.priorities.reduceBalancedTree((a, b) => (a > b) ? a | b)
+  io.masked.clearAll()
+  (0 until width).foreach(i => io.masked(i) := io.priorities(i) === maxPrio)
+}
+
+// TODO encode bit-by-bit on the fly in tree with binary output
+
 /*
 case class DynamicPriorityEncoder(width: Int) extends Component {
   val io = new Bundle {
@@ -93,8 +182,8 @@ case class DynamicPriorityEncoder(width: Int) extends Component {
   pe.bits := sorted
   io.valid := pe.valid
   io.encoded := pe.encoded
-}
-*/
+}*/
+
 object BenchmarkPriorityEncoder
     extends YosysBenchmark(
       ("plain 5 in", () => PriorityEncoder(5)),
@@ -102,4 +191,16 @@ object BenchmarkPriorityEncoder
       ("plain 21 in", () => PriorityEncoder(21)),
       ("recursive 21/4", () => RecursivePriorityEncoder(21, 4)),
       ("recursive 21/2", () => RecursivePriorityEncoder(21, 2))
+    )
+object BenchmarkPriorityGate
+    extends YosysBenchmark(
+      Seq(4, 7, 10)
+        .flatMap { w =>
+          Seq(
+            (f"$w%2d recursive gate", () => PriorityGate(log2Up(w), w)),
+            (f"$w%2d onehot gate", () => OneHotPriorityGate(log2Up(w), w)),
+            (f"$w%2d equality gate", () => EqualityGate(log2Up(w), w))
+          )
+        }
+        .sortWith(_._1 < _._1): _*
     )
