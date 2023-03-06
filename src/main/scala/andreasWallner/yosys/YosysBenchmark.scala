@@ -1,21 +1,16 @@
 package andreasWallner.yosys
 
-import spinal.core.{
-  ClockDomainConfig,
-  Component,
-  Device,
-  IClockDomainFrequency,
-  LOW,
-  SpinalConfig,
-  UnknownFrequency
-}
+import spinal.core.{ClockDomainConfig, Component, Device, IClockDomainFrequency, LOW, SpinalConfig, UnknownFrequency}
 import spinal.lib.WrapWithReg
 import spinal.lib.eda.bench.Rtl
+
+import java.io.File
 
 class YosysBenchmark(c: (String, () => Component)*) extends App {
   def defaultClockDomainFrequency: IClockDomainFrequency = UnknownFrequency()
 
   val results = for ((id, cc) <- c) yield {
+    new File("./benchmarkWorkspace").mkdirs()
     val cleanId = id.replace(' ', '_').replace('/', '_')
     val report = SpinalConfig(
       defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = LOW),
