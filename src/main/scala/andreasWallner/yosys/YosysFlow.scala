@@ -4,22 +4,67 @@ import spinal.core.{HertzNumber, SpinalError, SpinalInfo, TimeNumber}
 import spinal.lib.eda.bench.{Report, Rtl}
 
 import java.nio.file.Paths
+import scala.collection.immutable.Map
 import scala.collection.mutable
 import scala.language.postfixOps
 import scala.util.parsing.json.JSON
 
 case class CriticalPath(
-    clock: String,
+    launchClock: String,
+    captureClock: String,
     from: String,
     to: String,
     delay: TimeNumber,
-    budget: Option[TimeNumber]
+    budget: Option[TimeNumber] = None
 )
 
 trait SynthesisReport extends Report {
   def fmax(clk: String = null): HertzNumber
   def criticalPaths: Seq[CriticalPath]
   def bitstreamFile: Option[String]
+  def resources: Map[String, (Int, Int)]
+}
+
+private object JsonUnapply {
+  // thanks to huynhjl (https://stackoverflow.com/a/4186090) for the idea with unapply
+  class CC[T] {
+    def unapply(a: Option[Any]): Option[T] = a.map(aa => aa.asInstanceOf[T])
+  }
+
+  object M extends CC[Map[String, Any]]
+  object A extends CC[Seq[Any]]
+  object D extends CC[Double]
+  object S extends CC[String]
+}
+
+private object Runner {
+  def doCmd(cmd: Seq[String], path: String, verbose: Boolean): Unit = {
+    import scala.sys.process._
+
+    val process = Process(cmd, new java.io.File(path))
+    val output = new mutable.StringBuilder
+    val pio = new ProcessIO(
+      _.close(),
+      out => {
+        val src = io.Source.fromInputStream(out)
+        src.foreach(output.append)
+        src.close()
+      },
+      err => {
+        val src = io.Source.fromInputStream(err)
+        src.foreach(output.append)
+        src.close()
+      }
+    )
+    val exitCode = process.run(pio).exitValue()
+
+    if (verbose || exitCode != 0)
+      println(output.result())
+    if (exitCode != 0)
+      SpinalError(s"Command failed ($exitCode): $process")
+    else
+      SpinalInfo(s"Command succeeded: $process")
+  }
 }
 
 object YosysFlow {
@@ -47,41 +92,14 @@ object YosysFlow {
       allowUnconstrained: Boolean = false,
       verbose: Boolean = false
   ): SynthesisReport = {
+    import Runner._
+
     assert(yosysPath == "" || yosysPath.endsWith("/"), "yosysPath must end with a '/' if set")
     assert(nextpnrPath == "" || nextpnrPath.endsWith("/"), "nextpnrPath must end with a '/' if set")
     assert(
       icestormPath == "" || icestormPath.endsWith("/"),
       "icestormPath must end with a '/' if set"
     )
-
-    def doCmd(cmd: Seq[String], path: String): Unit = {
-      import scala.sys.process._
-
-      val process = Process(cmd, new java.io.File(path))
-      val output = new mutable.StringBuilder
-      val pio = new ProcessIO(
-        _.close(),
-        out => {
-          val src = io.Source.fromInputStream(out)
-          src.foreach(output.append)
-          src.close()
-        },
-        err => {
-          val src = io.Source.fromInputStream(err)
-          src.foreach(output.append)
-          src.close()
-        }
-      )
-      val exitCode = process.run(pio).exitValue()
-
-      if (verbose || exitCode != 0)
-        println(output.result())
-      if (exitCode != 0)
-        SpinalError(s"Command failed ($exitCode): $process")
-      else
-        SpinalInfo(s"Command succeeded: $process")
-    }
-
     val isVhdl = (file: String) => file.endsWith(".vhd") || file.endsWith(".vhdl")
     if (rtl.getRtlPaths().exists(file => isVhdl(file)))
       throw new RuntimeException("Yosys flow can only run with verilog sources")
@@ -105,7 +123,8 @@ object YosysFlow {
           .getTopModuleName()} -json ${rtl.getName()}.json"
       )
         ++ readRtl,
-      workspacePath
+      workspacePath,
+      verbose
     )
 
     doCmd(
@@ -130,16 +149,18 @@ object YosysFlow {
         ++ (if (pcfFile.isEmpty || allowUnconstrained)
               Seq("--pcf-allow-unconstrained")
             else Seq()),
-      workspacePath
+      workspacePath,
+      verbose
     )
 
-    if(frequencyTarget.isDefined) {
+    if (frequencyTarget.isDefined) {
       doCmd(
         Seq(icestormPath + "icetime", "-d", device)
           ++ pcfFile.map(x => Seq("-p", x)).getOrElse(Seq())
           ++ Seq("-c", s"${frequencyMHz.get}MHz")
           ++ Seq("-mtr", s"${rtl.getName()}.rpt", s"${rtl.getName()}.asc"),
-        workspacePath
+        workspacePath,
+        verbose
       )
     }
     if (pcfFile.isDefined)
@@ -149,7 +170,8 @@ object YosysFlow {
           s"${rtl.getName()}.asc",
           s"${rtl.getName()}.bin"
         ),
-        workspacePath
+        workspacePath,
+        verbose
       )
 
     val source = io.Source.fromFile(
@@ -159,16 +181,9 @@ object YosysFlow {
       try JSON.parseFull(source.mkString)
       finally source.close()
 
-    // thanks to huynhjl (https://stackoverflow.com/a/4186090) for the idea with unapply
-    class CC[T] {
-      def unapply(a: Option[Any]): Option[T] = a.map(aa => aa.asInstanceOf[T])
-    }
-    object M extends CC[Map[String, Any]]
-    //object A extends CC[Seq[Any]]
-    object D extends CC[Double]
-    //object S extends CC[String]
-
     new SynthesisReport {
+      import JsonUnapply._
+
       override def fmax(clk: String = null) = HertzNumber(getFMax())
       override def getFMax(): Double = {
         try {
@@ -198,9 +213,84 @@ object YosysFlow {
         }
       }
 
-      override def criticalPaths = ???
+      @deprecated("not fully implemented")
+      override def criticalPaths = {
+        val M(root) = json
+        val A(critical_paths) = root.get("critical_paths")
+        for (M(critical_path) <- critical_paths) yield {
+          val S(launchClock) = critical_path.get("from")
+          val S(captureClock) = critical_path.get("to")
+          val A(path) = critical_path.get("path")
+          val M(fromMap) = path.head
+          val M(toMap) = path.tail
+          CriticalPath(
+            launchClock = launchClock,
+            captureClock = captureClock,
+            from = "",
+            to = "",
+            delay = TimeNumber(0)
+          )
+        }
+      }
+
       override def bitstreamFile: Option[String] =
         pcfFile.map(_ => s"$workspacePath/${rtl.getName()}.bin")
+
+      override def resources = {
+        val M(root) = json
+        val M(utilization) = root.get("utilization")
+        utilization.map(x => {
+          val name = x._1.replace("ICESTORM_", "").replace("SB_", "")
+          val M(result) = x._2
+          (
+            name,
+            (
+              result.getOrElse("available", 0).asInstanceOf[Int],
+              result.getOrElse("used", 0).asInstanceOf[Int]
+            )
+          )
+        })
+      }
+    }
+  }
+
+  def dotDiagram(
+      workspacePath: String,
+      rtl: Rtl,
+      openViewer: Boolean = true,
+      yosysBinary: String = "yosys",
+      dotBinary: String = "/usr/bin/dot",
+      flatten: Boolean = false,
+      verbose: Boolean = false
+  ): Unit = {
+    import Runner._
+
+    val readRtl =
+      rtl.getRtlPaths().map(file => s"${Paths.get(file).toAbsolutePath}").mkString(" ")
+    doCmd(
+      Seq(
+        yosysBinary,
+        "-p",
+        s"read_verilog -sv -formal $readRtl",
+        "-p",
+        s"hierarchy -check -top ${rtl.getTopModuleName()}"
+      ) ++
+        (if (flatten) Seq("-p", "flatten") else Seq()) ++
+        Seq(
+          "-p",
+          "proc",
+          "-p",
+          s"show -format dot -width -prefix ${rtl.getTopModuleName()} ${rtl.getTopModuleName()}"
+        ),
+      workspacePath,
+      verbose
+    )
+
+    if (openViewer) {
+      import sys.process._
+      println(
+        s"$dotBinary -Tx11 ${Paths.get(workspacePath + "/" + rtl.getTopModuleName()).toAbsolutePath}.dot" !!
+      )
     }
   }
 }
