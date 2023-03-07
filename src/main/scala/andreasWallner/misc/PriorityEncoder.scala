@@ -81,14 +81,12 @@ object PriorityBundle {
   }
 }
 
-@deprecated("not verified")
 class PriorityBundle(prioWidth: Int, signalWidth: Int) extends Bundle {
   val any = Bool()
   val prio = UInt(prioWidth bit)
   val signals = Bits(signalWidth bit)
 }
 
-@deprecated("not verified")
 case class PriorityMaskCell(prioWidth: Int, widthA: Int, widthB: Int) extends Component {
   val io = new Bundle {
     val a = in port PriorityBundle(prioWidth, widthA)
@@ -97,21 +95,27 @@ case class PriorityMaskCell(prioWidth: Int, widthA: Int, widthB: Int) extends Co
   }
   val aGtB = io.a.prio > io.b.prio
   val allowA = (aGtB & io.a.any) | !io.b.any
-  val allowB = (aGtB & io.b.any) | !io.a.any
+  val allowB = (!aGtB & io.b.any) | !io.a.any
 
   io.result.any := io.a.any | io.b.any
-  io.result.prio := (aGtB | (io.b.any & !aGtB)) ? io.a.prio | io.b.prio
+  io.result.prio := allowA ? io.a.prio | io.b.prio
   io.result.signals :=
-    (allowA ? io.a.signals | B(0, widthA bit)) ##
-      (allowB ? io.b.signals | B(0, widthB bit))
+    (allowB ? io.b.signals | B(0, widthB bit)) ##
+      (allowA ? io.a.signals | B(0, widthA bit))
 }
 
-@deprecated("not verified")
-case class PriorityGate(prioWidth: Int, width: Int) extends Component {
+/**
+ * Mask bits in io.signals so that io.masked is onehot, according to io.priorities
+ *
+ * The io.signals bit with the highest associated priority stays set, all others
+ * are masked out.
+ */
+case class RecursivePriorityGate(prioWidth: Int, width: Int) extends Component {
   val io = new Bundle {
     val signals = in port Bits(width bit)
     val priorities = in port Vec(UInt(prioWidth bit), width)
     val masked = out port Bits(width bit)
+    val selectedPrio = out port UInt(prioWidth bit)
   }
 
   val inputs = Vec.tabulate(width) { i =>
@@ -124,6 +128,7 @@ case class PriorityGate(prioWidth: Int, width: Int) extends Component {
     cell.io.result
   }
   io.masked := lastStage.signals
+  io.selectedPrio := lastStage.prio
 }
 
 @deprecated("not verified")
@@ -197,7 +202,7 @@ object BenchmarkPriorityGate
       Seq(4, 7, 10)
         .flatMap { w =>
           Seq(
-            (f"$w%2d recursive gate", () => PriorityGate(log2Up(w), w)),
+            (f"$w%2d recursive gate", () => RecursivePriorityGate(log2Up(w), w)),
             (f"$w%2d onehot gate", () => OneHotPriorityGate(log2Up(w), w)),
             (f"$w%2d equality gate", () => EqualityGate(log2Up(w), w))
           )
