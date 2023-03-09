@@ -69,7 +69,6 @@ case class RecursivePriorityEncoder(width: Int, muxWidth: Int) extends Component
   }
 }
 
-@deprecated("not verified")
 object PriorityBundle {
   def apply(prioWidth: Int, signalWidth: Int) = new PriorityBundle(prioWidth, signalWidth)
   def apply(any: Bool, prio: UInt, signals: Bits) = {
@@ -105,33 +104,36 @@ case class PriorityMaskCell(prioWidth: Int, widthA: Int, widthB: Int) extends Co
 }
 
 /**
- * Mask bits in io.signals so that io.masked is onehot, according to io.priorities
- *
- * The io.signals bit with the highest associated priority stays set, all others
- * are masked out.
- */
+  * Mask bits in io.signals so that io.masked is onehot, according to io.priorities
+  *
+  * The io.signals bit with the highest associated priority stays set, all others
+  * are masked out.
+  */
 case class RecursivePriorityGate(prioWidth: Int, width: Int) extends Component {
   val io = new Bundle {
     val signals = in port Bits(width bit)
     val priorities = in port Vec(UInt(prioWidth bit), width)
-    val masked = out port Bits(width bit)
-    val selectedPrio = out port UInt(prioWidth bit)
+    val result = out port PriorityBundle(prioWidth, width)
   }
 
   val inputs = Vec.tabulate(width) { i =>
     PriorityBundle(io.signals(i), io.priorities(i), io.signals(i, 1 bit))
   }
-  val lastStage = inputs.reduceBalancedTree { (a, b) =>
+  io.result := inputs.reduceBalancedTree { (a, b) =>
     val cell = PriorityMaskCell(prioWidth, a.signals.getWidth, b.signals.getWidth)
     cell.io.a := a
     cell.io.b := b
     cell.io.result
   }
-  io.masked := lastStage.signals
-  io.selectedPrio := lastStage.prio
 }
 
-@deprecated("not verified")
+/**
+ * Mask bits in io.signals so that io.masked is onehot, according to io.priorities
+ *
+ * The io.signals bit with the highest associated priority stays set, all others
+ * are masked out.
+ * Warning: the assigned priorities must be unique
+ */
 case class OneHotPriorityGate(prioWidth: Int, width: Int) extends Component {
   val io = new Bundle {
     val signals = in port Bits(width bit)
@@ -143,20 +145,34 @@ case class OneHotPriorityGate(prioWidth: Int, width: Int) extends Component {
     oh & B(io.signals(i), oh.getWidth)
   }
   val all = onehot.reduce(_ | _)
-  val prioritized = OHMasking.first(all)
-  io.masked := all & prioritized
+  val highestOh = OHMasking.last(all)
+
+  onehot.zipWithIndex.foreach(x => {
+    val (oh, idx) = x
+    io.masked(idx) := (oh & highestOh).orR
+  })
 }
 
-@deprecated("not verified")
-case class EqualityGate(prioWidth: Int, width: Int) extends Component {
+/**
+ * Mask bits in io.signals so that io.masked is onehot, according to io.priorities
+ *
+ * The io.signals bit with the highest associated priority stays set, all others
+ * are masked out.
+ * Warning: the assigned priorities must be unique
+ */
+case class EqualityPriorityGate(prioWidth: Int, width: Int, allowNonUniquePriorities: Boolean = false) extends Component {
   val io = new Bundle {
     val signals = in port Bits(width bit)
     val priorities = in port Vec(UInt(prioWidth bit), width)
     val masked = out port Bits(width bit)
   }
-  val maxPrio = io.priorities.reduceBalancedTree((a, b) => (a > b) ? a | b)
-  io.masked.clearAll()
-  (0 until width).foreach(i => io.masked(i) := io.priorities(i) === maxPrio)
+  val maskedPrio = Vec.tabulate(width) { i => io.signals(i) ? io.priorities(i) | U(0) }
+  val maxPrio = maskedPrio.reduceBalancedTree((a, b) => (a > b) ? a | b)
+  val masked = B(0, width bit)
+  (0 until width).foreach(i =>
+    masked(i) := (io.priorities(i) === maxPrio) && io.signals(i)
+  )
+  io.masked := (if(allowNonUniquePriorities) OHMasking.last(masked) else masked)
 }
 
 // TODO encode bit-by-bit on the fly in tree with binary output
@@ -199,12 +215,13 @@ object BenchmarkPriorityEncoder
     )
 object BenchmarkPriorityGate
     extends YosysBenchmark(
-      Seq(4, 7, 10)
+      Seq(4, 7, 10, 13)
         .flatMap { w =>
           Seq(
             (f"$w%2d recursive gate", () => RecursivePriorityGate(log2Up(w), w)),
             (f"$w%2d onehot gate", () => OneHotPriorityGate(log2Up(w), w)),
-            (f"$w%2d equality gate", () => EqualityGate(log2Up(w), w))
+            (f"$w%2d equality gate", () => EqualityPriorityGate(log2Up(w), w)),
+            (f"$w%2d equality gate nq", () => EqualityPriorityGate(log2Up(w), w, true))
           )
         }
         .sortWith(_._1 < _._1): _*

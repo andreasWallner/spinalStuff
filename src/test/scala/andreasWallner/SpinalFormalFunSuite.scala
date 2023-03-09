@@ -17,7 +17,7 @@ class SpinalFormalFunSuite extends AnyFunSuite {
   }
 
   def test(testName: String)(testFun: => Unit): Unit = {
-    test("formal_" + testName, SpinalFormal) {
+    test(testName, SpinalFormal) {
       testFun
     }
   }
