@@ -27,8 +27,8 @@ class YosysBenchmark(c: (String, () => Component)*) extends App {
       "benchmarkWorkspace",
       Rtl(report),
       family = "ice40",
-      device = "lp1k",
-      fpgaPackage = "qn84",
+      device = "hx8k",
+      fpgaPackage = "ct256",
       allowUnconstrained = true,
       yosysPath = "/opt/oss-cad-suite-20230105/bin/",
       nextpnrPath = "/home/uhu01/git/nextpnr/",
@@ -37,11 +37,15 @@ class YosysBenchmark(c: (String, () => Component)*) extends App {
     (id, synth)
   }
 
-  val line = "%1$-20s %2$-10s %3$-10s"
+  val maxIdLen = results.map(_._1.length).max
+  val maxFMax = results.map(_._2.fmax().toBigDecimal).max
+  val line = "%1$-" + (maxIdLen+2).toString + "s %2$-10s %3$-10s  "
   println(line.format("Name", "f max", "size"))
   println("-" * 40)
   for ((id, result) <- results) {
     val (engVal, unit) = result.fmax().decompose
-    println(line.format(id, f"${engVal.toLong} $unit", result.getArea().split('\n').head))
+    val relativeFMax = (10 * result.fmax().toBigDecimal / maxFMax + 0.5).toInt
+    println(line.format(id, f"${engVal.toLong} $unit", result.getArea().split('\n').head) + ("*" * relativeFMax))
   }
 }
+import scala.math.Ordering.Implicits
