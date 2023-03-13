@@ -151,6 +151,9 @@ object Utils {
           new DumpAST(cleanIndent + "?").dump(bm.cond)
           new DumpAST(cleanIndent + "T").dump(bm.whenTrue)
           new DumpAST(cleanIndent + "F").dump(bm.whenFalse)
+        case ad: AnalogDriver =>
+          new DumpAST(cleanIndent + "data  ").dump(ad.data)
+          new DumpAST(cleanIndent + "enable").dump(ad.enable)
         case _ => e.foreachExpression(indented.dump)
       }
     }
@@ -166,8 +169,8 @@ object Utils {
       println(")")
       s match {
         case das: DataAssignmentStatement =>
-          new DumpAST(indent + "   source ").dump(das.source)
           new DumpAST(indent + "   target ").dump(das.target)
+          new DumpAST(indent + "   source ").dump(das.source)
         case ss: SwitchStatement =>
           new DumpAST(cleanIndent + "  value ").dump(ss.value)
           ss.elements.foreach { se =>
@@ -203,5 +206,21 @@ object Utils {
     def apply(e: Expression): Unit = apply(e, withHashCode = false)
     def apply(e: Expression, withHashCode: Boolean): Unit =
       new DumpAST("", withHashCode).dump(e)
+  }
+
+  // thanks to Andrew Zakordonets (https://biercoff.com/easily-measuring-code-execution-time-in-scala/)
+  def time[R](block: => R): R = {
+    val t0 = System.nanoTime()
+    val result = block
+    val t1 = System.nanoTime()
+    println("Elapsed time: " + (t1 - t0) + " ns")
+    result
+  }
+  def time[R](id: String)(block: => R): R = {
+    val t0 = System.nanoTime()
+    val result = block
+    val t1 = System.nanoTime()
+    println(id + " elapsed time: " + (t1 - t0) + " ns")
+    result
   }
 }
