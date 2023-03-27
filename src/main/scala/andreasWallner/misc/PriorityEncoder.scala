@@ -1,7 +1,6 @@
 package andreasWallner.misc
 
-import andreasWallner.Utils.divCeil
-import andreasWallner.eda.YosysBenchmark
+import andreasWallner.eda.{YosysBenchmark, VivadoBenchmark}
 import spinal.core._
 import spinal.lib._
 
@@ -249,7 +248,21 @@ object BenchmarkPriorityGate
             (f"$w%2d recursive gate", () => RecursivePriorityGate(log2Up(w), w)),
             (f"$w%2d onehot gate", () => OneHotPriorityGate(log2Up(w), w)),
             (f"$w%2d equality gate", () => EqualityPriorityGate(log2Up(w), w)),
-            (f"$w%2d equality gate nq", () => EqualityPriorityGate(log2Up(w), w, true))
+            (f"$w%2d equality gate nq", () => EqualityPriorityGate(log2Up(w), w, allowNonUniquePriorities = true))
+          )
+        }
+        .sortWith(_._1 < _._1): _*
+    )
+
+object VivadoPriorityGate
+    extends VivadoBenchmark(
+      Seq(4, 7, 10, 13, 20)
+        .flatMap { w =>
+          Seq(
+            (f"$w%2d recursive gate", () => RecursivePriorityGate(log2Up(w), w)),
+            (f"$w%2d onehot gate", () => OneHotPriorityGate(log2Up(w), w)),
+            (f"$w%2d equality gate", () => EqualityPriorityGate(log2Up(w), w)),
+            (f"$w%2d equality gate nq", () => EqualityPriorityGate(log2Up(w), w, allowNonUniquePriorities = true))
           )
         }
         .sortWith(_._1 < _._1): _*
