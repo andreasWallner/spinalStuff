@@ -51,34 +51,6 @@ object Ulx3sRenamer {
   }
 }
 
-case class Ulx3s() extends Component {
-  val io = new Bundle {
-    val clk_25mhz = in Bool()
-    val led = out Bits(8 bit)
-    /* ... */
-  }
-  noIoPrefix()
-  val clock_domain = ClockDomain(
-    clock=io.clk_25mhz,
-    frequency=FixedFrequency(25 MHz),
-    config=ClockDomainConfig(resetKind=BOOT)
-  )
-  new ClockingArea(clock_domain) {
-    /* place all your logic here e.g. */
-    val cntr = Reg(UInt(8 bit)) init 0
-    val slower = new SlowArea(1 Hz) {
-      cntr := cntr + 1
-    }
-    io.led := cntr.asBits
-  }
-}
-
-object Foo {
-  def main(args: Array[String]): Unit = {
-    SpinalConfig().generateVerilog(Ulx3s())
-  }
-}
-
 object ApbSpinalTap {
   def main(args: Array[String]): Unit = {
     val report = SpinalConfig(
@@ -87,16 +59,19 @@ object ApbSpinalTap {
       device = Device.XILINX,
       targetDirectory = "generated"
     ).generateVerilog(
-      XilinxNamer(/*XilinxInOutWrapper*/(new andreasWallner.spinaltap.ApbSpinalTap()))
+      XilinxNamer(XilinxInOutWrapper(new andreasWallner.spinaltap.ApbSpinalTap()))
     )
-    new MuxConnections.CppHeader(report.toplevel.muxConnections, Some("spinaltap::iomux")).write(f"${GlobalData.get.phaseContext.config.targetDirectory}/iomux_connection.hpp")
+    new MuxConnections.CppHeader(report.toplevel.muxConnections, Some("spinaltap::iomux"))
+      .write(f"${GlobalData.get.phaseContext.config.targetDirectory}/iomux_connection.hpp")
     for (e <- report.toplevel.elements) {
       e match {
         case (b: BusComponent, offset: Long) =>
           println(f"${b.busComponentName} @ $offset%x")
           new CHeader(b).write()
-          new CppHeader(b, namespace=Some(s"spinaltap::${b.busComponentName.toLowerCase}::registers")).write()
-          //new KvasirHeader(b, namespace=Some(s"spinaltap::register::${b.busComponentName.toLowerCase}")).write()
+          new CppHeader(
+            b,
+            namespace = Some(s"spinaltap::${b.busComponentName.toLowerCase}::registers")
+          ).write()
           new YAML(b).write()
           new HTML(b).write()
         case other => println("Not generating for " + other)
