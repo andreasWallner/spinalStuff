@@ -7,7 +7,17 @@ import spinal.lib._
 
 import scala.language.postfixOps
 
-case class PriorityEncoder(width: Int, encodeInvalid: Boolean = false) extends Component {
+object PriorityEncoder {
+  def apply(width: Int, encodeInvalid: Boolean = false) = new PriorityEncoder(width, encodeInvalid)
+  def apply(b: Bits, name: String): (Bool, UInt) = {
+    val encoder = new PriorityEncoder(b.getWidth)
+    if (name != null) encoder.setPartialName(name)
+    encoder.io.bits := b
+    (encoder.io.valid, encoder.io.encoded)
+  }
+}
+
+class PriorityEncoder(width: Int, encodeInvalid: Boolean = false) extends Component {
   val outputStates = if (!encodeInvalid) width else width + 1
   val io = new Bundle {
     val bits = in port Bits(width bit)
@@ -26,47 +36,41 @@ case class PriorityEncoder(width: Int, encodeInvalid: Boolean = false) extends C
   io.valid := io.bits.orR
 }
 
-@deprecated("not fully tested, needs specific numbers")
 case class RecursivePriorityEncoder(width: Int, muxWidth: Int) extends Component {
   val io = new Bundle {
     val bits = in port Bits(width bit)
     val encoded = out port UInt(log2Up(width) bit)
     val valid = out port Bool()
   }
+  assert(isPow2(muxWidth), "muxWidth must be a power of 2")
 
-  val (vs, es) = firstLayer(io.bits).unzip
-  val (valid, encoded) = muxLayer(vs, es)
+  def recurseLayer(bv: Vec[Bool], toSel: Option[Vec[UInt]] = None, layer: Int = 1): (Bool, UInt) = {
+    if (bv.size > 1) {
+      val (valids, encodeds) = bv
+        .grouped(muxWidth)
+        .map { b =>
+          PriorityEncoder(b.asBits(), f"layer$layer")
+        }
+        .toArray
+        .unzip
+      if (toSel.isDefined) {
+        assert(toSel.get.size == bv.size)
+        val muxeds = (encodeds, toSel.get.grouped(muxWidth).toArray).zipped.map { (e, s) =>
+          e @@ e.muxListDc(s.zipWithIndex.map { case (b: UInt, idx: Int) => idx -> b })
+        }
+        recurseLayer(Vec(valids), Some(Vec(muxeds)), layer + 1)
+      } else {
+        recurseLayer(Vec(valids), Some(Vec(encodeds)), layer + 1)
+      }
+    } else {
+      (bv(0), toSel.get(0))
+    }
+  }
+
+  val bits_bools = Vec.tabulate(width) { io.bits(_) }
+  val (valid, encoded) = recurseLayer(bits_bools)
   io.valid := valid
   io.encoded := encoded
-
-  private def subEncoder(b: Bits) = {
-    // TODO decide on whether to instantiate a recursive encoder (and really recurse) or a normal one
-    val pe = PriorityEncoder(b.getWidth)
-    pe.io.bits := b
-    (pe.io.valid, pe.io.encoded)
-  }
-
-  private def firstLayer(inputs: Bits) = {
-    val inputWidth = divCeil(width, muxWidth)
-    val resized = inputs.resize(inputWidth * muxWidth bit)
-    val slices = resized.subdivideIn(muxWidth slices)
-    for (slice <- slices) yield subEncoder(slice)
-  }
-
-  private def muxLayer(inputs: Seq[Bool], selectVals: Seq[UInt]) = {
-    assert(inputs.size == selectVals.size)
-    val width = inputs.size
-
-    val (valid, encoded) = subEncoder(Cat(inputs))
-
-    val muxed = UInt(selectVals.head.getWidth bit)
-    muxed.assignDontCare()
-    switch(encoded) {
-      for (i <- 0 until width) is(i) { muxed := selectVals(i) }
-    }
-
-    (valid, (encoded ## muxed).asUInt)
-  }
 }
 
 object PriorityBundle {
@@ -128,12 +132,12 @@ case class RecursivePriorityGate(prioWidth: Int, width: Int) extends Component {
 }
 
 /**
- * Mask bits in io.signals so that io.masked is onehot, according to io.priorities
- *
- * The io.signals bit with the highest associated priority stays set, all others
- * are masked out.
- * Warning: the assigned priorities must be unique
- */
+  * Mask bits in io.signals so that io.masked is onehot, according to io.priorities
+  *
+  * The io.signals bit with the highest associated priority stays set, all others
+  * are masked out.
+  * Warning: the assigned priorities must be unique
+  */
 case class OneHotPriorityGate(prioWidth: Int, width: Int) extends Component {
   val io = new Bundle {
     val signals = in port Bits(width bit)
@@ -153,26 +157,50 @@ case class OneHotPriorityGate(prioWidth: Int, width: Int) extends Component {
   })
 }
 
-/**
- * Mask bits in io.signals so that io.masked is onehot, according to io.priorities
- *
- * The io.signals bit with the highest associated priority stays set, all others
- * are masked out.
- * Warning: the assigned priorities must be unique
- */
-case class EqualityPriorityGate(prioWidth: Int, width: Int, allowNonUniquePriorities: Boolean = false) extends Component {
+@deprecated("broken and used as reproducer")
+case class OneHotPriorityGateErrorRepro(prioWidth: Int, width: Int) extends Component {
   val io = new Bundle {
     val signals = in port Bits(width bit)
     val priorities = in port Vec(UInt(prioWidth bit), width)
     val masked = out port Bits(width bit)
   }
-  val maskedPrio = Vec.tabulate(width) { i => io.signals(i) ? io.priorities(i) | U(0) }
+  val onehot = Vec.tabulate(width) { i =>
+    val oh = (B"1" << io.priorities(i)).take(width)
+    oh & B(io.signals(i), oh.getWidth)
+  }
+  val all = onehot.reduce(_ | _)
+  val highestOh = OHMasking.first(all)
+
+  onehot.zipWithIndex.foreach(x => {
+    val (oh, idx) = x
+    io.masked(idx) := (oh & highestOh).orR
+  })
+}
+
+/**
+  * Mask bits in io.signals so that io.masked is onehot, according to io.priorities
+  *
+  * The io.signals bit with the highest associated priority stays set, all others
+  * are masked out.
+  * Warning: the assigned priorities must be unique
+  */
+case class EqualityPriorityGate(
+    prioWidth: Int,
+    width: Int,
+    allowNonUniquePriorities: Boolean = false
+) extends Component {
+  val io = new Bundle {
+    val signals = in port Bits(width bit)
+    val priorities = in port Vec(UInt(prioWidth bit), width)
+    val masked = out port Bits(width bit)
+  }
+  val maskedPrio = Vec.tabulate(width) { i =>
+    io.signals(i) ? io.priorities(i) | U(0)
+  }
   val maxPrio = maskedPrio.reduceBalancedTree((a, b) => (a > b) ? a | b)
   val masked = B(0, width bit)
-  (0 until width).foreach(i =>
-    masked(i) := (io.priorities(i) === maxPrio) && io.signals(i)
-  )
-  io.masked := (if(allowNonUniquePriorities) OHMasking.last(masked) else masked)
+  (0 until width).foreach(i => masked(i) := (io.priorities(i) === maxPrio) && io.signals(i))
+  io.masked := (if (allowNonUniquePriorities) OHMasking.last(masked) else masked)
 }
 
 // TODO encode bit-by-bit on the fly in tree with binary output

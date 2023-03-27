@@ -9,9 +9,6 @@ import andreasWallner.sim._
 
 import scala.language.postfixOps
 import org.scalactic.TimesOnInt.convertIntToRepeater
-import org.scalatest.Ignore
-
-import java.util.{Formattable, Formatter}
 
 class PriorityEncoderTest extends SpinalFunSuite {
   val dut = SpinalSimConfig()
@@ -30,7 +27,6 @@ class PriorityEncoderTest extends SpinalFunSuite {
   }
 }
 
-@Ignore
 class RecursivePriorityEncoderTest extends SpinalFunSuite {
   val dut = SpinalSimConfig()
     .withWaveOverride("fst")
@@ -49,7 +45,34 @@ class RecursivePriorityEncoderTest extends SpinalFunSuite {
   }
 }
 
-class PriorityGateTests extends SpinalFormalFunSuite {
+class PriorityEncoderFormal extends SpinalFormalFunSuite {
+  val config = SpinalFormalConfig()
+    .withBMC(5)
+    .withProve(5)
+    .withCover(5)
+  test("equivalence") {
+    config.doVerify(new Component {
+      val dut1 = FormalDut(PriorityEncoder(16))
+      val dut2 = FormalDut(RecursivePriorityEncoder(16, 4))
+
+      assumeInitial(ClockDomain.current.readResetWire)
+
+      val input = Bits(16 bit)
+      anyseq(input)
+      dut1.io.bits := input
+      dut2.io.bits := input
+
+      assert(!dut1.io.valid || (dut1.io.encoded === dut2.io.encoded))
+      assert(dut1.io.valid === dut2.io.valid)
+
+      cover(dut1.io.encoded === 0)
+      cover(dut1.io.encoded === 15)
+      cover(dut1.io.encoded === 7)
+    })
+  }
+}
+
+class PriorityGateFormal extends SpinalFormalFunSuite {
   def popcnt(bv: BitVector): UInt = {
     val result = (0 until bv.getWidth).foldLeft(U(0, log2Up(bv.getWidth) bit))((u, idx) =>
       u + bv(idx).asUInt(bv.getWidth bit)
@@ -82,6 +105,20 @@ class PriorityGateTests extends SpinalFormalFunSuite {
   test("OneHotPriorityGate") {
     config.doVerify(new Component {
       val dut = FormalDut(OneHotPriorityGate(prioWidth, width))
+      formalSetup(
+        dut.io.signals,
+        dut.io.priorities,
+        dut.io.masked
+      )
+      assumeAllDifferent(dut.io.priorities)
+      dut.io.priorities.map(p => assume(p <= (width - 1)))
+    })
+  }
+
+  test("OneHotPriorityGateErrorRepro") {
+    assume(condition = false) // ignore this test
+    config.doVerify(new Component {
+      val dut = FormalDut(OneHotPriorityGateErrorRepro(prioWidth, width))
       formalSetup(
         dut.io.signals,
         dut.io.priorities,
