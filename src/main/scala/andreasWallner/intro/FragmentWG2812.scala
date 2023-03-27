@@ -1,7 +1,7 @@
 package andreasWallner.intro
 
 import andreasWallner.sim.simLog
-import andreasWallner.yosys.YosysFlow
+import andreasWallner.eda.YosysFlow
 import spinal.core._
 import spinal.lib._
 import spinal.lib.fsm._

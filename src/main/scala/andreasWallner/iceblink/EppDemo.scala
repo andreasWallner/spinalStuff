@@ -3,7 +3,7 @@ package andreasWallner.iceblink
 import spinal.core._
 import spinal.lib._
 import spinal.lib.eda.bench.Rtl
-import andreasWallner.yosys.YosysFlow
+import andreasWallner.eda.YosysFlow
 import spinal.lib.io.InOutWrapper
 
 import scala.language.postfixOps

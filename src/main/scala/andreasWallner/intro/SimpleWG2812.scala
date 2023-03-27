@@ -2,7 +2,7 @@ package andreasWallner.intro
 
 // WIP Steps for introducing SpinalHDL
 
-import andreasWallner.yosys.YosysFlow
+import andreasWallner.eda.YosysFlow
 import spinal.core._
 import spinal.core.sim.SpinalSimConfig
 import spinal.lib.eda.bench.Rtl

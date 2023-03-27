@@ -1,7 +1,7 @@
 package andreasWallner.iceblink
 
 import andreasWallner.la.{AnalyzerGenerics, RLECompressor}
-import andreasWallner.yosys.YosysFlow
+import andreasWallner.eda.YosysFlow
 import spinal.core._
 import spinal.lib.eda.bench.Rtl
 import spinal.lib.io.InOutWrapper

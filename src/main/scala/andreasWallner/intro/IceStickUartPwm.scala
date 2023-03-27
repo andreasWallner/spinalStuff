@@ -4,7 +4,7 @@ import andreasWallner.iceblink.IceStickIO
 import andreasWallner.io.pwm.Apb3Pwm
 import andreasWallner.io.pwm.Pwm.{CoreParameters, PeripheralParameters}
 import andreasWallner.registers.datamodel.{Bus, BusElement}
-import andreasWallner.yosys.YosysFlow
+import andreasWallner.eda.YosysFlow
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb.Apb3Config

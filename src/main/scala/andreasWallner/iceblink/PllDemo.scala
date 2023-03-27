@@ -1,7 +1,7 @@
 package andreasWallner.iceblink
 
 import andreasWallner.blackbox.ice40.{SB_PLL40_CORE, SB_PLL40_PAD_CONFIG_EXT}
-import andreasWallner.yosys.YosysFlow
+import andreasWallner.eda.YosysFlow
 import spinal.core._
 import spinal.lib.{Counter, Delay, master}
 import spinal.lib.blackbox.lattice.ice40.{SB_GB, SB_PLL40_PAD}

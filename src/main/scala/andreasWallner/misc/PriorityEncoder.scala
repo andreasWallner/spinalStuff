@@ -1,7 +1,7 @@
 package andreasWallner.misc
 
 import andreasWallner.Utils.divCeil
-import andreasWallner.yosys.YosysBenchmark
+import andreasWallner.eda.YosysBenchmark
 import spinal.core._
 import spinal.lib._
 

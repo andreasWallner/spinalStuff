@@ -1,4 +1,4 @@
-package andreasWallner.yosys
+package andreasWallner.eda
 
 import spinal.core.{HertzNumber, SpinalError, SpinalInfo, TimeNumber}
 import spinal.lib.eda.bench.{Report, Rtl}
