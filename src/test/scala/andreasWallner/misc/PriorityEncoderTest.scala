@@ -116,7 +116,7 @@ class PriorityGateFormal extends SpinalFormalFunSuite {
   }
 
   test("OneHotPriorityGateErrorRepro") {
-    assume(condition = false) // ignore this test
+    assume(false) // ignore this test
     config.doVerify(new Component {
       val dut = FormalDut(OneHotPriorityGateErrorRepro(prioWidth, width))
       formalSetup(
