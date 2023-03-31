@@ -1,7 +1,7 @@
 package andreasWallner.diagram
 
 import spinal.core.{BaseType, Component, Data, ExternalDriverTag}
-import spinal.core.internals.{AssignmentExpression, BinaryOperator, BitVectorBitAccessFixed, BitVectorRangedAccessFixed, BitsBitAccessFixed, Cast, CastUIntToBits, ConstantOperator, DataAssignmentStatement, DeclarationStatement, Expression, InitAssignmentStatement, LeafStatement, Literal, Operator, Resize, SubAccess, SwitchStatement, SwitchStatementKeyBool, TreeStatement, UnaryOperator, WhenStatement}
+import spinal.core.internals.{AssignmentExpression, BinaryMultiplexer, BinaryOperator, BitVectorBitAccessFixed, BitVectorRangedAccessFixed, BitsBitAccessFixed, Cast, CastUIntToBits, ConstantOperator, DataAssignmentStatement, DeclarationStatement, Expression, InitAssignmentStatement, LeafStatement, Literal, Operator, Resize, SubAccess, SwitchStatement, SwitchStatementKeyBool, TreeStatement, UnaryOperator, WhenStatement}
 
 import java.io.{File, PrintWriter, Writer}
 import scala.language.postfixOps
@@ -43,6 +43,13 @@ class Graph(writer: Writer) {
     writer.write(s"""   $f -> $t [$attr]\n""")
   }
 
+  def connection(from: Any, to: Any, toRec: String, attributes: (String, String)*): Unit = {
+    val f = s"sig_${Integer.toHexString(System.identityHashCode(from))}"
+    val t = s"sig_${Integer.toHexString(System.identityHashCode(to))}:$toRec"
+    val attr = attributes.map(a => a._1 + "=\"" + a._2 + "\"").mkString(" ")
+    writer.write(s"""   $f -> $t [$attr]\n""")
+  }
+
   def node(x: Expression, rank: String, attributes: (String, String)*): Unit = { // make rank enum
     val xx = s"sig_${Integer.toHexString(System.identityHashCode(x))}"
     val attr = attributes.map(a => a._1 + "=\"" + a._2 + "\"").mkString(" ")
@@ -58,6 +65,13 @@ class Graph(writer: Writer) {
     val xx = s"sig_${Integer.toHexString(System.identityHashCode(x))}"
     val attr = attributes.map(a => a._1 + "=\"" + a._2 + "\"").mkString(" ")
     writer.write(s"  { $xx [$attr] }\n")
+  }
+
+  def mux2(x: Expression, attributes: (String, String)*): String = {
+    val id = s"sig_${Integer.toHexString(System.identityHashCode(x))}"
+    writer.write(
+      s"""{ $id [shape=record, label="{{<t> T|<sel> ?|<f> F}|<out> =}"] }\n""")
+    id
   }
 }
 
@@ -111,10 +125,10 @@ case class Diagrammer(c: Component) {
       }
       e match {
         case io: BaseType if io.isOutput || io.isInOut || io.isAnalog =>
-          println(s"o  ${io.getClass} $io ${io.hashCode()}")
-          println()
+          //println(s"o  ${io.getClass} $io ${io.hashCode()}")
+          //println()
         case io: BaseType if !io.isDirectionLess =>
-          println(s"io ${io.getClass} $io ${io.hashCode()}")
+          //println(s"io ${io.getClass} $io ${io.hashCode()}")
         case l: Literal =>
           graph.node(l, "label"->l.getValue().toString()) // TODO intelligent radix?
         case uop: UnaryOperator =>
@@ -137,9 +151,15 @@ case class Diagrammer(c: Component) {
           graph.node(a, "label"->s"x[${a.hi}:${a.lo}]", "style"->style)
           graph.connection(a.source, a)
 
+        case bm: BinaryMultiplexer =>
+          graph.mux2(bm)
+          graph.connection(bm.whenTrue, bm, "t")
+          graph.connection(bm.whenFalse, bm, "f")
+          graph.connection(bm.cond, bm, "sel")
+
         case bt: BaseType =>
-          println(s"! ${bt.getClass} $bt ${bt.hashCode()}")
-        case o => println(s"${o.getClass} $o")
+          println(s"not implemented ! ${bt.getClass} $bt ${bt.hashCode()}")
+        case o => println(s"unknown ! ${o.getClass} $o ${o.hashCode()}")
       }
       // go deeper
     }
