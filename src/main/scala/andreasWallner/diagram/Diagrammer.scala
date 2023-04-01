@@ -1,9 +1,37 @@
 package andreasWallner.diagram
 
 import spinal.core.{BaseType, Component, Data, ExternalDriverTag}
-import spinal.core.internals.{AssignmentExpression, BinaryMultiplexer, BinaryOperator, BitVectorBitAccessFixed, BitVectorRangedAccessFixed, BitsBitAccessFixed, Cast, CastUIntToBits, ConstantOperator, DataAssignmentStatement, DeclarationStatement, Expression, InitAssignmentStatement, LeafStatement, Literal, Operator, Resize, SubAccess, SwitchStatement, SwitchStatementKeyBool, TreeStatement, UnaryOperator, WhenStatement}
+import spinal.core.internals.{
+  AssignmentExpression,
+  BinaryMultiplexer,
+  BinaryOperator,
+  BitVectorBitAccessFixed,
+  BitVectorRangedAccessFixed,
+  BitsBitAccessFixed,
+  Cast,
+  CastUIntToBits,
+  ConstantOperator,
+  DataAssignmentStatement,
+  DeclarationStatement,
+  Expression,
+  InitAssignmentStatement,
+  LeafStatement,
+  Literal,
+  Operator,
+  Resize,
+  ScopeStatement,
+  Statement,
+  SubAccess,
+  SwitchStatement,
+  SwitchStatementKeyBool,
+  TreeStatement,
+  UnaryOperator,
+  WhenStatement
+}
 
 import java.io.{File, PrintWriter, Writer}
+import scala.collection.mutable
+import scala.collection.mutable.ArrayBuffer
 import scala.language.postfixOps
 
 class Graph(writer: Writer) {
@@ -25,8 +53,7 @@ class Graph(writer: Writer) {
   }
 
   def openSubgraph(id: String, name: String): Unit = {
-    writer.write(
-      s"""{ subgraph cluster_$id {
+    writer.write(s"""{ subgraph cluster_$id {
          |  label = "$name"
          |  style = solid
          |""".stripMargin)
@@ -67,11 +94,18 @@ class Graph(writer: Writer) {
     writer.write(s"  { $xx [$attr] }\n")
   }
 
-  def mux2(x: Expression, attributes: (String, String)*): String = {
+  def mux2(x: Expression): String = {
     val id = s"sig_${Integer.toHexString(System.identityHashCode(x))}"
-    writer.write(
-      s"""{ $id [shape=record, label="{{<t> T|<sel> ?|<f> F}|<out> =}"] }\n""")
+    writer.write(s"""{ $id [shape=record, label="{{<t> T|<sel> ?|<f> F}|<out> =}"] }\n""")
     id
+  }
+
+  def mux3col(x: Expression, i: Seq[Seq[String]]) = {
+    val values = i.zipWithIndex
+      .map { case (ii, idx) => s"""{<e$idx> =|{${ii.mkString("|")}}}""" }
+      .mkString("|")
+    val id = s"sig_${Integer.toHexString(System.identityHashCode(x))}"
+    writer.write(s"""{ $id [shape=record, label="{{<sel> ?|$values}|=}"] }\n""")
   }
 }
 
@@ -111,12 +145,12 @@ case class Diagrammer(c: Component) {
         case xx if xx.isInput  => ("source", "#b5fed9", "rectangle")
       }
       val style = if (x.isReg) "filled, bold" else "filled"
-      graph.node(x, rank, "style"->style, "fillcolor"->color, "shape"->shape)
+      graph.node(x, rank, "style" -> style, "fillcolor" -> color, "shape" -> shape)
       if (x.isReg)
         connectReg(x)
     }
 
-    def writeTargets(e: Expression): Unit = {
+    def writeStatic(e: Expression): Unit = {
       val style = e match {
         case bt: BaseType if bt.isReg =>
           connectReg(bt)
@@ -124,31 +158,26 @@ case class Diagrammer(c: Component) {
         case _ => ""
       }
       e match {
-        case io: BaseType if io.isOutput || io.isInOut || io.isAnalog =>
-          //println(s"o  ${io.getClass} $io ${io.hashCode()}")
-          //println()
-        case io: BaseType if !io.isDirectionLess =>
-          //println(s"io ${io.getClass} $io ${io.hashCode()}")
         case l: Literal =>
-          graph.node(l, "label"->l.getValue().toString()) // TODO intelligent radix?
+          graph.node(l, "label" -> l.getValue().toString()) // TODO intelligent radix?
         case uop: UnaryOperator =>
-          graph.node(uop, "label"->uop.opName, "style"->style)
+          graph.node(uop, "label" -> uop.opName, "style" -> style)
           graph.connection(uop.source, uop)
         case bop: BinaryOperator =>
-          graph.node(bop, "label"->bop.opName, "style"->style)
+          graph.node(bop, "label" -> bop.opName, "style" -> style)
           graph.connection(bop.left, bop)
           graph.connection(bop.right, bop)
         case cop: ConstantOperator => ???
 
         case c: Cast =>
-          graph.node(c, "label"->c.opName, "style"->style)
+          graph.node(c, "label" -> c.opName, "style" -> style)
           graph.connection(c.input, c)
 
         case a: BitVectorBitAccessFixed => // stop decent here?
-          graph.node(a, "label"->s"x[${a.bitId}", "style"->style)
+          graph.node(a, "label" -> s"x[${a.bitId}", "style" -> style)
           graph.connection(a.source, a)
         case a: BitVectorRangedAccessFixed =>
-          graph.node(a, "label"->s"x[${a.hi}:${a.lo}]", "style"->style)
+          graph.node(a, "label" -> s"x[${a.hi}:${a.lo}]", "style" -> style)
           graph.connection(a.source, a)
 
         case bm: BinaryMultiplexer =>
@@ -158,29 +187,89 @@ case class Diagrammer(c: Component) {
           graph.connection(bm.cond, bm, "sel")
 
         case bt: BaseType =>
-          println(s"not implemented ! ${bt.getClass} $bt ${bt.hashCode()}")
-        case o => println(s"unknown ! ${o.getClass} $o ${o.hashCode()}")
+        //println(s"not implemented ! ${bt.getClass} $bt ${bt.hashCode()}")
+        case o => //println(s"unknown ! ${o.getClass} $o ${o.hashCode()}")
       }
       // go deeper
     }
 
-    c.dslBody.walkStatements {
-      case d: BaseType with DeclarationStatement =>
-        val style = if (d.isReg) "bold" else ""
-        graph.node(d, "label"->d.getName(), "style"->style)
-        if(d.hasTag(classOf[ExternalDriverTag]))
-          graph.connection(d.getTag(classOf[ExternalDriverTag]).get.driver, d)
-      case da: DataAssignmentStatement =>
-        da.walkDrivingExpressions(writeTargets)
-        graph.connection(da.source, da.target)
+    implicit class ScopeStatementPimper(ss: ScopeStatement) {
+      def mapStatements[B](f: Statement => B): ArrayBuffer[B] = {
+        val b = ArrayBuffer[B]()
+        ss.foreachStatements(s => b += f(s))
+        b
+      }
+      def exists(f: Statement => Boolean): Boolean = {
+        var ptr = ss.head
+        while (ptr != null) {
+          if (f(ptr))
+            return true
+          ptr = ptr.nextScopeStatement
+        }
+        false
+      }
+      def filter(f: Statement => Boolean): Seq[Statement] = {
+        val b = ArrayBuffer[Statement]()
+        ss.foreachStatements(s => if (f(s)) b += s)
+        b
+      }
+    }
 
-      case ia: InitAssignmentStatement =>
-      case s: SwitchStatement =>
-        graph.node(s, "label"->"switch", "color"->"blue")
-      case w: WhenStatement =>
-        println(s">> w ${w}")
-      case t =>
-        println(s">> t ${t}")
+    def writeSimpleSwitch(s: SwitchStatement, target: Expression): Unit = {
+      graph.mux3col(
+        target,
+        s.elements.map(e => e.keys.map(k => k.asInstanceOf[Literal].getValue().toString()))
+      ) // TODO nicer printing...
+      graph.connection(s.value, target, "sel")
+      s.elements.zipWithIndex.foreach {
+        case (e, idx) =>
+          val das = e.scopeStatement
+            .filter(s => s.asInstanceOf[DataAssignmentStatement].target == target)
+            .head
+            .asInstanceOf[DataAssignmentStatement]
+          graph.connection(das.source, target, s"e$idx")
+      }
+    }
+
+    val assignments = mutable.HashMap[Expression, ArrayBuffer[DataAssignmentStatement]]()
+    def collectAndWriteStatic(s: Statement): Unit = {
+      s match {
+        case d: BaseType with DeclarationStatement =>
+          val style = if (d.isReg) "bold" else ""
+          graph.node(d, "label" -> d.getName(), "style" -> style)
+          if (d.hasTag(classOf[ExternalDriverTag]))
+            graph.connection(d.getTag(classOf[ExternalDriverTag]).get.driver, d)
+        case da: DataAssignmentStatement =>
+          da.walkDrivingExpressions(writeStatic)
+          assignments.getOrElseUpdate(da.target, ArrayBuffer()).append(da)
+        case ss: SwitchStatement =>
+        //ss.walkStatements(collectAndWriteStatic)
+        case _ =>
+      }
+    }
+    c.dslBody.walkStatements(collectAndWriteStatic)
+
+    def getSingleSwitch(das: DataAssignmentStatement): Option[SwitchStatement] = {
+      var firstSwitch: SwitchStatement = null
+      das.walkParentTreeStatements {
+        case ss: SwitchStatement if firstSwitch == null => firstSwitch = ss
+        case _: SwitchStatement                         => return None
+      }
+      Some(firstSwitch)
+    }
+
+    for ((target, dass) <- assignments) {
+      if (dass.size == 1) {
+        graph.connection(dass(0).source, dass(0).target)
+      } else {
+        // simple switch?
+        val scopes = dass.map(getSingleSwitch)
+        val isSimpleSwitch = scopes.forall(ss => ss.isDefined && ss.get == scopes.head.get)
+        if (isSimpleSwitch)
+          writeSimpleSwitch(scopes.head.get, target)
+
+        // TODO continue my dumb "synthesis"
+      }
     }
 
     if (c.children.nonEmpty)
