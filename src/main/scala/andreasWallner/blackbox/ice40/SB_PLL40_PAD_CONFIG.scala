@@ -1,6 +1,5 @@
 package andreasWallner.blackbox.ice40
 
-import andreasWallner.Utils.time
 import spinal.core._
 import spinal.lib.blackbox.lattice.ice40.SB_PLL40_PAD_CONFIG
 
@@ -28,24 +27,25 @@ case object PllOutSelect {
   case object SHIFTREG_0deg extends PllOutSelect
 }
 
-sealed trait ShiftregDivMode;
+sealed trait ShiftregDivMode
+
 case object ShiftregDivMode {
-  case object DIV_4 extends ShiftregDivMode;
-  case object DIV_7 extends ShiftregDivMode;
+  case object DIV_4 extends ShiftregDivMode
+  case object DIV_7 extends ShiftregDivMode
 }
 
 object SB_PLL40_PAD_CONFIG_EXT {
   // see iCE40 LP/HP Family Data Sheet, FPGA-DS-02029-4.0, p. 35
-  val fin_min = 10 MHz
-  val fin_max = 133 MHz
-  val fvco_min = 533 MHz
-  val fvco_max = 1066 MHz
-  val fout_min = 16 MHz
-  val fout_max = 275 MHz
+  val fin_min: HertzNumber = 10 MHz
+  val fin_max: HertzNumber = 133 MHz
+  val fvco_min: HertzNumber = 533 MHz
+  val fvco_max: HertzNumber = 1066 MHz
+  val fout_min: HertzNumber = 16 MHz
+  val fout_max: HertzNumber = 275 MHz
   // not from spec, taken from icepll
   // https://github.com/YosysHQ/icestorm/blob/d20a5e9001f46262bf0cef220f1a6943946e421d/icepll/icepll.cc#LL110C43-L110C43
-  val fdiv_min = 10 MHz
-  val fdiv_max = 133 MHz
+  val fdiv_min: HertzNumber = 10 MHz
+  val fdiv_max: HertzNumber = 133 MHz
 
   case class Settings(
       fin: HertzNumber,
@@ -55,36 +55,38 @@ object SB_PLL40_PAD_CONFIG_EXT {
       feedback: FeedbackPath,
       private val shiftreg_div: Int = 1
   ) {
-    def fdiv = fin / (divr + 1)
+    def fdiv: HertzNumber = fin / (divr + 1)
+
     // note that PLL uses 4x frequency internally in PHASE_AND_DELAY mode
-    def fvco = feedback match {
+    def fvco: HertzNumber = feedback match {
       case FeedbackPath.SIMPLE                        => fdiv * (divf + 1)
       case FeedbackPath.DELAY | FeedbackPath.EXTERNAL => fdiv * (divf + 1) * (1 << divq)
       case FeedbackPath.PHASE_AND_DELAY               => fdiv * (divf + 1) * (1 << divq) * shiftreg_div
     }
-    def fout = feedback match {
+
+    def fout: HertzNumber = feedback match {
       case FeedbackPath.PHASE_AND_DELAY => fvco / (1 << divq) / shiftreg_div
       case _                            => fvco / (1 << divq)
     }
 
-    def isValid =
+    def isValid: Boolean =
       fdiv >= fdiv_min && fdiv <= fdiv_max && fvco >= fvco_min && fvco <= fvco_max && fout >= fout_min && fout <= fout_max
 
     def report(): String = {
       val feedbackStr =
         if (feedback == FeedbackPath.SIMPLE) "SIMPLE" else "DELAY or PHASE_AND_DELAY"
       f"""
-        |input freq:   $fin
-        |output freq:  $fout
-        |
-        |feedback: $feedbackStr
-        |PFD freq: $fdiv
-        |VCO freq: $fvco
-        |
-        |DIVR: $divr
-        |DIVF: $divf
-        |DIVQ: $divq
-        |""".stripMargin
+         |input freq:   $fin
+         |output freq:  $fout
+         |
+         |feedback: $feedbackStr
+         |PFD freq: $fdiv
+         |VCO freq: $fvco
+         |
+         |DIVR: $divr
+         |DIVF: $divf
+         |DIVQ: $divq
+         |""".stripMargin
     }
   }
 
@@ -191,7 +193,8 @@ object SB_PLL40_PAD_CONFIG_EXT {
       SHIFTREG_DIV_MODE match {
         case Some(ShiftregDivMode.DIV_4) => 4
         case Some(ShiftregDivMode.DIV_7) => 7
-        case None => 4 // ignored if feedback mode is != PHASE_AND_DELAY, and we default to 4 if not set
+        case None =>
+          4 // ignored if feedback mode is != PHASE_AND_DELAY, and we default to 4 if not set
       }
     )
     if (best.isEmpty)
@@ -240,36 +243,35 @@ object SB_PLL40_PAD_CONFIG_EXT {
 
 //noinspection ScalaUnusedSymbol
 abstract class ICE40_PLL(p: SB_PLL40_PAD_CONFIG, withLock: Boolean = false) extends BlackBox {
-  val RESETB = in Bool ()
-  val BYPASS = in Bool ()
-  val EXTFEEDBACK = if (p.FEEDBACK_PATH == "EXTERNAL") in Bool () else null
-  val DYNAMICDELAY =
+  val RESETB: Bool = in Bool ()
+  val BYPASS: Bool = in Bool ()
+  val EXTFEEDBACK: Bool = if (p.FEEDBACK_PATH == "EXTERNAL") in Bool () else null
+  val DYNAMICDELAY: Bits =
     if (p.DELAY_ADJUSTMENT_MODE_FEEDBACK == "DYNAMIC" || p.DELAY_ADJUSTMENT_MODE_RELATIVE == "DYNAMIC")
       in Bits (8 bit)
     else null
-  val LATCHINPUTVALUE = if (p.ENABLE_ICEGATE == True) in Bool () else null
-  val LOCK = if (withLock) out Bool () else null
-  val PLLOUTGLOBAL = out Bool ()
-  val PLLOUTCORE = out Bool ()
+  val LATCHINPUTVALUE: Bool = if (p.ENABLE_ICEGATE == True) in Bool () else null
+  val LOCK: Bool = if (withLock) out Bool () else null
+  val PLLOUTGLOBAL: Bool = out Bool ()
+  val PLLOUTCORE: Bool = out Bool ()
 
   def clockInput: Bool
 }
 
 case class SB_PLL40_CORE(p: SB_PLL40_PAD_CONFIG, withLock: Boolean = false)
     extends ICE40_PLL(p, withLock) {
-  val REFERENCECLK = in Bool ()
+  val REFERENCECLK: Bool = in Bool ()
 
   p.applyTo(this)
 
-  override def clockInput = REFERENCECLK
+  override def clockInput: Bool = REFERENCECLK
 }
 
 case class SB_PLL40_PAD(p: SB_PLL40_PAD_CONFIG, withLock: Boolean = false)
     extends ICE40_PLL(p, withLock) {
-  val PACKAGEPIN = in Bool ()
+  val PACKAGEPIN: Bool = in Bool ()
 
   p.applyTo(this)
 
-  override def clockInput = PACKAGEPIN
+  override def clockInput: Bool = PACKAGEPIN
 }
-
