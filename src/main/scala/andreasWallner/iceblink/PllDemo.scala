@@ -18,7 +18,7 @@ case class PllDemo() extends Component {
   }
   assert(!clockDomain.hasResetSignal, "only boot reset is supported ATM")
 
-  val pllConfig = SB_PLL40_PAD_CONFIG_EXT.make_config(clockDomain.frequency.getValue, 40 MHz)
+  val pllConfig = SB_PLL40_PAD_CONFIG_EXT.singleOutput(clockDomain.frequency.getValue, 40 MHz)
   val pll = SB_PLL40_CORE(pllConfig, withLock = true)
   println(pllConfig)
   pll.REFERENCECLK := clockDomain.readClockWire
@@ -77,7 +77,7 @@ object Foo {
         "Can't calculate PLL if source frequency is not fixed"
       )
 
-      val config = SB_PLL40_PAD_CONFIG_EXT.make_config(sourceDomain.frequency.getValue, fout)
+      val config = SB_PLL40_PAD_CONFIG_EXT.singleOutput(sourceDomain.frequency.getValue, fout)
       val pll = if (corePll) {
         andreasWallner.blackbox.ice40.SB_PLL40_CORE(config, withLock = useLockedAsReset)
       } else {
