@@ -1,8 +1,8 @@
+/*
 package andreasWallner.blackbox.lattice.ice40
 
 import spinal.core._
-import spinal.lib.blackbox.lattice.ice40.SB_GB
-import andreasWallner.blackbox.ice40._
+import spinal.lib.blackbox.lattice.ice40._
 import andreasWallner.eda.YosysFlow
 import andreasWallner.iceblink.IceStickIO
 import spinal.lib.eda.bench.Rtl
@@ -15,19 +15,18 @@ class IcePLLTest(target: HertzNumber, feedbackPath: FeedbackPath) extends Compon
   val io = master port IceStickIO()
 
   val pllConfig =
-    SB_PLL40_PAD_CONFIG_EXT.singleOutput(
+    SB_PLL40_CONFIG.singleOutput(
       ClockDomain.current.frequency.getValue,
       target,
       FEEDBACK_PATH = Option(feedbackPath),
       PLLOUT_SELECT =
         if (feedbackPath == FeedbackPath.PHASE_AND_DELAY) PllOutSelect.SHIFTREG_0deg
-        else PllOutSelect.GENCLK
+        else PllOutSelect.GENCLK,
+      withLock = true
     )
   println(pllConfig)
-  val pll = SB_PLL40_CORE(pllConfig, withLock = true)
+  val pll = SB_PLL40_CORE(pllConfig)
   pll.REFERENCECLK := clockDomain.readClockWire
-  pll.BYPASS := False
-  pll.RESETB := True
   val buffered = SB_GB(pll.PLLOUTGLOBAL)
   val pllDomain = ClockDomain(buffered, frequency = FixedFrequency(target))
   new ClockingArea(pllDomain) {
@@ -40,8 +39,26 @@ class IcePLLTest(target: HertzNumber, feedbackPath: FeedbackPath) extends Compon
   io.ledGreen := pll.LOCK
 }
 
-class IcePLLTestGen(target: HertzNumber, download: Boolean, feedbackPath: FeedbackPath = null)
-    extends App {
+class IcePLLTestMakePll(target: HertzNumber) extends Component {
+  val io = master port IceStickIO()
+
+  val resettedCD = ClockDomain.current.copy(
+    reset = True,
+    config = ClockDomain.current.config.copy(resetKind = SYNC, resetActiveLevel = LOW)
+  )
+
+  new ClockingArea(resettedCD) {
+    new ClockingArea(ICE40_PLL.makePLL(target)) {
+      new SlowArea(1 Hz) {
+        val counter = Reg(UInt(4 bit))
+        counter := counter + 1
+        io.leds := counter.asBits
+      }
+    }
+  }
+}
+
+class IcePLLTestGen(target: => Component, download: Boolean) extends App {
   import andreasWallner.rtlutils.ComponentPimper
 
   val report = SpinalConfig(
@@ -49,7 +66,7 @@ class IcePLLTestGen(target: HertzNumber, download: Boolean, feedbackPath: Feedba
     defaultClockDomainFrequency = FixedFrequency(12 MHz),
     device = Device.LATTICE
   ).generateVerilog {
-    InOutWrapper(new IcePLLTest(target, feedbackPath))
+    InOutWrapper(target)
   }
   val maxClock = report.toplevel
     .getAllClockDomains()
@@ -78,8 +95,12 @@ class IcePLLTestGen(target: HertzNumber, download: Boolean, feedbackPath: Feedba
     println(s"iceprog ${synth.bitstreamFile.get}" !!)
 }
 
-object IcePLLTest100M extends IcePLLTestGen(96 MHz, true)
-object IcePLLTest40M extends IcePLLTestGen(40 MHz, true)
-object IcePLLTest200M extends IcePLLTestGen(170 MHz, true)
-object IcePLLTest40MDELAY extends IcePLLTestGen(36 MHz, true, FeedbackPath.DELAY)
-object IcePLLTest40MPHASEDELAY extends IcePLLTestGen(36 MHz, true, FeedbackPath.PHASE_AND_DELAY)
+object IcePLLTest96M extends IcePLLTestGen(new IcePLLTest(96 MHz, FeedbackPath.SIMPLE), true)
+object IcePLLTest40M extends IcePLLTestGen(new IcePLLTest(40 MHz, FeedbackPath.SIMPLE), true)
+object IcePLLTest170M extends IcePLLTestGen(new IcePLLTest(170 MHz, FeedbackPath.SIMPLE), true)
+object IcePLLTest36MDELAY extends IcePLLTestGen(new IcePLLTest(36 MHz, FeedbackPath.DELAY), true)
+object IcePLLTest36MPHASEDELAY
+    extends IcePLLTestGen(new IcePLLTest(36 MHz, FeedbackPath.PHASE_AND_DELAY), true)
+
+object IcePLLMake96M extends IcePLLTestGen(new IcePLLTestMakePll(96 MHz), true)
+*/
