@@ -1,0 +1,201 @@
+package andreasWallner.io.i3c
+
+import spinal.core._
+import spinal.lib._
+import spinal.lib.io.TriState
+import spinal.lib.fsm._
+
+import scala.language.postfixOps
+
+case class I3C(slaveOnly: Boolean = false) extends Bundle with IMasterSlave {
+  val scl, sda = TriState(Bool())
+  val pullup = if(!slaveOnly) Some(Bool()) else None
+  val keeper = if(!slaveOnly) Some(Bool()) else None
+
+  def asMaster(): Unit = {
+    master(scl, sda)
+    pullup.map(out.applyIt)
+    keeper.map(out.applyIt)
+  }
+}
+
+case class SdaTx() extends Component {
+  val io = new Bundle {
+    val data = in port Bits(8 bit)
+    val trigger = in port Bool()
+
+    val i3c = master port I3C()
+
+    val ack = out port Bool()
+    val ackStrb = out port Bool()
+    val useRestart = in port Bool()
+
+    val tCas = in port UInt(5 bit) // 38.4 ns < tCas < 50 mill (lowest activity state) Table 74
+    val tCbp = in port UInt(5 bit)
+    val changeCnt = in port UInt(5 bit)
+    val lowCnt = in port UInt(5 bit) // take up low time bitCnt - lowCnt > 24 ns
+    val bitCnt = in port UInt(5 bit) // remainder of bit for high pulse
+    val stopCnt = in port UInt(5 bit)
+  }
+  val timing = new Area {
+    private val cnt = Reg(UInt(5 bit)) init 0
+    cnt := cnt + 1
+    def reset(): Unit = { cnt := 0 }
+
+    val cas = cnt === io.tCas
+    val change = cnt === io.changeCnt
+    val clock = cnt === io.lowCnt
+    val bit = cnt === io.bitCnt
+    val stop = cnt === io.stopCnt
+  }
+
+  io.i3c.pullup.foreach(_ := True)
+  io.i3c.keeper.foreach(_ := False)
+  io.i3c.scl.writeEnable setAsReg() init False
+  io.i3c.sda.writeEnable setAsReg() init False
+  io.i3c.scl.write setAsReg()
+  io.i3c.sda.write setAsReg()
+
+  io.ack setAsReg()
+  io.ackStrb := False
+
+  //noinspection ForwardReference
+  val fsm = new StateMachine {
+    val bits = Reg(Bits(9 bit))
+    val allBits = bits === B"000000001"
+    val idle: State = new State with EntryPoint {
+      whenIsActive {
+        timing.reset()
+        io.i3c.scl.writeEnable := False
+        io.i3c.sda.writeEnable := False
+        io.i3c.scl.write := True
+        io.i3c.sda.write := True
+
+        when(io.trigger) {
+          bits := True ## io.data.reversed
+          goto(start)
+        }
+      }
+    }
+    val start: State = new State {
+      onEntry {
+        io.i3c.sda.writeEnable := True
+        io.i3c.scl.writeEnable := True
+        io.i3c.sda.write := False
+        io.i3c.scl.write := True
+      }
+      whenIsActive {
+        io.i3c.sda.write := False
+        when(timing.cas) { goto(dataLow) }
+      }
+      onExit {
+        io.i3c.scl.write := False
+        timing.reset()
+      }
+    }
+    val rStart: State = new State {
+      onEntry {
+        io.i3c.sda.write := True
+        io.i3c.sda.writeEnable := True
+      }
+      whenIsActive {
+        when(timing.stop) {
+          io.i3c.sda.write := False
+          timing.reset()
+        }
+        when(timing.cas) {
+          io.i3c.scl.write := False
+          goto(dataLow)
+        }
+      }
+
+    }
+
+    // for now use hard coded setup time of 1 cycle (>= 3 ns)
+    val dataLow: State = new State {
+      onEntry { io.i3c.sda.write := False }
+      whenIsActive {
+        when(timing.change) {
+          io.i3c.sda.writeEnable := !bits(0)
+          bits := bits |>> 1
+          goto(dataHigh)
+        }
+      }
+    }
+    val dataHigh: State = new State {
+      whenIsActive {
+        when(timing.clock) {
+          io.i3c.scl.write := True
+        }
+
+        when(timing.bit) {
+          io.i3c.scl.write := False
+          when(allBits) {
+            goto(ack)
+          } otherwise {
+            goto(dataLow)
+          }
+        }
+      }
+      onExit(timing.reset())
+    }
+
+    val ack: State = new State {
+      onEntry ( io.i3c.sda.writeEnable := False )
+      whenIsActive {
+        goto(idle)
+        when(timing.clock) {
+          io.i3c.scl.write := True
+          io.ack := !io.i3c.sda.read
+          io.ackStrb := True
+        }
+
+        when(timing.bit) {
+          io.i3c.scl.write := False
+          // ack and we are out of data -> stop or repeated start
+          // nack -> stop or repeated start
+          when(!io.ack || !io.trigger) {
+            when(!io.useRestart) {
+              goto(stop)
+            } otherwise {
+              goto(rStart)
+            }
+          }
+        }
+
+        // if we get here then we got ack and we have data
+        //   -> continue w push/pull transition
+        when(timing.change) {
+          when(io.ack & io.trigger) {
+            bits := True ## io.data.reversed
+            io.i3c.sda.write := io.data.reversed(0)
+            io.i3c.sda.writeEnable := True
+          }
+        }
+      }
+    }
+
+    val stop: State = new State {
+      whenIsActive {
+        when(timing.change) {
+          io.i3c.sda.writeEnable := True
+          io.i3c.sda.write := False
+        }
+        when(timing.clock) {
+          io.i3c.scl.write := True
+        }
+        when(timing.stop) {
+          io.i3c.sda.write := True
+          // idle state takes care that writeEnable is disabled again
+          goto(idle)
+        }
+      }
+    }
+  }
+}
+
+case class I3CController() extends Component {
+  val io = new Bundle {
+    val i3c = master(I3C())
+  }
+}
