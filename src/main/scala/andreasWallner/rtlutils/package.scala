@@ -74,37 +74,33 @@ package object rtlutils {
     }
   }
 
-  class PullToTopTag(val name: String = null) extends SpinalTag {
-    override def allowMultipleInstance = false
-  }
   implicit class DataPimper(d: Data) {
     def markToPullToTop(name: String = null) = {
-      d.addTag(new PullToTopTag(name))
+      PullToTop.toPull += ((d, name))
+      d
     }
   }
 
+  /** Pull all marked signal to the toplevel
+   *
+   * {{{
+   * // somewhere in a component
+   * somesignal.markToPullToTop()
+   *
+   * // for generation
+   * val report = SpinalVerilog(PullToTop(MyComponent()))
+   * }}}
+   */
   object PullToTop {
+    val toPull = mutable.Set[(Data, String)]()
     def apply[T <: Component](c: T) = {
       c.rework {
-        // we might stumble multiple times over one signal (e.g. because of assignments in different
-        // conditional contexts, deduplicate here
-        val toPull = mutable.Set[Data with SpinalTagReady]()
-        c.walkComponents(cc =>
-          cc.dslBody.walkStatements(s =>
-            s.walkDrivingExpressions {
-              case tr: Data with SpinalTagReady if tr.hasTag(classOf[PullToTopTag]) => toPull += tr
-              case _                                                                =>
-            }
-          )
-        )
-
-        for (tp <- toPull) {
-          val tag = tp.getTag(classOf[PullToTopTag])
+        for ((tp, name) <- toPull) {
           val pulled = tp.pull()
           val topPort = cloneOf(pulled).asOutput()
           topPort := pulled
-          if (tag.get.name != null)
-            topPort.setName(tag.get.name)
+          if (name != null)
+            topPort.setName(name)
           else
             topPort.setWeakName(f"pulled_${tp.component.getPath("_")}_${tp.getName()}")
         }
