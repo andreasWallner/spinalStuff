@@ -93,16 +93,16 @@ package object rtlutils {
    */
   object PullToTop {
     val toPull = mutable.Set[(Data, String)]()
-    def apply[T <: Component](c: T) = {
+    def apply[T <: Component](c: T, filter: ((Data, String)) => Boolean = _ => true) = {
       c.rework {
-        for ((tp, name) <- toPull) {
+        for ((tp, name) <- toPull.filter(filter)) {
           val pulled = tp.pull()
           val topPort = cloneOf(pulled).asOutput()
           topPort := pulled
           if (name != null)
             topPort.setName(name)
           else
-            topPort.setWeakName(f"pulled_${tp.component.getPath("_")}_${tp.getName()}")
+            topPort.setWeakName(f"probe_${tp.component.getPath("_")}_${tp.getName()}")
         }
       }
       c
