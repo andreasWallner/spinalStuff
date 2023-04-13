@@ -23,6 +23,7 @@ case class SdaTx() extends Component {
   val io = new Bundle {
     val data = in port Bits(8 bit)
     val trigger = in port Bool()
+    val ready = out port Bool()
 
     val i3c = master port I3C()
 
@@ -36,6 +37,8 @@ case class SdaTx() extends Component {
     val lowCnt = in port UInt(5 bit) // take up low time bitCnt - lowCnt > 24 ns
     val bitCnt = in port UInt(5 bit) // remainder of bit for high pulse
     val stopCnt = in port UInt(5 bit)
+
+    val idle = out port Bool()
   }
   val timing = new Area {
     private val cnt = Reg(UInt(5 bit)) init 0
@@ -59,6 +62,9 @@ case class SdaTx() extends Component {
   io.ack setAsReg()
   io.ackStrb := False
 
+  io.idle := False
+  io.ready := False
+
   //noinspection ForwardReference
   val fsm = new StateMachine {
     val bits = Reg(Bits(9 bit))
@@ -70,9 +76,11 @@ case class SdaTx() extends Component {
         io.i3c.sda.writeEnable := False
         io.i3c.scl.write := True
         io.i3c.sda.write := True
+        io.idle := True
 
         when(io.trigger) {
           bits := True ## io.data.reversed
+          io.ready := True
           goto(start)
         }
       }
@@ -95,20 +103,30 @@ case class SdaTx() extends Component {
     }
     val rStart: State = new State {
       onEntry {
+        timing.reset()
         io.i3c.sda.write := True
         io.i3c.sda.writeEnable := True
       }
       whenIsActive {
-        when(timing.stop) {
-          io.i3c.sda.write := False
-          timing.reset()
+        when(timing.clock) {
+          io.i3c.scl.write := True
         }
-        when(timing.cas) {
-          io.i3c.scl.write := False
-          goto(dataLow)
+        when(timing.stop) {
+          bits := True ## io.data.reversed
+          io.i3c.sda.write := False
+          goto(rStart2) // split into two bec. timing.cas most likely happens before timing.stop
         }
       }
-
+    }
+    val rStart2: State = new State { // TODO can we reuse the start state here?
+      onEntry { timing.reset() }
+      whenIsActive {
+        when(timing.cas) { goto(dataLow) }
+      }
+      onExit {
+        io.i3c.scl.write := False
+        timing.reset()
+      }
     }
 
     // for now use hard coded setup time of 1 cycle (>= 3 ns)
@@ -141,20 +159,27 @@ case class SdaTx() extends Component {
     }
 
     val ack: State = new State {
-      onEntry ( io.i3c.sda.writeEnable := False )
       whenIsActive {
-        goto(idle)
+        when(timing.change) { io.i3c.sda.writeEnable := False }
         when(timing.clock) {
           io.i3c.scl.write := True
           io.ack := !io.i3c.sda.read
-          io.ackStrb := True
+          // continue driving ACK, overlapping with target
+          when(!io.i3c.sda.read) {
+            io.i3c.sda.write := True
+          }
         }
 
         when(timing.bit) {
           io.i3c.scl.write := False
-          // ack and we are out of data -> stop or repeated start
-          // nack -> stop or repeated start
-          when(!io.ack || !io.trigger) {
+          io.ackStrb := True
+          when(io.ack && io.trigger) {
+            bits := True ## io.data.reversed
+            io.ready := True
+            goto(dataLow)
+          } otherwise {
+            // ack and we are out of data -> stop or repeated start
+            // nack -> stop or repeated start
             when(!io.useRestart) {
               goto(stop)
             } otherwise {
@@ -162,20 +187,11 @@ case class SdaTx() extends Component {
             }
           }
         }
-
-        // if we get here then we got ack and we have data
-        //   -> continue w push/pull transition
-        when(timing.change) {
-          when(io.ack & io.trigger) {
-            bits := True ## io.data.reversed
-            io.i3c.sda.write := io.data.reversed(0)
-            io.i3c.sda.writeEnable := True
-          }
-        }
       }
     }
 
     val stop: State = new State {
+      onEntry { timing.reset() }
       whenIsActive {
         when(timing.change) {
           io.i3c.sda.writeEnable := True

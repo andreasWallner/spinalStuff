@@ -11,6 +11,7 @@ case class Start(repeated: Boolean) extends Event
 case class Stop() extends Event
 case class Bit(data: Boolean) extends Event
 case class Byte(data: Int) extends Event
+case class Passive(data: Int) extends Event
 case class ReadAbort() extends Event
 
 case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
@@ -44,7 +45,7 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
     // TODO verify open-drain
   }
 
-  def rxBits(bitCnt: Int): Event = {
+  def rxBits(bitCnt: Int, passive: Boolean = false): Event = {
     val bits = for (_ <- 0 until bitCnt) yield {
       waitUntil(i3c.scl.read.toBoolean)
       val stopPossible = !i3c.sda.read.toBoolean
@@ -54,6 +55,7 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
           seenStop()
           return Stop()
         case (false, false) =>
+          waitUntil(!i3c.scl.read.toBoolean)
           seenStart(true)
           return Start(true)
         case (_, b) =>
@@ -61,7 +63,10 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
       }
       i3c.sda.read.toBoolean
     }
-    Byte(toInt(bits, msbFirst = true))
+    if(!passive)
+      Byte(toInt(bits, msbFirst = true))
+    else
+      Passive(toInt(bits, msbFirst = true))
   }
 
   // expected: SCL is high & SDA low
@@ -101,9 +106,10 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
         return true
       case Byte(data) =>
         val isRead = (data & 1).toBoolean
-        (isRead, seenHeader(data >> 1, isRead, repeated = repeatedStart))
+        (isRead, addressReaction(data >> 1, isRead, repeated = repeatedStart))
     }
 
+    println("responding with", ack, response.mkString(":"))
     if (ack)
       i3c.sda.drive(false)
     waitUntil(i3c.scl.read.toBoolean)
@@ -111,7 +117,24 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
     i3c.sda.highz()
     waitUntil(!i3c.scl.read.toBoolean)
 
-    if (ack && isRead) {
+    if (!ack) {
+      println("starting to ignore...")
+      while(true) {
+        val byte = rxBits(9, passive=true)
+        event(byte)
+        byte match {
+          case Stop() =>
+            seenStop()
+            return false
+          case Start(true) =>
+            seenStart(true)
+            return true
+          case Passive(_) =>
+          case _ => throw new Exception(f"unexpected event $byte while passively receiving")
+        }
+      }
+    }
+    else if (isRead) {
       assert(response.nonEmpty)
       for(idx <- response.indices) {
         val last = idx == response.size - 1
@@ -138,9 +161,10 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
 
 
       }
-    } else if(!isRead) {
+    } else {
+      println("starting to receive data")
       while (true) {
-        val byte = rxBits(9)
+        val byte = rxBits(8)
         event(byte)
         byte match {
           case Stop() =>
@@ -177,7 +201,7 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
 
   def event(e: Event): Unit = {}
   def seenStart(repeated: Boolean): Unit = {}
-  def seenHeader(address: Int, RnW: Boolean, repeated: Boolean): (Boolean, Seq[Int]) = (false, Seq())
+  def addressReaction(address: Int, RnW: Boolean, repeated: Boolean): (Boolean, Seq[Int]) = (false, Seq())
   def sent(data: Int): Unit = {}
   def seenSDA(data: Int, validParity: Boolean): Unit = {}
   def seenStop(): Unit = {}
