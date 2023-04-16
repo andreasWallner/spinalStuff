@@ -94,10 +94,9 @@ class Graph(writer: Writer) {
     writer.write(s"  { $xx [$attr] }\n")
   }
 
-  def mux2(x: Expression): String = {
+  def mux2(x: Expression): Unit = {
     val id = s"sig_${Integer.toHexString(System.identityHashCode(x))}"
     writer.write(s"""{ $id [shape=record, label="{{<t> T|<sel> ?|<f> F}|<out> =}"] }\n""")
-    id
   }
 
   def mux3col(x: Expression, i: Seq[Seq[String]]) = {
@@ -106,6 +105,21 @@ class Graph(writer: Writer) {
       .mkString("|")
     val id = s"sig_${Integer.toHexString(System.identityHashCode(x))}"
     writer.write(s"""{ $id [shape=record, label="{{<sel> ?|$values}|=}"] }\n""")
+  }
+
+  def ff(
+      x: Expression,
+      hasRst: Boolean = false,
+      hasEn: Boolean = false,
+      hasSoftRst: Boolean = false
+  ) = {
+    val id = s"sig_${Integer.toHexString(System.identityHashCode(x))}"
+    val inputs = "{<d> D|" +
+      (if (hasRst) "<rst> RST|" else "") +
+      (if (hasEn) "<en> EN|" else "") +
+      (if (hasSoftRst) "<srst> SRST|" else "") +
+      "<clk> CLK}"
+    writer.write(s"""{ $id [shape=record, label={$inputs|FF}""")
   }
 }
 
@@ -261,10 +275,12 @@ case class Diagrammer(c: Component) {
     for ((target, dass) <- assignments) {
       if (dass.size == 1) {
         graph.connection(dass(0).source, dass(0).target)
+        // next: distinguish between register and register w/ enable
       } else {
         // simple switch?
         val scopes = dass.map(getSingleSwitch)
-        val isSimpleSwitch = scopes.forall(ss => ss.isDefined && ss.get == scopes.head.get)
+        val isSimpleSwitch = scopes.forall(ss => ss.isDefined && ss.get == scopes.head.get) && scopes.head.get.elements
+          .forall(e => e.keys.forall(k => k.isInstanceOf[Literal]))
         if (isSimpleSwitch)
           writeSimpleSwitch(scopes.head.get, target)
 
