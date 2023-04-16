@@ -21,10 +21,8 @@ case class I3C(slaveOnly: Boolean = false) extends Bundle with IMasterSlave {
 // TODO enforce time between stop & start
 case class SdaTx() extends Component {
   val io = new Bundle {
-    val dataS = slave port Stream(Fragment(Bits(8 bit)))
-    val data = in port Bits(8 bit)
+    val data = slave port Stream(Fragment(Bits(8 bit)))
     val trigger = in port Bool()
-    val ready = out port Bool()
 
     val i3c = master port I3C()
 
@@ -62,11 +60,12 @@ case class SdaTx() extends Component {
 
     val allSent = bits === B"000000001"
 
+    io.data.ready := False
     def load(withParity: Bool): Unit = {
-      lastByte := io.dataS.last
-      bits := True ## io.data.reversed
-      io.ready := True
-      io.dataS.ready := True
+      lastByte := io.data.last
+      bits := True ## io.data.fragment.reversed
+      io.data.ready := True
+
       sendParity := withParity
       paritySent := False
       parityBit := True
@@ -89,12 +88,7 @@ case class SdaTx() extends Component {
   io.ackStrb := False
 
   io.idle := False
-  io.ready := False
   io.rStart := False
-
-  io.dataS.ready := False
-
-
 
   //noinspection ForwardReference
   val fsm = new StateMachine {
@@ -184,7 +178,7 @@ case class SdaTx() extends Component {
           when(sendData.allSent && !sendData.sendParity) {
             goto(ack)
           } elsewhen (sendData.allSent && sendData.sendParity && sendData.paritySent) {
-            when(!io.trigger) {
+            when(!sendData.lastByte) {
               sendData.load(True)
               goto(dataLow)
             } otherwise {
@@ -218,12 +212,13 @@ case class SdaTx() extends Component {
         when(timing.bit) {
           io.i3c.scl.write := False
           io.ackStrb := True
-          when(io.ack && io.trigger) {
+          when(io.ack && !sendData.lastByte) {
             sendData.load(True)
             goto(dataLow)
           } otherwise {
             // ack and we are out of data -> stop or repeated start
             // nack -> stop or repeated start
+            // TODO separate restart input for NACK case?
             when(!io.useRestart) {
               goto(stop)
             } otherwise {

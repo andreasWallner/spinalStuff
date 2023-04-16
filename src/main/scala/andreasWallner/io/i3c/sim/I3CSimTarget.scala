@@ -118,7 +118,6 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
     waitUntil(!i3c.scl.read.toBoolean)
 
     if (!ack) {
-      println("starting to ignore...")
       while(true) {
         val byte = rxBits(9, passive=true)
         event(byte)

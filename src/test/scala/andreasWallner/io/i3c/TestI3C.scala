@@ -29,8 +29,8 @@ class TestSdaTx extends SpinalFunSuite {
     comp
   }
 
+  // test simple behavior when seeing NACK after addressing, generating stop
   test(dut, "SDA TX nack -> S") { dut =>
-    dut.io.data #= 0x54
     dut.io.tCas #= 2
     dut.io.changeCnt #= 1
     dut.io.lowCnt #= 7
@@ -61,9 +61,14 @@ class TestSdaTx extends SpinalFunSuite {
       }
     }
 
+    dut.io.data.fragment #= 0x54
+    dut.io.data.valid #= true
+    dut.io.data.last #= true
     dut.io.trigger.strobe(dut.clockDomain)
 
-    dut.clockDomain.waitSamplingWhere(!dut.io.idle.toBoolean)
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.valid #= false
+
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
     sleep(100)
@@ -71,8 +76,10 @@ class TestSdaTx extends SpinalFunSuite {
     txScoreboard.checkEmptyness()
   }
 
+  // test simple behavior when seeing NACK after addressing, generate repeated start
+  // set up signals as if we wanted to send multiple bytes, and have to switch
+  // to next address in time for repeated start (w/o follow-up data)
   test(dut, "SDA TX nack -> R") { dut =>
-    dut.io.data #= 0x54
     dut.io.tCas #= 2
     dut.io.changeCnt #= 1
     dut.io.lowCnt #= 7
@@ -106,15 +113,26 @@ class TestSdaTx extends SpinalFunSuite {
       }
     }
 
+    dut.io.data.fragment #= 0x54
+    dut.io.data.last #= false
+    dut.io.data.valid #= true
     dut.io.trigger.strobe(dut.clockDomain)
-    dut.clockDomain.waitSamplingWhere(!dut.io.idle.toBoolean)
-    // assign data to be sent as control SM would
-    dut.io.data #= 0x77
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+
+    // assign data to be sent as control SM would, keep last == 0
+    dut.io.data.fragment #= 0x77
+
+    // wait for NACK to be reported
     dut.clockDomain.waitSamplingWhere(dut.io.ackStrb.toBoolean)
     assert(!dut.io.ack.toBoolean)
+
     // assign new address
-    dut.io.data #= 0x43
+    dut.io.data.fragment #= 0x43
+    dut.io.data.last #= true
     dut.io.useRestart #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.valid #= false
+
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
     sleep(100)
@@ -123,7 +141,6 @@ class TestSdaTx extends SpinalFunSuite {
   }
 
   test(dut, "SDA TX ack -> 1 byte -> S") { dut =>
-    dut.io.data #= 0x54
     dut.io.tCas #= 2
     dut.io.changeCnt #= 1
     dut.io.lowCnt #= 7
@@ -156,11 +173,18 @@ class TestSdaTx extends SpinalFunSuite {
       }
     }
 
-    dut.io.trigger #= true
-    dut.clockDomain.waitSamplingWhere(dut.io.ready.toBoolean)
-    dut.io.data #= 0x76
-    dut.clockDomain.waitSamplingWhere(dut.io.ready.toBoolean)
-    dut.io.trigger #= false
+    dut.io.data.fragment #= 0x54
+    dut.io.data.valid #= true
+    dut.io.data.last #= false
+    dut.io.trigger.strobe(dut.clockDomain)
+
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.fragment #= 0x76
+    dut.io.data.last #= true
+
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.valid #= false
+
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
     sleep(100)
@@ -169,7 +193,6 @@ class TestSdaTx extends SpinalFunSuite {
   }
 
   test(dut, "SDA TX ack -> 100 byte -> S") { dut =>
-    dut.io.data #= 0x54
     dut.io.tCas #= 2
     dut.io.changeCnt #= 1
     dut.io.lowCnt #= 7
@@ -203,12 +226,18 @@ class TestSdaTx extends SpinalFunSuite {
       }
     }
 
-    for (i <- sequence) {
-      dut.io.data #= i
-      dut.io.trigger #= true
-      dut.clockDomain.waitSamplingWhere(dut.io.ready.toBoolean)
+    for (i <- sequence.dropRight(1)) {
+      dut.io.data.fragment #= i
+      dut.io.data.valid #= true
+      dut.io.data.last #= false
+      dut.io.trigger.strobe(dut.clockDomain) // TODO only do o first
+      dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
     }
-    dut.io.trigger #= false
+    dut.io.data.fragment #= sequence.last
+    dut.io.data.last #= true
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.valid #= false
+
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
     sleep(100)
@@ -216,8 +245,7 @@ class TestSdaTx extends SpinalFunSuite {
     txScoreboard.checkEmptyness()
   }
 
-  test(dut, "SDA TX ack -> 20 * (x byte -> R|S)", -1082496406) { dut =>
-    dut.io.data #= 0x54
+  test(dut, "SDA TX ack -> 20 * (x byte -> R|S)") { dut =>
     dut.io.tCas #= 2
     dut.io.changeCnt #= 1
     dut.io.lowCnt #= 7
@@ -249,27 +277,33 @@ class TestSdaTx extends SpinalFunSuite {
       }
     }
 
-    var useRepeatStart = false
+    var useRepeatStartNext = false
     for(i <- 0 until 20) {
       txScoreboard.pushRef(Start(dut.io.useRestart.toBoolean))
 
       val n = Random.nextInt(20)
-      dut.io.useRestart #= useRepeatStart
-      useRepeatStart = Random.nextBoolean() & (i != 18)
+      dut.io.useRestart #= useRepeatStartNext
+      useRepeatStartNext = Random.nextBoolean() & (i != 18)
 
       val address = Random.nextInt(256) & ~0x01 // ensure write transfer
-      simLog(address)
       txScoreboard.pushRef(Byte(address))
-      dut.io.data #= address
+      dut.io.data.fragment #= address
+      if (n == 0) simLog("no data: ", address)
+      dut.io.data.last #= n == 0
+      dut.io.data.valid #= true
       dut.io.trigger #= true
-      dut.clockDomain.waitSamplingWhere(dut.io.ready.toBoolean)
+      dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+      dut.io.trigger #= false
+      dut.io.data.valid #= false
 
       for (i <- 0 until n) {
-        val byte = dut.io.data.randomize().toInt
+        val byte = dut.io.data.fragment.randomize().toInt
         txScoreboard.pushRef(Byte(byte))
-        dut.clockDomain.waitSamplingWhere(dut.io.ready.toBoolean)
+        dut.io.data.valid #= true
+        dut.io.data.last #= i == (n-1)
+        dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+        dut.io.data.valid #= false
       }
-      dut.io.trigger #= false
       if(dut.io.useRestart.toBoolean)
         dut.clockDomain.waitSamplingWhere(dut.io.rStart.toBoolean)
       else
