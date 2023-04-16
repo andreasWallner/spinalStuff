@@ -26,8 +26,7 @@ case class SdaTx() extends Component {
 
     val i3c = master port I3C()
 
-    val ack = out port Bool()
-    val ackStrb = out port Bool()
+    val ack = master port Flow(Bool())
     val useRestart = in port Bool()
 
     val tCas = in port UInt(5 bit) // 38.4 ns < tCas < 50 mill (lowest activity state) Table 74
@@ -84,8 +83,8 @@ case class SdaTx() extends Component {
   io.i3c.scl.write setAsReg ()
   io.i3c.sda.write setAsReg ()
 
-  io.ack setAsReg ()
-  io.ackStrb := False
+  io.ack.payload setAsReg ()
+  io.ack.valid := False
 
   io.idle := False
   io.rStart := False
@@ -201,7 +200,7 @@ case class SdaTx() extends Component {
         when(timing.change) { io.i3c.sda.writeEnable := False }
         when(timing.clock) {
           io.i3c.scl.write := True
-          io.ack := !io.i3c.sda.read
+          io.ack.payload := !io.i3c.sda.read
           // continue driving ACK, overlapping with target
           when(!io.i3c.sda.read) {
             io.i3c.sda.write := False
@@ -211,8 +210,8 @@ case class SdaTx() extends Component {
 
         when(timing.bit) {
           io.i3c.scl.write := False
-          io.ackStrb := True
-          when(io.ack && !sendData.lastByte) {
+          io.ack.valid := True
+          when(io.ack.payload && !sendData.lastByte) {
             sendData.load(True)
             goto(dataLow)
           } otherwise {

@@ -123,8 +123,8 @@ class TestSdaTx extends SpinalFunSuite {
     dut.io.data.fragment #= 0x77
 
     // wait for NACK to be reported
-    dut.clockDomain.waitSamplingWhere(dut.io.ackStrb.toBoolean)
-    assert(!dut.io.ack.toBoolean)
+    dut.clockDomain.waitSamplingWhere(dut.io.ack.valid.toBoolean)
+    assert(!dut.io.ack.payload.toBoolean)
 
     // assign new address
     dut.io.data.fragment #= 0x43
