@@ -5,6 +5,7 @@ import spinal.lib._
 import spinal.lib.bus.misc.{AddressMapping, BusSlaveFactoryDelayed, BusSlaveFactoryElement, SingleMapping}
 import spinal.lib.io.TriState
 
+import scala.collection.Seq
 import scala.language.postfixOps
 
 case class EppGenerics(
@@ -63,9 +64,9 @@ case class EPP(gen:EppGenerics = EppGenerics()) extends Bundle with IMasterSlave
 
 case class EPPStateMachine(gen:EppGenerics = EppGenerics()) extends Component {
   val io = new Bundle {
-    val epp = slave(EPP(gen))
-    val reg0 = out(Bits(8 bit)) setAsReg()
-    val reg1 = out(Bits(8 bit)) setAsReg()
+    val epp = slave port EPP(gen)
+    val reg0 = out port Bits(8 bit).setAsReg()
+    val reg1 = out port Bits(8 bit).setAsReg()
   }
   io.reg0 init 0x55
   io.reg1 init 0x77
@@ -76,8 +77,8 @@ case class EPPStateMachine(gen:EppGenerics = EppGenerics()) extends Component {
   val address = Reg(UInt(8 bit))
 
   io.epp.DB.writeEnable := io.epp.WRITE && (!io.epp.ASTB || !io.epp.DSTB)
-  io.epp.DB.write setAsReg()
-  io.epp.WAIT setAsReg() init False
+  io.epp.DB.write.setAsReg()
+  io.epp.WAIT.setAsReg() init False
   if(gen.withInt)
     io.epp.INT := False
 
@@ -126,8 +127,8 @@ class EppBusFactory(bus: EPP) extends BusSlaveFactoryDelayed {
     val accessOngoing = !syncAStb || !syncDStb
 
     bus.DB.writeEnable := bus.WRITE && (!bus.ASTB || !bus.DSTB)
-    bus.DB.write setAsReg()
-    bus.WAIT setAsReg() init False
+    bus.DB.write.setAsReg()
+    bus.WAIT.setAsReg() init False
     if(bus.gen.withInt)
       bus.INT := False
 

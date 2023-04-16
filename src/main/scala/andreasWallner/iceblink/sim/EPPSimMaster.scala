@@ -35,7 +35,7 @@ case class EPPSimMaster(epp: EPP, delay:Int) {
   }
 
   def _R(strb: Bool): Int = {
-    epp.DB highz()
+    epp.DB.highz()
     epp.WRITE #= true
     strb #= false
     waitUntil(epp.WAIT.toBoolean == true)

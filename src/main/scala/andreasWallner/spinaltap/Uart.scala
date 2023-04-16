@@ -5,6 +5,9 @@ import spinal.lib._
 import spinal.lib.com.uart._
 import spinal.lib.bus.amba3.apb._
 import spinal.lib.fsm._
+import andreasWallner.spinaltap
+
+import scala.language.postfixOps
 
 case class UartModule(eventSourceId: Int) extends Component {
   val g = UartCtrlGenerics()
@@ -12,7 +15,7 @@ case class UartModule(eventSourceId: Int) extends Component {
   val io = new Bundle {
     val uart = master(Uart())
     val bus = slave(Apb3(Apb3UartCtrl.getApb3Config))
-    val events = master(Stream(Event()))
+    val events = master(Stream(spinaltap.Event()))
 
     val clockDivider = in UInt(g.clockDividerWidth bits)
   }
@@ -54,11 +57,11 @@ case class UartModule(eventSourceId: Int) extends Component {
   io.uart.rxd <> rx.io.rxd
   tx.io.cts := False
   tx.io.break := False
-  
+
   val txOverflow = Reg(Bool).setWhen(txFifo.io.push.isStall)
   val txEmpty = txFifo.io.occupancy === 0
   val rxError = Reg(Bool).setWhen(rx.io.error)
-  
+
   val statusHistory = History(txEmpty ## txOverflow ## rxError ## rxFifo.io.pop.valid, 2)
   val statusChange = Reg(Bool).setWhen(statusHistory(0) =/= statusHistory(1))
 
@@ -73,7 +76,7 @@ case class UartModule(eventSourceId: Int) extends Component {
       .whenIsActive {
         when(rxFifo.io.pop.valid || statusChange) { goto(stateData) }
       }
-    
+
     io.events.payload.source := eventSourceId
     io.events.payload.data := 0
     io.events.valid := False

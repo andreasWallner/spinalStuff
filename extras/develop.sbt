@@ -1,6 +1,6 @@
 ThisBuild/version := "0.1"
 ThisBuild/organization := "andreasWallner"
-ThisBuild/scalaVersion := "2.11.12"
+ThisBuild/scalaVersion := "2.13.6"
 
 lazy val spinalHdlIdslPlugin = ProjectRef(file("../SpinalHDL"), "idslplugin")
 lazy val spinalHdlSim = ProjectRef(file("../SpinalHDL"), "sim")

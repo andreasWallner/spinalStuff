@@ -148,7 +148,7 @@ abstract class SpinalTap[T <: spinal.core.Data with IMasterSlave](
     case (b: BusElement, idx: Int) => Some((b, 0x43c00000 + moduleAddressSpace * idx))
   }*/
   override def elements: List[(BusElement, Long)] = {
-    val l = mutable.MutableList[(BusElement, Long)]()
+    val l = mutable.ArrayBuffer[(BusElement, Long)]()
     for ((m, idx) <- allModules.zipWithIndex) {
       m.wrapped() match {
         case b: BusElement =>

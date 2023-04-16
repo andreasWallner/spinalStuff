@@ -1,20 +1,12 @@
 package andreasWallner.eda
 
-import spinal.core.{
-  ClockDomainConfig,
-  Component,
-  Device,
-  IClockDomainFrequency,
-  LOW,
-  SpinalConfig,
-  UnknownFrequency
-}
+import spinal.core.{ClockDomainConfig, Component, Device, IClockDomainFrequency, LOW, SpinalConfig, UnknownFrequency}
 import spinal.lib.WrapWithReg
 import spinal.lib.eda.bench.Rtl
 import spinal.core._
 
 import java.io.File
-import scala.collection.mutable
+import scala.collection.{Seq, mutable}
 import scala.language.postfixOps
 
 object Wrapper {

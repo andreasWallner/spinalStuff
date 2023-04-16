@@ -8,8 +8,7 @@ import spinal.lib.sim._
 
 import scala.language.postfixOps
 
-case class I2STester(in_width: Int, ctrl_width: Int, out_width: Int)
-  extends Component {
+case class I2STester(in_width: Int, ctrl_width: Int, out_width: Int) extends Component {
   val io = new Bundle {
     val rx = new Bundle {
       val left = master(Flow(UInt(out_width bit)))
@@ -51,12 +50,12 @@ case class I2STest() extends SpinalFunSuite {
     if (shift > 0) value >> shift else value << -shift
 
   for ((in_width, ctrl_width, out_width) <- List(
-    (24, 24, 24),
-    (10, 10, 10),
-    (5, 10, 10),
-    (10, 5, 10),
-    (10, 10, 5),
-    (5, 5, 10),
+         (24, 24, 24),
+         (10, 10, 10),
+         (5, 10, 10),
+         (10, 5, 10),
+         (10, 10, 5),
+         (5, 5, 10),
          (5, 10, 5),
          (10, 5, 5),
          (5, 5, 5)
@@ -71,7 +70,9 @@ case class I2STest() extends SpinalFunSuite {
       }
 
       val dut =
-        SimConfig.withWave.compile(I2STester(in_width, ctrl_width, out_width))
+        SimConfig.withWave.compile {
+          I2STester(in_width, ctrl_width, out_width).setDefinitionName(name)
+        }
 
       dut.doSim(name) { dut =>
         val toSend = 10

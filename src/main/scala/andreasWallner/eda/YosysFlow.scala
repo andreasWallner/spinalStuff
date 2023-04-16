@@ -4,10 +4,10 @@ import spinal.core.{HertzNumber, SpinalError, SpinalInfo, TimeNumber}
 import spinal.lib.eda.bench.{Report, Rtl}
 
 import java.nio.file.Paths
-import scala.collection.immutable.Map
 import scala.collection.mutable
+import scala.collection.Map
 import scala.language.postfixOps
-import scala.util.parsing.json.JSON
+import play.api.libs.json.{JsArray, JsObject, JsValue, Json}
 
 case class CriticalPath(
     launchClock: String,
@@ -22,19 +22,7 @@ trait SynthesisReport extends Report {
   def fmax(clk: String = null): HertzNumber
   def criticalPaths: Seq[CriticalPath]
   def bitstreamFile: Option[String]
-  def resources: Map[String, (Int, Int)]
-}
-
-private object JsonUnapply {
-  // thanks to huynhjl (https://stackoverflow.com/a/4186090) for the idea with unapply
-  class CC[T] {
-    def unapply(a: Option[Any]): Option[T] = a.map(aa => aa.asInstanceOf[T])
-  }
-
-  object M extends CC[Map[String, Any]]
-  object A extends CC[Seq[Any]]
-  object D extends CC[Double]
-  object S extends CC[String]
+  def resources: Map[String, (Long, Long)]
 }
 
 private object Runner {
@@ -178,36 +166,27 @@ object YosysFlow {
       new java.io.File(workspacePath, s"${rtl.getName()}_report.json")
     )
     val json =
-      try JSON.parseFull(source.mkString)
+      try Json.parse(source.mkString)
       finally source.close()
 
     new SynthesisReport {
-      import JsonUnapply._
-
       override def fmax(clk: String = null) = HertzNumber(getFMax())
       override def getFMax(): Double = {
         try {
-          val M(root) = json
-          val M(fmax) = root.get("fmax")
-          val M(clk) = fmax.get(fmax.keys.last)
-          val D(achieved) = clk.get("achieved")
-          achieved * 1.0e6
+          (json \ "fmax").as[JsObject].value.map { case (name, value) =>
+            (value \ "achieved").as[Double]
+          }.min * 1.0e6
         } catch {
           case _: Exception => 0.0
         }
       }
       override def getArea(): String = {
         try {
-          val M(root) = json
-          val M(utilization) = root.get("utilization")
-          val M(lc) = utilization.get("ICESTORM_LC")
-          val M(ram) = utilization.get("ICESTORM_RAM")
-          val D(lc_used) = lc.get("used")
-          val D(lc_available) = lc.get("available")
-          val D(ram_used) = ram.get("used")
-          val D(ram_available) = ram.get("available")
-          lc_used.toLong.toString + "/" + lc_available.toLong.toString + " LCs\n" +
-            ram_used.toLong.toString + "/" + ram_available.toLong.toString + " RAMs"
+          val utilization = json \ "utilization"
+          val lc = utilization \ "ICESTORM_LC"
+          val ram = utilization \ "ICESTORM_RAM"
+          (lc \ "used").as[Long].toString + "/" + (lc \ "available").as[Long].toString + " LCs\n" +
+            (ram \ "used").as[Long].toString + "/" + (ram \ "available").as[Long].toString + " RAMs"
         } catch {
           case _: Exception => "???"
         }
@@ -215,7 +194,8 @@ object YosysFlow {
 
       @deprecated("not fully implemented")
       override def criticalPaths = {
-        val M(root) = json
+        ???
+        /*val M(root) = json
         val A(critical_paths) = root.get("critical_paths")
         for (M(critical_path) <- critical_paths) yield {
           val S(launchClock) = critical_path.get("from")
@@ -230,26 +210,19 @@ object YosysFlow {
             to = "",
             delay = TimeNumber(0)
           )
-        }
+        }*/
       }
 
       override def bitstreamFile: Option[String] =
         pcfFile.map(_ => s"$workspacePath/${rtl.getName()}.bin")
 
       override def resources = {
-        val M(root) = json
-        val M(utilization) = root.get("utilization")
-        utilization.map(x => {
-          val name = x._1.replace("ICESTORM_", "").replace("SB_", "")
-          val M(result) = x._2
-          (
-            name,
-            (
-              result.getOrElse("available", 0).asInstanceOf[Int],
-              result.getOrElse("used", 0).asInstanceOf[Int]
-            )
-          )
-        })
+        val utilization = json \ "utilization"
+        utilization.as[JsObject].value.map { case (name, value) =>
+          val used = (value \ "used").as[Long]
+          val available = (value \ "available").as[Long]
+          (name -> (available, used))
+        }
       }
     }
   }

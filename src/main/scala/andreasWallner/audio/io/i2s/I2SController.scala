@@ -8,8 +8,8 @@ import spinal.lib._
 case class I2SController(divider: Int, width: Int) extends Component {
   val io = new Bundle {
     val i2s = new Bundle {
-      val ws = out Bool () setAsReg () init False
-      val sck = out Bool () setAsReg ()
+      val ws = out port Bool().setAsReg init False
+      val sck = out port Bool().setAsReg
     }
   }
 

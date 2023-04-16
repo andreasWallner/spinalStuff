@@ -16,14 +16,14 @@ case class DmaConfig(axiConfig: Axi4Config) extends Bundle {
 
 case class Axi3Dma(axiConfig: Axi4Config = Axi4Config(addressWidth = 64, dataWidth = 64, idWidth = 2)) extends Component {
   val io = new Bundle {
-    val axi = master(Axi4WriteOnly(axiConfig)) // use Axi4 for now, close enough (see http://www.vlsiip.com/amba/axi34.html)
-    val config = in(DmaConfig(axiConfig))
-    val data = slave(Stream(Bits(16 bit)))
-    val dataAvailable = in(UInt(8 bit))
-    val run = in(Bool())
-    val hasWrapped = out(Bool()) setAsReg()
-    val busy = out(Bool())
-    val full = out(Bool()) setAsReg()
+    val axi = master port Axi4WriteOnly(axiConfig) // use Axi4 for now, close enough (see http://www.vlsiip.com/amba/axi34.html)
+    val config = in port DmaConfig(axiConfig)
+    val data = slave port Stream(Bits(16 bit))
+    val dataAvailable = in port UInt(8 bit)
+    val run = in port Bool()
+    val hasWrapped = out port Bool().setAsReg
+    val busy = out port Bool()
+    val full = out port Bool().setAsReg
   }
   val outstandingB = Reg(UInt(3 bit)) init 0
   val awDone = Reg(Bool()) init False

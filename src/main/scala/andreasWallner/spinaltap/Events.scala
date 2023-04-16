@@ -3,6 +3,8 @@ package andreasWallner.spinaltap
 import spinal.core._
 import spinal.lib._
 
+import scala.language.postfixOps
+
 case class Event() extends Bundle {
   val source = UInt(8 bit)
   val data = Bits(16 bit)

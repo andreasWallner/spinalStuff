@@ -9,11 +9,11 @@ import scala.language.postfixOps
 
 case class SlaveFifoLoopback() extends Component {
   val io = new Bundle {
-    val fx3 = master(SlaveFifo())
-    val activity = out Bool()
-    val mode = in Bits(4 bit)
+    val fx3 = master port SlaveFifo()
+    val activity = out port Bool()
+    val mode = in port Bits(4 bit)
 
-    val toggle1Hz = out Bool() setAsReg()
+    val toggle1Hz = out port Bool().setAsReg
   }
 
   val sfmTxEn = RegInit(False)

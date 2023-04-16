@@ -48,7 +48,7 @@ object IOMux {
   ) {
     def selWidth = log2Up(inPorts)
     def swapWidth = log2Up(portGenerics.triCnt + 1)
-    def swapMax = ((BigInt(1) << swapWidth) - 1).intValue()
+    def swapMax = ((BigInt(1) << swapWidth) - 1).intValue
   }
 
   /**

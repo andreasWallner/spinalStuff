@@ -99,7 +99,7 @@ class Graph(writer: Writer) {
     writer.write(s"""{ $id [shape=record, label="{{<t> T|<sel> ?|<f> F}|<out> =}"] }\n""")
   }
 
-  def mux3col(x: Expression, i: Seq[Seq[String]]) = {
+  def mux3col(x: Expression, i: Iterable[Iterable[String]]) = {
     val values = i.zipWithIndex
       .map { case (ii, idx) => s"""{<e$idx> =|{${ii.mkString("|")}}}""" }
       .mkString("|")
@@ -225,7 +225,7 @@ case class Diagrammer(c: Component) {
       def filter(f: Statement => Boolean): Seq[Statement] = {
         val b = ArrayBuffer[Statement]()
         ss.foreachStatements(s => if (f(s)) b += s)
-        b
+        b.toSeq
       }
     }
 

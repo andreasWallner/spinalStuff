@@ -26,9 +26,9 @@ case class SimpleWG2812() extends Component {
   io.dout := RegNext(dout) init False
 
   val frequency = 12 MHz
-  val rstCnt = ((50 us) * frequency).toBigInt()
-  val shortCnt = ((.425 us) * frequency).toBigInt()
-  val longCnt = ((.825 us) * frequency).toBigInt()
+  val rstCnt = ((50 us) * frequency).toBigInt
+  val shortCnt = ((.425 us) * frequency).toBigInt
+  val longCnt = ((.825 us) * frequency).toBigInt
 
   val counter = Reg(UInt(10 bit)) init 0
   val shortCntReached = counter === shortCnt
@@ -103,7 +103,7 @@ case class IceStickSimpleWG2812() extends Component {
   val io = new Bundle {
     val pmod = out port Bits(8 bit)
   }
-  val delay = ((100 ms) * (12 MHz)).toBigInt()
+  val delay = ((100 ms) * (12 MHz)).toBigInt
   val counter = Reg(UInt(log2Up(delay + 1) bit)) init 0
 
   io.pmod(7 downto 1).clearAll()

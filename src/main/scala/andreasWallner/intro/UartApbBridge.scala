@@ -62,9 +62,9 @@ case class UartApbBridge(g: UartApbBridgeGenerics) extends Module {
   val slicedAction = uart.read.payload.takeHigh(g.actionBits) // TODO .as[Action.E]
 
   io.apb.PSEL(0) := False
-  io.apb.PADDR.setAsReg()
-  io.apb.PWDATA.setAsReg()
-  io.apb.PENABLE.setAsReg() init False
+  io.apb.PADDR.setAsReg
+  io.apb.PWDATA.setAsReg
+  io.apb.PENABLE.setAsReg init False
   io.apb.PWRITE := action === Action.WRITE.asBits
   val pwdataBytes = io.apb.PWDATA.subdivideIn(8 bit).reverse
 

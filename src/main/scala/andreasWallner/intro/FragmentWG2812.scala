@@ -15,7 +15,7 @@ case class FragmentWG2812() extends Component {
   val io = new Bundle {
     val colors = slave port Stream(Fragment(UInt(8 bit)))
     val idle = out port Bool()
-    val dout = out port Bool() setAsReg () init False
+    val dout = out port Bool().setAsReg init False
   }
 
   val (rstCnt, shortCnt, longCnt) = WG2812.calculateTimings()
@@ -139,7 +139,7 @@ case class IceStickFragmentWG2812(
   io.pmod(0) := wg2812.io.dout
 
   val skipTiming = new Area {
-    val cycles = (skipDelay * ClockDomain.current.frequency.getValue).toBigInt()
+    val cycles = (skipDelay * ClockDomain.current.frequency.getValue).toBigInt
     val cnt = Reg(UInt(log2Up(cycles) bit)) init 0
     val fire = cnt === 0
     when(!fire) {
@@ -154,7 +154,7 @@ case class IceStickFragmentWG2812(
   val colorGen = new Area {
     val color = Reg(RGB(8 bit)) init (0, 0, 100)
     color.r.allowUnsetRegToAvoidLatch()
-    val cycles = (colorChange * ClockDomain.current.frequency.getValue).toBigInt()
+    val cycles = (colorChange * ClockDomain.current.frequency.getValue).toBigInt
     val colorCnt = Reg(UInt(log2Up(cycles) bit)) init (cycles - 1)
 
     val moreG = Reg(Bool()) init True

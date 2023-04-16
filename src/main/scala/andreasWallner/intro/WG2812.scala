@@ -25,9 +25,9 @@ object WG2812 {
       freq: HertzNumber = ClockDomain.current.frequency.getValue,
       validate: Boolean = true
   ) = {
-    val rstCnt = ((50 us) * freq).toBigInt()
-    val shortCnt = ((.425 us) * freq).toBigInt()
-    val longCnt = ((.825 us) * freq).toBigInt()
+    val rstCnt = ((50 us) * freq).toBigInt
+    val shortCnt = ((.425 us) * freq).toBigInt
+    val longCnt = ((.825 us) * freq).toBigInt
 
     if (validate)
       validateTimings(shortCnt, longCnt, ClockDomain.current.frequency.getValue)

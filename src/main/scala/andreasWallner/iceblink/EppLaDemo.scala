@@ -12,7 +12,7 @@ import scala.language.postfixOps
 object UartTransmitter {
   def apply[T <: Data](baudrate: Int, data: Stream[T]): Bool = {
     val payload = data.payload match {
-      case b: Bits => b
+      case b: Bits        => b
       case f: Fragment[_] => f.fragment
     }
     assert(payload.getBitsWidth == 8, "Uart can only send 8 bit wide data")
@@ -25,13 +25,12 @@ object UartTransmitter {
 
 case class UartTransmitter(baudrate: Int) extends Component {
   val io = new Bundle {
-    val tx = out Bool()
+    val tx = out port Bool()
     val data = slave(Stream(Bits(8 bit)))
   }
 
   val timing = new Area {
-    val count = (clockDomain.frequency.getValue.toBigDecimal / baudrate)
-      .toBigInt() - 1
+    val count = (clockDomain.frequency.getValue.toBigDecimal / baudrate).toBigInt - 1
     val counter = Reg(UInt(log2Up(count) bits))
 
     val en = Bool()
@@ -64,8 +63,8 @@ case class UartTransmitter(baudrate: Int) extends Component {
 
 case class EppLaDemo() extends Component {
   val io = new Bundle {
-    val tx = out Bool()
-    val tx2 = out Bool()
+    val tx = out port Bool()
+    val tx2 = out port Bool()
     val epp = slave(EPP())
     val led = out Bits (4 bit)
   }

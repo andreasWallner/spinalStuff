@@ -26,7 +26,8 @@ object Pwm {
       p: Pwm.PeripheralParameters,
       busType: HardType[T],
       metaFactory: T => BusSlaveFactory
-  ) extends Component with BusComponent {
+  ) extends Component
+      with BusComponent {
     val io = new Bundle {
       val bus = slave(busType())
       val pwm = out Vec (Bool(), p.core.channelCnt)
@@ -45,7 +46,8 @@ object Pwm {
       List(
         Value(0, "dis", "Module disabled"),
         Value(1, "en", "Module enabled")
-    )) init False
+      )
+    ) init False
 
     val config0 = factory.register(0x04, "config0")
     val divider = new Area {
@@ -75,19 +77,23 @@ object Pwm {
     io.pwm := pre.core.io.pwm
     pre.core.io.run := run
 
-    val max_count = factory.register(0x08, "config1").createReadAndWrite(
-      UInt(p.core.counterWidth bits),
-      0,
-      "max_count",
-      "Maximum counter value before roll-over, pwm period = f / divider / max_count"
-    ) init 0
+    val max_count = factory
+      .register(0x08, "config1")
+      .createReadAndWrite(
+        UInt(p.core.counterWidth bits),
+        0,
+        "max_count",
+        "Maximum counter value before roll-over, pwm period = f / divider / max_count"
+      ) init 0
     val levels =
       for (i <- 0 until p.core.channelCnt)
-        yield factory.register(0x0c + 4 * i, s"level$i").createReadAndWrite(
-          UInt(p.core.counterWidth bits),
-          0,
-          "val"
-        ) init 0
+        yield factory
+          .register(0x0c + 4 * i, s"level$i")
+          .createReadAndWrite(
+            UInt(p.core.counterWidth bits),
+            0,
+            "val"
+          ) init 0
 
     val updateValues = (pre.core.io.willOverflow && divider.enable) || !run
     pre.core.io.max_count := RegNextWhen(
@@ -109,11 +115,11 @@ object Pwm {
 
   case class Core(parameters: Pwm.CoreParameters) extends Component {
     val io = new Bundle {
-      val max_count = in UInt (parameters.counterWidth bits)
-      val levels = in Vec (UInt(parameters.counterWidth bits), parameters.channelCnt)
-      val pwm = out Vec(Bool(), parameters.channelCnt) setAsReg()
-      val run = in Bool()
-      val willOverflow = out Bool()
+      val max_count = in port UInt(parameters.counterWidth bits)
+      val levels = in port Vec(UInt(parameters.counterWidth bits), parameters.channelCnt)
+      val pwm = out port Vec(Bool(), parameters.channelCnt).setAsReg
+      val run = in port Bool()
+      val willOverflow = out port Bool()
     }
 
     val counter = new Area {

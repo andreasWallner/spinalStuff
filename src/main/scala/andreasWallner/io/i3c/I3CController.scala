@@ -78,12 +78,12 @@ case class SdaTx() extends Component {
 
   io.i3c.pullup.foreach(_ := True)
   io.i3c.keeper.foreach(_ := False)
-  io.i3c.scl.writeEnable setAsReg () init False
-  io.i3c.sda.writeEnable setAsReg () init False
-  io.i3c.scl.write setAsReg ()
-  io.i3c.sda.write setAsReg ()
+  io.i3c.scl.writeEnable.setAsReg init False
+  io.i3c.sda.writeEnable.setAsReg init False
+  io.i3c.scl.write.setAsReg
+  io.i3c.sda.write.setAsReg
 
-  io.ack.payload setAsReg ()
+  io.ack.payload.setAsReg
   io.ack.valid := False
 
   io.idle := False

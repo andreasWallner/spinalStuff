@@ -7,6 +7,7 @@ import spinal.lib._
 import spinal.lib.bus.amba4.axi.{Axi4Config, Axi4WriteOnly}
 
 import scala.collection.mutable
+import scala.collection.Seq
 import scala.language.postfixOps
 
 case class AnalyzerGenerics(
@@ -104,7 +105,7 @@ object MemoryFormatter {
     val nn =
       if (n > 0) n % seq.length else seq.length - (n.abs % seq.length)
     seq.view.takeRight(nn) ++ seq.view.dropRight(nn)
-  }
+  }.toSeq
 
   // to only require a +1 upcounter, we count the insert positions 0, 1, 2
   // but actually mean the first, second, ... insert offset (if we have 3
@@ -260,19 +261,19 @@ case class Analyzer(g: AnalyzerGenerics) extends Component {
     Axi4Config(addressWidth = 64, dataWidth = 64, useId = false)
   val io = new Bundle {
     val data = in(Bits(g.dataWidth bits))
-    val externalTrigger = in(Bits(g.externalTriggerCnt bits))
-    val triggerMode = in(Vec(TriggerMode(), g.dataWidth))
-    val dmaAxi = master(Axi4WriteOnly(dmaAxiConfig))
+    val externalTrigger = in port Bits(g.externalTriggerCnt bits)
+    val triggerMode = in port Vec(TriggerMode(), g.dataWidth)
+    val dmaAxi = master port Axi4WriteOnly(dmaAxiConfig)
     val config = new Bundle {
-      val startAddress = in(UInt(dmaAxiConfig.addressWidth bits))
-      val endAddress = in(UInt(dmaAxiConfig.addressWidth bits))
-      val armTrigger = in(Bool())
-      val circular = in(Bool())
+      val startAddress = in port UInt(dmaAxiConfig.addressWidth bits)
+      val endAddress = in port UInt(dmaAxiConfig.addressWidth bits)
+      val armTrigger = in port Bool()
+      val circular = in port Bool()
     }
     val status = new Bundle {
-      val running = out(Bool()).setAsReg() init False
-      val busy = out(Bool())
-      val overflow = out(Bool()).setAsReg() init False
+      val running = out port Bool().setAsReg init False
+      val busy = out port Bool()
+      val overflow = out port Bool().setAsReg init False
     }
   }
 

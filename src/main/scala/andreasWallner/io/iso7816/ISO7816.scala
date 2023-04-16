@@ -39,11 +39,7 @@ import spinal.core.ClockDomain.FixedFrequency
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb.{Apb3, Apb3Config, Apb3SlaveFactory}
-import spinal.lib.bus.amba4.axilite.{
-  AxiLite4,
-  AxiLite4Config,
-  AxiLite4SlaveFactory
-}
+import spinal.lib.bus.amba4.axilite.{AxiLite4, AxiLite4Config, AxiLite4SlaveFactory}
 import spinal.lib.bus.misc.BusSlaveFactory
 import spinal.lib.fsm._
 import spinal.lib.io.TriState
@@ -341,13 +337,13 @@ case class ClockGen(divider_width: Int = 32) extends Component {
 
 case class Timeout() extends Component {
   val io = new Bundle {
-    val cwt = in UInt ()
-    val bwt = in UInt ()
+    val cwt = in port UInt()
+    val bwt = in port UInt()
 
-    val en = in Bool ()
-    val activity = in Bool ()
-    val c_timeout = out Bool () setAsReg ()
-    val b_timeout = out Bool () setAsReg ()
+    val en = in port Bool()
+    val activity = in port Bool()
+    val c_timeout = out port Bool().setAsReg
+    val b_timeout = out port Bool().setAsReg
   }
 
   val cnt = Reg(UInt(32 bit))
@@ -759,8 +755,7 @@ class Peripheral[T <: spinal.core.Data with IMasterSlave](
     core.io.state.ctrl_state,
     bitOffset = 5,
     name = "iso_state",
-    doc =
-      "State of the ISO interface. May show old or new value during an ongoing change.",
+    doc = "State of the ISO interface. May show old or new value during an ongoing change.",
     values = List(
       Value(
         CtrlState.Active,

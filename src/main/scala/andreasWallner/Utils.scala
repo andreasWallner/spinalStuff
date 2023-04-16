@@ -1,6 +1,5 @@
 package andreasWallner
 
-import java.io.{FilterOutputStream, OutputStream}
 import scala.collection.mutable
 
 object Utils {
@@ -11,8 +10,8 @@ object Utils {
       return BigInt(0)
     a / a.gcd(b) * b
   }
-  def lcm(a: Int, b: Int): Int = lcm(BigInt(a), BigInt(b)).intValue()
-  def lcm(a: Long, b: Long): Long = lcm(BigInt(a), BigInt(b)).longValue()
+  def lcm(a: Int, b: Int): Int = lcm(BigInt(a), BigInt(b)).intValue
+  def lcm(a: Long, b: Long): Long = lcm(BigInt(a), BigInt(b)).longValue
   def lcm(xs: BigInt*): BigInt = {
     if (xs.isEmpty)
       return BigInt(1)
@@ -33,8 +32,8 @@ object Utils {
 
   /** calculate greatest common divisor (the biggest number that divides both a & b w/o remainder) */
   def gcd(a: BigInt, b: BigInt): BigInt = a.gcd(b)
-  def gcd(a: Int, b: Int): Int = gcd(BigInt(a), BigInt(b)).intValue()
-  def gcd(a: Long, b: Long): Long = gcd(BigInt(a), BigInt(b)).longValue()
+  def gcd(a: Int, b: Int): Int = gcd(BigInt(a), BigInt(b)).intValue
+  def gcd(a: Long, b: Long): Long = gcd(BigInt(a), BigInt(b)).longValue
 
   def divCeil(p: Int, q: Int): Int = {
     assert(p >= 0)
@@ -208,7 +207,7 @@ object Utils {
   }
   object DumpAST {
     import spinal.core.Component
-    import spinal.core.internals.{Statement, Expression}
+    import spinal.core.internals.{Expression, Statement}
     def apply(c: Component): Unit = apply(c, withHashCode = false)
     def apply(c: Component, withHashCode: Boolean): Unit =
       new DumpAST("", withHashCode).dump(c)
@@ -218,52 +217,5 @@ object Utils {
     def apply(e: Expression): Unit = apply(e, withHashCode = false)
     def apply(e: Expression, withHashCode: Boolean): Unit =
       new DumpAST("", withHashCode).dump(e)
-  }
-
-  // thanks to Andrew Zakordonets (https://biercoff.com/easily-measuring-code-execution-time-in-scala/)
-  def time[R](block: => R): R = {
-    val t0 = System.nanoTime()
-    val result = block
-    val t1 = System.nanoTime()
-    println("Elapsed time: " + (t1 - t0) + " ns")
-    result
-  }
-  def time[R](id: String)(block: => R): R = {
-    val t0 = System.nanoTime()
-    val result = block
-    val t1 = System.nanoTime()
-    println(id + " elapsed time: " + (t1 - t0) + " ns")
-    result
-  }
-
-  /**
-    * Output stream that write output to two underlying streams (like the Unix `tee` utility)
-    *
-    * Heavily inspired by the Apache common-io TeeOutputStream (but w/o the customization ability of `ProxyOutputStream`)
-    * https://github.com/apache/commons-io/blob/b51e41938ea794f67223c1414c9e6de8a04c17b5/src/main/java/org/apache/commons/io/output/TeeOutputStream.java
-    */
-  class TeeOutputStream(out: OutputStream, branch: OutputStream) extends FilterOutputStream(out) {
-    override def close(): Unit = {
-      try {
-        super.close()
-      } finally {
-        branch.close()
-      }
-    }
-
-    override def flush(): Unit = {
-      super.flush()
-      branch.flush()
-    }
-
-    override def write(b: Array[Byte]): Unit = {
-      super.write(b)
-      branch.write(b)
-    }
-
-    override def write(b: Array[Byte], off: Int, len: Int): Unit = {
-      super.write(b, off, len)
-      branch.write(b, off, len)
-    }
   }
 }

@@ -3,17 +3,13 @@ package andreasWallner.xilinx
 import andreasWallner.zynq.ZynqDma
 import spinal.core._
 import spinal.lib._
-import spinal.lib.bus.amba4.axilite.{
-  AxiLite4,
-  AxiLite4Ax,
-  AxiLite4B,
-  AxiLite4Config,
-  AxiLite4R,
-  AxiLite4W
-}
+import spinal.lib.bus.amba4.axilite.{AxiLite4, AxiLite4Ax, AxiLite4B, AxiLite4Config, AxiLite4R, AxiLite4W}
 import spinal.lib.bus.amba4.axi.{Axi4, Axi4Ax, Axi4B, Axi4Config, Axi4R, Axi4W}
 import spinal.lib.IMasterSlave
 import spinal.lib.bus.amba3.apb.Apb3
+
+import scala.collection.Seq
+import scala.collection.mutable
 
 object XilinxSupportFactory {
   def makeSupport(bundle: IMasterSlave): Option[BusSupport] =
@@ -448,7 +444,7 @@ object forMasterSlaveInterfaces {
 object XilinxNamer {
   def apply[T <: Component](comp: T): T = {
     def doIt: Unit = {
-      val interfaceList = scala.collection.mutable.ArrayBuffer[String]()
+      val interfaceList = mutable.ArrayBuffer[String]()
       forMasterSlaveInterfaces(comp) { (intf: IMasterSlave, idx: Int) =>
         XilinxSupportFactory.makeSupport(intf) match {
           case Some(support) =>
@@ -576,7 +572,7 @@ object Helper {
       case Some((prefix: String, multiplier: BigDecimal)) =>
         (d / multiplier)
           .setScale(decimalDigits, BigDecimal.RoundingMode.HALF_UP) match {
-          case v if v.isWhole() =>
+          case v if v.isWhole =>
             v.toInt.toString() + (if (prefix != "") prefix else unit)
           case v => // "thankfully" BigDecimal.toString is not locale aware...
             v.toString()
