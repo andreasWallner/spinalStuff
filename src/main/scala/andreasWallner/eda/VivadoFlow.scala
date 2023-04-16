@@ -37,10 +37,11 @@ object VivadoFlow {
       vivadoPath: String = "",
       workspacePath: String,
       rtl: Rtl,
-      family: String,
-      device: String,
+      family: String="Artix 7",
+      device: String="xc7a200tffv1156-3",
       frequencyTarget: HertzNumber = null,
       processorCount: Int = 1,
+      additionalXdc: Seq[String] = List(),
       verbose: Boolean = false
   ): VivadoSynthesisReport = {
     assert(vivadoPath == "" || vivadoPath.endsWith("/"), "vivadoPath must end with a '/' if set")
@@ -51,8 +52,8 @@ object VivadoFlow {
     workspacePathFile.mkdir()
 
     val isVhdl = (file: String) => file.endsWith(".vhd") || file.endsWith(".vhdl")
-    val xdcName = f"clk_${frequencyTarget.toDouble}.xdc"
-    if(!new File(xdcName).exists()) {
+    val xdcName = f"clk_${targetPeriod}.xdc"
+    if (!new File(xdcName).exists()) {
       val xdc = new java.io.FileWriter(Paths.get(workspacePath, xdcName).toFile)
       xdc.write(s"""create_clock -period ${(targetPeriod * 1e9).toBigDecimal} [get_ports clk]""")
       xdc.close();
@@ -63,7 +64,7 @@ object VivadoFlow {
       .getRtlPaths()
       .map(file =>
         s"""read_${if (isVhdl(file)) "vhdl" else "verilog"} ${Paths.get(file).toAbsolutePath}"""
-      ) ++: Seq(
+      ) ++: additionalXdc.map(file => s"read_xdc $file") ++: Seq(
       f"read_xdc $xdcName",
       f"synth_design -part $device -top ${rtl.getTopModuleName()}",
       "opt_design",
