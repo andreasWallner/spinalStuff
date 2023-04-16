@@ -9,8 +9,8 @@ import scala.language.postfixOps
 
 case class I3C(slaveOnly: Boolean = false) extends Bundle with IMasterSlave {
   val scl, sda = TriState(Bool())
-  val pullup = if(!slaveOnly) Some(Bool()) else None
-  val keeper = if(!slaveOnly) Some(Bool()) else None
+  val pullup = if (!slaveOnly) Some(Bool()) else None
+  val keeper = if (!slaveOnly) Some(Bool()) else None
 
   def asMaster(): Unit = {
     master(scl, sda)
@@ -18,9 +18,10 @@ case class I3C(slaveOnly: Boolean = false) extends Bundle with IMasterSlave {
     keeper.map(out.applyIt)
   }
 }
-
+// TODO enforce time between stop & start
 case class SdaTx() extends Component {
   val io = new Bundle {
+    val dataS = slave port Stream(Fragment(Bits(8 bit)))
     val data = in port Bits(8 bit)
     val trigger = in port Bool()
     val ready = out port Bool()
@@ -33,12 +34,13 @@ case class SdaTx() extends Component {
 
     val tCas = in port UInt(5 bit) // 38.4 ns < tCas < 50 mill (lowest activity state) Table 74
     val tCbp = in port UInt(5 bit)
-    val changeCnt = in port UInt(5 bit)
+    val changeCnt = in port UInt(5 bit) // pretty much implements tsco
     val lowCnt = in port UInt(5 bit) // take up low time bitCnt - lowCnt > 24 ns
     val bitCnt = in port UInt(5 bit) // remainder of bit for high pulse
     val stopCnt = in port UInt(5 bit)
 
     val idle = out port Bool()
+    val rStart = out port Bool()
   }
   val timing = new Area {
     private val cnt = Reg(UInt(5 bit)) init 0
@@ -51,24 +53,51 @@ case class SdaTx() extends Component {
     val bit = cnt === io.bitCnt
     val stop = cnt === io.stopCnt
   }
+  val sendData = new Area {
+    private val bits = Reg(Bits(9 bit))
+    val lastByte = Reg(Bool())
+    val sendParity = Reg(Bool())
+    val paritySent = Reg(Bool())
+    val parityBit = Reg(Bool())
+
+    val allSent = bits === B"000000001"
+
+    def load(withParity: Bool): Unit = {
+      lastByte := io.dataS.last
+      bits := True ## io.data.reversed
+      io.ready := True
+      io.dataS.ready := True
+      sendParity := withParity
+      paritySent := False
+      parityBit := True
+    }
+    def nextBit() = {
+      bits := bits |>> 1
+      parityBit := parityBit ^ bits(0)
+      bits(0)
+    }
+  }
 
   io.i3c.pullup.foreach(_ := True)
   io.i3c.keeper.foreach(_ := False)
-  io.i3c.scl.writeEnable setAsReg() init False
-  io.i3c.sda.writeEnable setAsReg() init False
-  io.i3c.scl.write setAsReg()
-  io.i3c.sda.write setAsReg()
+  io.i3c.scl.writeEnable setAsReg () init False
+  io.i3c.sda.writeEnable setAsReg () init False
+  io.i3c.scl.write setAsReg ()
+  io.i3c.sda.write setAsReg ()
 
-  io.ack setAsReg()
+  io.ack setAsReg ()
   io.ackStrb := False
 
   io.idle := False
   io.ready := False
+  io.rStart := False
+
+  io.dataS.ready := False
+
+
 
   //noinspection ForwardReference
   val fsm = new StateMachine {
-    val bits = Reg(Bits(9 bit))
-    val allBits = bits === B"000000001"
     val idle: State = new State with EntryPoint {
       whenIsActive {
         timing.reset()
@@ -79,8 +108,7 @@ case class SdaTx() extends Component {
         io.idle := True
 
         when(io.trigger) {
-          bits := True ## io.data.reversed
-          io.ready := True
+          sendData.load(False)
           goto(start)
         }
       }
@@ -102,17 +130,18 @@ case class SdaTx() extends Component {
       }
     }
     val rStart: State = new State {
-      onEntry {
-        timing.reset()
-        io.i3c.sda.write := True
-        io.i3c.sda.writeEnable := True
-      }
+      onEntry { timing.reset() }
       whenIsActive {
+        io.rStart := True
+        when(timing.change) {
+          io.i3c.sda.write := True
+          io.i3c.sda.writeEnable := True
+        }
         when(timing.clock) {
           io.i3c.scl.write := True
         }
         when(timing.stop) {
-          bits := True ## io.data.reversed
+          sendData.load(False)
           io.i3c.sda.write := False
           goto(rStart2) // split into two bec. timing.cas most likely happens before timing.stop
         }
@@ -134,8 +163,12 @@ case class SdaTx() extends Component {
       onEntry { io.i3c.sda.write := False }
       whenIsActive {
         when(timing.change) {
-          io.i3c.sda.writeEnable := !bits(0)
-          bits := bits |>> 1
+          when(!sendData.allSent) {
+            io.i3c.sda.writeEnable := !sendData.nextBit()
+          } otherwise {
+            io.i3c.sda.writeEnable := !sendData.parityBit
+            sendData.paritySent := True
+          }
           goto(dataHigh)
         }
       }
@@ -148,8 +181,19 @@ case class SdaTx() extends Component {
 
         when(timing.bit) {
           io.i3c.scl.write := False
-          when(allBits) {
+          when(sendData.allSent && !sendData.sendParity) {
             goto(ack)
+          } elsewhen (sendData.allSent && sendData.sendParity && sendData.paritySent) {
+            when(!io.trigger) {
+              sendData.load(True)
+              goto(dataLow)
+            } otherwise {
+              when(!io.useRestart) {
+                goto(stop)
+              } otherwise {
+                goto(rStart)
+              }
+            }
           } otherwise {
             goto(dataLow)
           }
@@ -166,7 +210,8 @@ case class SdaTx() extends Component {
           io.ack := !io.i3c.sda.read
           // continue driving ACK, overlapping with target
           when(!io.i3c.sda.read) {
-            io.i3c.sda.write := True
+            io.i3c.sda.write := False
+            io.i3c.sda.writeEnable := True
           }
         }
 
@@ -174,8 +219,7 @@ case class SdaTx() extends Component {
           io.i3c.scl.write := False
           io.ackStrb := True
           when(io.ack && io.trigger) {
-            bits := True ## io.data.reversed
-            io.ready := True
+            sendData.load(True)
             goto(dataLow)
           } otherwise {
             // ack and we are out of data -> stop or repeated start
@@ -188,6 +232,7 @@ case class SdaTx() extends Component {
           }
         }
       }
+      onExit(timing.reset())
     }
 
     val stop: State = new State {

@@ -1,10 +1,10 @@
 package andreasWallner.io.i3c.sim
 
-import andreasWallner.Utils.oddParity
-import spinal.core._
-import spinal.core.sim._
+import andreasWallner.Utils.hasOddParity
 import andreasWallner.io.i3c.I3C
 import andreasWallner.sim.SimTriStatePimper
+import spinal.core._
+import spinal.core.sim._
 
 abstract class Event
 case class Start(repeated: Boolean) extends Event
@@ -13,6 +13,7 @@ case class Bit(data: Boolean) extends Event
 case class Byte(data: Int) extends Event
 case class Passive(data: Int) extends Event
 case class ReadAbort() extends Event
+case class ParityError(b: Byte) extends Event
 
 case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
   def toInt(bits: Seq[Boolean], msbFirst: Boolean): Int = {
@@ -109,7 +110,6 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
         (isRead, addressReaction(data >> 1, isRead, repeated = repeatedStart))
     }
 
-    println("responding with", ack, response.mkString(":"))
     if (ack)
       i3c.sda.drive(false)
     waitUntil(i3c.scl.read.toBoolean)
@@ -162,10 +162,18 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
 
       }
     } else {
-      println("starting to receive data")
       while (true) {
-        val byte = rxBits(8)
-        event(byte)
+        val byte = rxBits(9)
+        val parityChecked = byte match {
+          case Byte(data) if hasOddParity(data) => Byte(data >> 1)
+          case b: Byte => ParityError(b)
+          case _ => byte
+        }
+        parityChecked match {
+          case Stop() => delayed(9999) {event(parityChecked)}
+          case _ => event(parityChecked)
+        }
+
         byte match {
           case Stop() =>
             seenStop()
@@ -174,7 +182,7 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
             seenStart(true)
             return true
           case Byte(data) =>
-            seenSDA(data >> 1, oddParity(data >> 1) == (data & 1).toBoolean)
+            seenSDA(data)
         }
       }
     }
@@ -203,7 +211,7 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
   def seenStart(repeated: Boolean): Unit = {}
   def addressReaction(address: Int, RnW: Boolean, repeated: Boolean): (Boolean, Seq[Int]) = (false, Seq())
   def sent(data: Int): Unit = {}
-  def seenSDA(data: Int, validParity: Boolean): Unit = {}
+  def seenSDA(data: Int): Unit = {}
   def seenStop(): Unit = {}
   def seenReadAbort(): Unit = {}
 }

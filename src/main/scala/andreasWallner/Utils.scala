@@ -67,6 +67,10 @@ object Utils {
     def apply(bi: BigInt): Boolean = (popCount(bi) & 1) == 0
   }
 
+  object hasOddParity {
+    def apply(i: Int): Boolean = !oddParity(i)
+  }
+
   object evenParity {
 
     /**
