@@ -35,7 +35,7 @@ package object sim {
   object simLog {
     def apply(xs: Any*): Unit = {
       println(
-        f"[${Console.BLUE}${simTime()}${Console.RESET}] " + xs
+        f"[${Console.BLUE}${simTime()}%9d${Console.RESET}] " + xs
           .map(_.toString)
           .mkString(" ")
       )
