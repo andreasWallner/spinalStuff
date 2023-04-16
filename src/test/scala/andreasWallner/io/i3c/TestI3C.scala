@@ -1,12 +1,12 @@
 package andreasWallner.io.i3c
 
+import andreasWallner.SpinalFunSuite
+import andreasWallner.io.i3c.sim._
+import andreasWallner.sim._
+import andreasWallner.util._
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib.sim._
-import andreasWallner.io.i3c.sim._
-import andreasWallner.{LoggingScoreboardInOrder, SpinalFunSuite}
-import andreasWallner.sim._
-import org.scalactic.TimesOnInt.convertIntToRepeater
 
 import scala.language.postfixOps
 import scala.util.Random
@@ -154,16 +154,14 @@ class TestSdaTx extends SpinalFunSuite {
     txScoreboard.pushRef(Stop())
     dut.clockDomain.waitSampling()
 
-    for (i <- sequence.dropRight(1)) {
+    for (((i, idx), first, last) <- sequence.zipWithIndex.zipWithIsFirstLast) {
       dut.io.data.fragment #= i
       dut.io.data.valid #= true
-      dut.io.data.last #= false
-      dut.io.trigger.strobe(dut.clockDomain) // TODO only do o first
+      dut.io.data.last #= last
+      if(first)
+        dut.io.trigger.strobe(dut.clockDomain) // TODO only do o first
       dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
     }
-    dut.io.data.fragment #= sequence.last
-    dut.io.data.last #= true
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
     dut.io.data.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
@@ -176,31 +174,32 @@ class TestSdaTx extends SpinalFunSuite {
     import fixture.txScoreboard
 
     var useRepeatStartNext = false
-    for(i <- 0 until 20) {
+    for((_, lastXfer) <- (0 until 20).zipWithIsLast) {
       txScoreboard.pushRef(Start(dut.io.useRestart.toBoolean))
 
       val n = Random.nextInt(20)
       dut.io.useRestart #= useRepeatStartNext
-      useRepeatStartNext = Random.nextBoolean() & (i != 18)
+      useRepeatStartNext = Random.nextBoolean() & !lastXfer
 
       val address = Random.nextInt(256) & ~0x01 // ensure write transfer
       txScoreboard.pushRef(Byte(address))
       dut.io.data.fragment #= address
       dut.io.data.last #= n == 0
       dut.io.data.valid #= true
-      dut.io.trigger #= true
+      dut.io.trigger.strobe()
+
       dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-      dut.io.trigger #= false
       dut.io.data.valid #= false
 
-      for (i <- 0 until n) {
+      for ((_, lastByte) <- (0 until n).zipWithIsLast) {
         val byte = dut.io.data.fragment.randomize().toInt
         txScoreboard.pushRef(Byte(byte))
         dut.io.data.valid #= true
-        dut.io.data.last #= i == (n-1)
+        dut.io.data.last #= lastByte
         dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
         dut.io.data.valid #= false
       }
+
       if(dut.io.useRestart.toBoolean)
         dut.clockDomain.waitSamplingWhere(dut.io.rStart.toBoolean)
       else
@@ -210,8 +209,6 @@ class TestSdaTx extends SpinalFunSuite {
         txScoreboard.pushRef(Stop())
     }
 
-    sleep(100)
-
-    txScoreboard.checkEmptyness()
+    fixture.finish()
   }
 }

@@ -7,6 +7,7 @@ import spinal.sim.SimManagerContext
 
 import scala.annotation.tailrec
 import scala.collection.mutable
+import scala.language.postfixOps
 import scala.util.Random
 
 class SimDriverState() {
@@ -193,6 +194,9 @@ package object sim {
         b #= !b.toBoolean
       }
     }
+
+    def strobe(): Unit = strobe(b.component.clockDomain)
+    def strobe(v: Boolean): Unit = strobe(v, b.component.clockDomain)
   }
 
   implicit class PimpedSimBitVector(bv: BitVector) {
