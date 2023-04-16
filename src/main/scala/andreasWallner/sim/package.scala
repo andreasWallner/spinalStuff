@@ -270,6 +270,57 @@ package object sim {
     }
   }
 
+  /**
+   * A string that can be added to a component and written during simulation
+   *
+   * {{{
+   *   val myString = SimString("debug_string")
+   *   val dut = SimConfig.compile { MyComponent().add(simString) }
+   *   dut.doSim { dut =>
+   *     myString #= "something to log to simulation"
+   *   }
+   * }}}
+   * @param name name of the signal added to component
+   * @param length reserved length, max length of string to log
+   */
+  case class SimString(name: String, length: Int = 20) {
+    private var reference: Option[Bits] = None
+
+    def #=(s: String): Unit = {
+      assert(reference.isDefined, "SimString has not been added to any component before use")
+      var toAssignBI = BigInt(0)
+      s.take(20).padTo(20, ' ').foreach(c => toAssignBI = (toAssignBI << 8) + c)
+      reference.get #= toAssignBI
+    }
+
+    def #=(bi: BigInt): Unit = this.#=("0x" + bi.toString(16))
+
+    def #=(i: Int): Unit = this.#=(BigInt(i))
+
+    def #=(l: Long): Unit = this.#=(BigInt(l))
+
+    def setRef(b: Bits): Unit = {
+      assert(reference.isEmpty)
+      reference = Some(b)
+    }
+  }
+
+  /**
+   * Used to add `SimString`s to a component @see SimString
+   */
+  implicit class ComponentSimStringPimper[T <: Component](c: T) {
+    def add(ss: SimString): T = {
+      c.rework {
+        val signal = Reg(Bits(ss.length * 8 bit)) init B(0x20, 8 bit) #* ss.length
+        ss.setRef(signal)
+        signal.simPublic()
+        signal.dontSimplifyIt()
+        signal.setName(ss.name)
+      }
+      c
+    }
+  }
+
   // WIP sim slicing for BitVector
   object SimBitVector {
     val values = mutable.HashMap[BitVector, BigInt]()

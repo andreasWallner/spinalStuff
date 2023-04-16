@@ -12,22 +12,8 @@ import scala.language.postfixOps
 import scala.util.Random
 
 class TestSdaTx extends SpinalFunSuite {
-  var debugString: Bits = null
-  def assignString(s: String): Unit = {
-    simLog(debugString)
-    var toAssignBI = BigInt(0)
-    s.take(20).padTo(20, ' ').foreach(c => toAssignBI = (toAssignBI << 8) + c)
-    debugString #= toAssignBI
-  }
-  val dut = SimConfig.withFstWave.compile {
-    val comp = SdaTx()
-    comp.rework {
-      val debug = Reg(Bits(20 bit))
-      debug.simPublic()
-      debugString = debug
-    }
-    comp
-  }
+  val simString = SimString("debug_msg")
+  val dut = SimConfig.withFstWave.compile { SdaTx().add(simString) }
 
   // test simple behavior when seeing NACK after addressing, generating stop
   test(dut, "SDA TX nack -> S") { dut =>
