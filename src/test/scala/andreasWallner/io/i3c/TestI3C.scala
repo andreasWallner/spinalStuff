@@ -12,11 +12,9 @@ import scala.language.postfixOps
 import scala.util.Random
 
 class TestSdaTx extends SpinalFunSuite {
-  val simString = SimString("debug_msg")
-  val dut = SimConfig.withFstWave.compile { SdaTx().add(simString) }
+  case class Fixture(dut: SdaTx, sendAck: Boolean) {
+    val txScoreboard = ScoreboardInOrder[Event]()
 
-  // test simple behavior when seeing NACK after addressing, generating stop
-  test(dut, "SDA TX nack -> S") { dut =>
     dut.io.tCas #= 2
     dut.io.changeCnt #= 1
     dut.io.lowCnt #= 7
@@ -28,24 +26,43 @@ class TestSdaTx extends SpinalFunSuite {
     dut.io.i3c.sda.simulatePullup()
     dut.io.i3c.scl.simulatePullup()
 
+    // fork and wait before setting up I3CSimTarget to avoid it seeing non-reset random values
     dut.clockDomain.forkStimulus((100 MHz).toTime)
-
-    val txScoreboard = ScoreboardInOrder[Event]()
-    txScoreboard.pushRef(Start(repeated = false))
-    txScoreboard.pushRef(Byte(0x54))
-    txScoreboard.pushRef(Stop())
     dut.clockDomain.waitSampling()
+
     new I3CSimTarget(dut.io.i3c, dut.clockDomain) {
-      override def addressReaction(address: Int, RnW: Boolean, repeated: Boolean) = (false, Seq())
+      override def addressReaction(address: Int, RnW: Boolean, repeated: Boolean) = (sendAck, Seq())
+
       override def event(e: Event): Unit = {
-        simLog(e)
+        e match {
+          case Bit(_) =>
+          case _ => //simLog(e)
+        }
         e match {
           case Byte(_) | Start(_) | Stop() => txScoreboard.pushDut(e)
-          case Bit(_)                      =>
-          case _                           => fail("sim target saw unexpected event")
+          case Bit(_) =>
+          case _ => fail("sim target saw unexpected event")
         }
       }
     }
+
+    def finish(): Unit = {
+      sleep(100)
+      txScoreboard.checkEmptyness()
+    }
+  }
+
+  val simString = SimString("debug_msg")
+  val dut = SimConfig.withFstWave.compile { SdaTx().add(simString) }
+
+  // test simple behavior when seeing NACK after addressing, generating stop
+  test(dut, "SDA TX nack -> S") { dut =>
+    val fixture = Fixture(dut, sendAck=false)
+    import fixture.txScoreboard
+
+    txScoreboard.pushRef(Start(repeated = false))
+    txScoreboard.pushRef(Byte(0x54))
+    txScoreboard.pushRef(Stop())
 
     dut.io.data.fragment #= 0x54
     dut.io.data.valid #= true
@@ -57,47 +74,23 @@ class TestSdaTx extends SpinalFunSuite {
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
-    sleep(100)
-
-    txScoreboard.checkEmptyness()
+    fixture.finish()
   }
 
   // test simple behavior when seeing NACK after addressing, generate repeated start
   // set up signals as if we wanted to send multiple bytes, and have to switch
   // to next address in time for repeated start (w/o follow-up data)
   test(dut, "SDA TX nack -> R") { dut =>
-    dut.io.tCas #= 2
-    dut.io.changeCnt #= 1
-    dut.io.lowCnt #= 7
-    dut.io.bitCnt #= 8
-    dut.io.stopCnt #= 10
-    dut.io.trigger #= false
-    dut.io.useRestart #= true
+    val fixture = Fixture(dut, sendAck=false)
+    import fixture.txScoreboard
 
-    dut.io.i3c.sda.simulatePullup()
-    dut.io.i3c.scl.simulatePullup()
-
-    dut.clockDomain.forkStimulus((100 MHz).toTime)
-
-    val txScoreboard = ScoreboardInOrder[Event]()
     txScoreboard.pushRef(Start(repeated = false))
     txScoreboard.pushRef(Byte(0x54))
     txScoreboard.pushRef(Start(repeated = true))
     txScoreboard.pushRef(Byte(0x43))
     txScoreboard.pushRef(Stop())
-    dut.clockDomain.waitSampling()
-    new I3CSimTarget(dut.io.i3c, dut.clockDomain) {
-      override def addressReaction(address: Int, RnW: Boolean, repeated: Boolean) = (false, Seq())
 
-      override def event(e: Event): Unit = {
-        simLog(e)
-        e match {
-          case Byte(_) | Start(_) | Stop() => txScoreboard.pushDut(e)
-          case Bit(_) =>
-          case _ => fail("sim target saw unexpected event")
-        }
-      }
-    }
+    dut.io.useRestart #= true
 
     dut.io.data.fragment #= 0x54
     dut.io.data.last #= false
@@ -121,43 +114,17 @@ class TestSdaTx extends SpinalFunSuite {
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
-    sleep(100)
-
-    txScoreboard.checkEmptyness()
+    fixture.finish()
   }
 
   test(dut, "SDA TX ack -> 1 byte -> S") { dut =>
-    dut.io.tCas #= 2
-    dut.io.changeCnt #= 1
-    dut.io.lowCnt #= 7
-    dut.io.bitCnt #= 8
-    dut.io.stopCnt #= 10
-    dut.io.trigger #= false
-    dut.io.useRestart #= false
+    val fixture = Fixture(dut, sendAck=true)
+    import fixture.txScoreboard
 
-    dut.io.i3c.sda.simulatePullup()
-    dut.io.i3c.scl.simulatePullup()
-
-    dut.clockDomain.forkStimulus((100 MHz).toTime)
-
-    val txScoreboard = ScoreboardInOrder[Event]()
     txScoreboard.pushRef(Start(repeated = false))
     txScoreboard.pushRef(Byte(0x54))
     txScoreboard.pushRef(Byte(0x76))
     txScoreboard.pushRef(Stop())
-    dut.clockDomain.waitSampling()
-    new I3CSimTarget(dut.io.i3c, dut.clockDomain) {
-      override def addressReaction(address: Int, RnW: Boolean, repeated: Boolean) = (true, Seq())
-
-      override def event(e: Event): Unit = {
-        simLog(e)
-        e match {
-          case Byte(_) | Start(_) | Stop() => txScoreboard.pushDut(e)
-          case Bit(_) =>
-          case _ => fail("sim target saw unexpected event")
-        }
-      }
-    }
 
     dut.io.data.fragment #= 0x54
     dut.io.data.valid #= true
@@ -173,44 +140,19 @@ class TestSdaTx extends SpinalFunSuite {
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
-    sleep(100)
-
-    txScoreboard.checkEmptyness()
+    fixture.finish()
   }
 
   test(dut, "SDA TX ack -> 100 byte -> S") { dut =>
-    dut.io.tCas #= 2
-    dut.io.changeCnt #= 1
-    dut.io.lowCnt #= 7
-    dut.io.bitCnt #= 8
-    dut.io.stopCnt #= 10
-    dut.io.trigger #= false
-    dut.io.useRestart #= false
-
-    dut.io.i3c.sda.simulatePullup()
-    dut.io.i3c.scl.simulatePullup()
-
-    dut.clockDomain.forkStimulus((100 MHz).toTime)
+    val fixture = Fixture(dut, sendAck=true)
+    import fixture.txScoreboard
 
     val sequence = Seq(0x54) ++ Seq.fill(100){Random.nextInt(256)}
 
-    val txScoreboard = ScoreboardInOrder[Event]()
     txScoreboard.pushRef(Start(repeated = false))
     sequence.foreach(i => txScoreboard.pushRef(Byte(i)))
     txScoreboard.pushRef(Stop())
     dut.clockDomain.waitSampling()
-    new I3CSimTarget(dut.io.i3c, dut.clockDomain) {
-      override def addressReaction(address: Int, RnW: Boolean, repeated: Boolean) = (true, Seq())
-
-      override def event(e: Event): Unit = {
-        simLog(e)
-        e match {
-          case Byte(_) | Start(_) | Stop() => txScoreboard.pushDut(e)
-          case Bit(_) =>
-          case _ => fail("sim target saw unexpected event")
-        }
-      }
-    }
 
     for (i <- sequence.dropRight(1)) {
       dut.io.data.fragment #= i
@@ -226,42 +168,12 @@ class TestSdaTx extends SpinalFunSuite {
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
-    sleep(100)
-
-    txScoreboard.checkEmptyness()
+    fixture.finish()
   }
 
   test(dut, "SDA TX ack -> 20 * (x byte -> R|S)") { dut =>
-    dut.io.tCas #= 2
-    dut.io.changeCnt #= 1
-    dut.io.lowCnt #= 7
-    dut.io.bitCnt #= 8
-    dut.io.stopCnt #= 10
-    dut.io.trigger #= false
-    dut.io.useRestart #= false
-
-    dut.io.i3c.sda.simulatePullup()
-    dut.io.i3c.scl.simulatePullup()
-
-    val txScoreboard = LoggingScoreboardInOrder[Event]()
-
-    dut.clockDomain.forkStimulus((100 MHz).toTime)
-    dut.clockDomain.waitSampling()
-    new I3CSimTarget(dut.io.i3c, dut.clockDomain) {
-      override def addressReaction(address: Int, RnW: Boolean, repeated: Boolean) = (true, Seq())
-
-      override def event(e: Event): Unit = {
-        e match {
-          case Bit(_) =>
-          case _ =>//simLog(e)
-        }
-        e match {
-          case Byte(_) | Start(_) | Stop() => txScoreboard.pushDut(e)
-          case Bit(_) =>
-          case _ => fail("sim target saw unexpected event")
-        }
-      }
-    }
+    val fixture = Fixture(dut, sendAck=true)
+    import fixture.txScoreboard
 
     var useRepeatStartNext = false
     for(i <- 0 until 20) {
@@ -274,7 +186,6 @@ class TestSdaTx extends SpinalFunSuite {
       val address = Random.nextInt(256) & ~0x01 // ensure write transfer
       txScoreboard.pushRef(Byte(address))
       dut.io.data.fragment #= address
-      if (n == 0) simLog("no data: ", address)
       dut.io.data.last #= n == 0
       dut.io.data.valid #= true
       dut.io.trigger #= true
