@@ -1,5 +1,6 @@
 package andreasWallner
 
+import java.io.{FilterOutputStream, OutputStream}
 import scala.collection.mutable
 
 object Utils {
@@ -119,7 +120,10 @@ object Utils {
     }
     def printAttributes(bt: BaseType): Unit = {
       printFlags(bt.asInstanceOf[Data])
-      print(if (bt.isReg) s"${bt.clockDomain} ${Integer.toHexString(bt.clockDomain.clock.hashCode())}" else "")
+      print(
+        if (bt.isReg) s"${bt.clockDomain} ${Integer.toHexString(bt.clockDomain.clock.hashCode())}"
+        else ""
+      )
     }
 
     val tMark = s"${Console.GREEN}T${Console.RESET}"
@@ -127,7 +131,11 @@ object Utils {
       for (tag <- str.getTags()) {
         println(s"$tMark $indent ${tag.getClass.getName} ${tag.toString}")
         tag match {
-          case edt: ExternalDriverTag => println(indent + " driver" + edt.driver.toString + " " + Integer.toHexString(edt.driver.hashCode()))
+          case edt: ExternalDriverTag =>
+            println(
+              indent + " driver" + edt.driver.toString + " " + Integer
+                .toHexString(edt.driver.hashCode())
+            )
           case _ =>
         }
 
@@ -226,5 +234,36 @@ object Utils {
     val t1 = System.nanoTime()
     println(id + " elapsed time: " + (t1 - t0) + " ns")
     result
+  }
+
+  /**
+    * Output stream that write output to two underlying streams (like the Unix `tee` utility)
+    *
+    * Heavily inspired by the Apache common-io TeeOutputStream (but w/o the customization ability of `ProxyOutputStream`)
+    * https://github.com/apache/commons-io/blob/b51e41938ea794f67223c1414c9e6de8a04c17b5/src/main/java/org/apache/commons/io/output/TeeOutputStream.java
+    */
+  class TeeOutputStream(out: OutputStream, branch: OutputStream) extends FilterOutputStream(out) {
+    override def close(): Unit = {
+      try {
+        super.close()
+      } finally {
+        branch.close()
+      }
+    }
+
+    override def flush(): Unit = {
+      super.flush()
+      branch.flush()
+    }
+
+    override def write(b: Array[Byte]): Unit = {
+      super.write(b)
+      branch.write(b)
+    }
+
+    override def write(b: Array[Byte], off: Int, len: Int): Unit = {
+      super.write(b, off, len)
+      branch.write(b, off, len)
+    }
   }
 }
