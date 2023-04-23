@@ -63,7 +63,7 @@ case class SdaTx() extends Component {
     val isAddress = Reg(Bool())
 
     val isRead = Reg(Bool())
-    val sendParity = !isRead
+    val sendParity = !isAddress
 
     val allSent = bits === B"000000001"
 
@@ -142,7 +142,7 @@ case class SdaTx() extends Component {
       }
       whenIsActive {
         io.i3c.sda.write := False
-        when(timing.cas) { goto(dataLow) }
+        when(timing.cas) { goto(transmitBits) }
       }
       onExit {
         io.i3c.scl.write := False
@@ -170,7 +170,7 @@ case class SdaTx() extends Component {
     val rStart2: State = new State { // TODO can we reuse the start state here?
       onEntry { timing.reset() }
       whenIsActive {
-        when(timing.cas) { goto(dataLow) }
+        when(timing.cas) { goto(transmitBits) }
       }
       onExit {
         io.i3c.scl.write := False
@@ -179,8 +179,11 @@ case class SdaTx() extends Component {
     }
 
     // for now use hard coded setup time of 1 cycle (>= 3 ns)
-    val dataLow: State = new State {
-      onEntry { io.i3c.sda.write := False }
+    val transmitBits: State = new State {
+      onEntry {
+        timing.reset()
+        io.i3c.sda.write := False
+      }
       whenIsActive {
         when(timing.change) {
           when(!sendData.allSent) {
@@ -189,16 +192,10 @@ case class SdaTx() extends Component {
             io.i3c.sda.writeEnable := !sendData.parityBit
             sendData.paritySent := True
           }
-          goto(dataHigh)
         }
-      }
-    }
-    val dataHigh: State = new State {
-      whenIsActive {
         when(timing.clock) {
           io.i3c.scl.write := True
         }
-
         when(timing.bit) {
           io.i3c.scl.write := False
           when(sendData.allSent && !sendData.sendParity) {
@@ -206,7 +203,7 @@ case class SdaTx() extends Component {
           } elsewhen (sendData.allSent && sendData.sendParity && sendData.paritySent) {
             when(!sendData.lastByte) {
               sendData.load(false)
-              goto(dataLow)
+              timing.reset()
             } otherwise {
               when(!io.useRestart) {
                 goto(stop)
@@ -215,7 +212,7 @@ case class SdaTx() extends Component {
               }
             }
           } otherwise {
-            goto(dataLow)
+            timing.reset()
           }
         }
       }
@@ -238,7 +235,6 @@ case class SdaTx() extends Component {
             goto(rxAbort)
           }
         }
-
         when(timing.bit) {
           sendData.isAddress := False
           io.i3c.scl.write := False
@@ -247,7 +243,7 @@ case class SdaTx() extends Component {
             goto(readBits)
           } elsewhen(!sendData.isRead && io.ack.payload && !sendData.lastByte) {
             sendData.load(false)
-            goto(dataLow)
+            goto(transmitBits)
           } otherwise {
             // ack and we are out of data -> stop or repeated start
             // nack -> stop or repeated start
@@ -276,7 +272,7 @@ case class SdaTx() extends Component {
           when(io.useRestart) {
             sendData.load(true)
             timing.reset()
-            goto(dataLow)
+            goto(transmitBits)
           } otherwise {
             goto(stop)
           }

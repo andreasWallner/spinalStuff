@@ -41,7 +41,7 @@ class TestSdaTx extends SpinalFunSuite {
         e match {
           case Byte(_) | Start(_) | Stop() => txScoreboard.pushDut(e)
           case Bit(_) =>
-          case _ => fail("sim target saw unexpected event")
+          case _ => fail(f"sim target reported unexpected event: $e")
         }
       }
     }
@@ -52,7 +52,7 @@ class TestSdaTx extends SpinalFunSuite {
     }
   }
 
-  val dut = SimConfig.withFstWave.compile { SdaTx() }
+  val dut = namedSimConfig.compile { SdaTx() }
 
   // test simple behavior when seeing NACK after addressing, generating stop
   test(dut, "SDA TX nack -> S") { dut =>

@@ -55,7 +55,7 @@ class TestSdaRx extends SpinalFunSuite {
     }
   }
 
-  val dut = SimConfig.withFstWave.compile { SdaTx() }
+  val dut = namedSimConfig.compile { SdaTx() }
 
   test(dut, "SDA RX ack -> 1 byte -> P") { dut =>
     SimTimeout((100 ns) * 8 * 5)
