@@ -58,21 +58,26 @@ case class SdaTx() extends Component {
   val sendData = new Area {
     private val bits = Reg(Bits(9 bit))
     val lastByte = Reg(Bool())
-    val sendParity = Reg(Bool())
     val paritySent = Reg(Bool())
     val parityBit = Reg(Bool())
+    val isAddress = Reg(Bool())
+
+    val isRead = Reg(Bool())
+    val sendParity = !isRead
 
     val allSent = bits === B"000000001"
 
     io.data.ready := False
-    def load(withParity: Bool): Unit = {
+    def load(loadsAddress: Boolean): Unit = {
       lastByte := io.data.last
       bits := True ## io.data.fragment.reversed
       io.data.ready := True
 
-      sendParity := withParity
+      isAddress := Bool(loadsAddress)
       paritySent := False
       parityBit := True
+      if(loadsAddress)
+        isRead := io.data.fragment(0)
     }
     def nextBit() = {
       bits := bits |>> 1
@@ -111,8 +116,6 @@ case class SdaTx() extends Component {
   io.idle := False
   io.rStart := False
 
-  val isRead = Reg(Bool())
-  val isAddress = Reg(Bool())
   //noinspection ForwardReference
   val fsm = new StateMachine {
     val idle: State = new State with EntryPoint {
@@ -125,9 +128,7 @@ case class SdaTx() extends Component {
         io.idle := True
 
         when(io.trigger) {
-          sendData.load(False)
-          isRead := io.data.payload.fragment(0)
-          isAddress := True
+          sendData.load(true)
           goto(start)
         }
       }
@@ -160,9 +161,7 @@ case class SdaTx() extends Component {
           io.i3c.scl.write := True
         }
         when(timing.stop) {
-          sendData.load(False)
-          isRead := io.data.payload.fragment(0)
-          isAddress := True
+          sendData.load(true)
           io.i3c.sda.write := False
           goto(rStart2) // split into two bec. timing.cas most likely happens before timing.stop
         }
@@ -206,7 +205,7 @@ case class SdaTx() extends Component {
             goto(ack)
           } elsewhen (sendData.allSent && sendData.sendParity && sendData.paritySent) {
             when(!sendData.lastByte) {
-              sendData.load(True)
+              sendData.load(false)
               goto(dataLow)
             } otherwise {
               when(!io.useRestart) {
@@ -223,7 +222,7 @@ case class SdaTx() extends Component {
       onExit(timing.reset())
     }
 
-    val ackIsLow = !(isRead && !isAddress)
+    val ackIsLow = !(sendData.isRead && !sendData.isAddress)
     val ack: State = new State {
       whenIsActive {
         when(timing.change) { io.i3c.sda.writeEnable := False }
@@ -231,23 +230,23 @@ case class SdaTx() extends Component {
           io.i3c.scl.write := True
           io.ack.payload := io.i3c.sda.read ^ ackIsLow
           // if write continue driving ACK, overlapping with target
-          when(!io.i3c.sda.read && (!isRead || (isRead && !isAddress))) {
+          when(!io.i3c.sda.read && (!sendData.isRead || (sendData.isRead && !sendData.isAddress))) {
             io.i3c.sda.write := False
             io.i3c.sda.writeEnable := True
           }
-          when(isRead && !isAddress && io.i3c.sda.read && !io.continueRx) {
+          when(sendData.isRead && !sendData.isAddress && io.i3c.sda.read && !io.continueRx) {
             goto(rxAbort)
           }
         }
 
         when(timing.bit) {
-          isAddress := False
+          sendData.isAddress := False
           io.i3c.scl.write := False
           io.ack.valid := True
-          when(isRead && io.ack.payload) {
+          when(sendData.isRead && io.ack.payload) {
             goto(readBits)
-          } elsewhen(!isRead && io.ack.payload && !sendData.lastByte) {
-            sendData.load(True)
+          } elsewhen(!sendData.isRead && io.ack.payload && !sendData.lastByte) {
+            sendData.load(false)
             goto(dataLow)
           } otherwise {
             // ack and we are out of data -> stop or repeated start
@@ -275,9 +274,7 @@ case class SdaTx() extends Component {
         when(io.i3c.sda.writeEnable && timing.cas) { // TODO should be Tcas/2 or external setting
           io.i3c.scl.write := False
           when(io.useRestart) {
-            isAddress := True
-            sendData.load(False)
-            isRead := io.data.payload.fragment(0)
+            sendData.load(true)
             timing.reset()
             goto(dataLow)
           } otherwise {
@@ -326,11 +323,5 @@ case class SdaTx() extends Component {
         }
       }
     }
-  }
-}
-
-case class I3CController() extends Component {
-  val io = new Bundle {
-    val i3c = master(I3C())
   }
 }

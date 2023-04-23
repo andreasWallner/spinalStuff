@@ -1,19 +1,17 @@
 package andreasWallner.io.i3c
 
-import andreasWallner.{LoggingScoreboardInOrder, SpinalFunSuite}
+import andreasWallner.SpinalFunSuite
 import andreasWallner.io.i3c.sim._
 import andreasWallner.sim._
-import andreasWallner.util._
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib.sim._
 
 import scala.language.postfixOps
-import scala.util.Random
 
 class TestSdaRx extends SpinalFunSuite {
   case class Fixture(dut: SdaTx, onAddress: (Int, Boolean, Boolean) => (Boolean, Seq[Int]) ) {
-    val scoreboard = LoggingScoreboardInOrder[Event]()
+    val scoreboard = ScoreboardInOrder[Event]()
 
     dut.io.tCas #= 2
     dut.io.changeCnt #= 1
