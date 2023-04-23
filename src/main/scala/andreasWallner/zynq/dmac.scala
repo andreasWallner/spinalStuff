@@ -49,6 +49,7 @@ object ZynqDma {
   case class ToMemory() extends Component {
     val io = new Bundle {
       val data = slave(Stream(Bits(16 bit)))
+
       val req = master(Request())
       val ack = slave(Ack())
 

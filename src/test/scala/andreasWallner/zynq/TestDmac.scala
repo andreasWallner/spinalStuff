@@ -54,7 +54,7 @@ class TestDmac extends AnyFunSuite {
 
       for (_ <- 1 to 100) {
         waitUntil(requested > 0)
-        assert(axiDriver.read(0x40000000) == next2() + 1)
+        assert(axiDriver.read(0x40000000) == next2())
         dut.clockDomain.waitActiveEdge(Random.nextInt(30))
         requested -= 1
       }
