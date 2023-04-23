@@ -257,6 +257,7 @@ package object sim {
   }
 
   implicit class PimpedSpinalSimConfig(config: SpinalSimConfig) {
+    // TODO use WaveFormat
     def withWaveOverride(wave: String = null): SpinalSimConfig = {
       sys.env.getOrElse("SPINALSIM_WAVE", wave) match {
         case "vcd"  => config.withVcdWave

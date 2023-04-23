@@ -330,7 +330,7 @@ object SpiMaster {
     // config register
     val config = f.register(0x18, "config", "Runtime peripheral configuration")
     core.io.config.spiType.cpha := config.createReadAndWrite(
-      Bool,
+      Bool(),
       0,
       "cpha",
       "Used phase setting",
@@ -348,7 +348,7 @@ object SpiMaster {
       )
     ) init False
     core.io.config.spiType.cpol := config.createReadAndWrite(
-      Bool,
+      Bool(),
       1,
       "cpol",
       "Used clock polarity",
@@ -358,7 +358,7 @@ object SpiMaster {
       )
     ) init False
     core.io.config.msbFirst := config.createReadAndWrite(
-      Bool,
+      Bool(),
       2,
       "bitorder",
       "Bitorder for RX/TX",
@@ -368,7 +368,7 @@ object SpiMaster {
       )
     ) init False
     core.io.config.csActiveState := config.createReadAndWrite(
-      Bool,
+      Bool(),
       3,
       "ss",
       "Active state for SS line",

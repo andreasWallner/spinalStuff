@@ -15,7 +15,7 @@ case class FragmentWG2812() extends Component {
   val io = new Bundle {
     val colors = slave port Stream(Fragment(UInt(8 bit)))
     val idle = out port Bool()
-    val dout = out port Bool().setAsReg init False
+    val dout = out port Bool().setAsReg() init False
   }
 
   val (rstCnt, shortCnt, longCnt) = WG2812.calculateTimings()
@@ -24,6 +24,7 @@ case class FragmentWG2812() extends Component {
   io.colors.setBlocked()
   io.idle := True
 
+  //noinspection ForwardReference
   val fsm = new StateMachine {
     val waitRst: State = new StateDelay(rstCnt) with EntryPoint {
       whenIsActive { io.idle := False }
@@ -71,7 +72,7 @@ case class FragmentWG2812() extends Component {
           when(!done) {
             buffer := buffer |>> 1 // had that in onExit
             goto(driveHigh)
-          } elsewhen (wasLast) {
+          } elsewhen(wasLast) {
             goto(waitRst)
           } otherwise {
             io.colors.ready := True
@@ -175,6 +176,7 @@ case class IceStickFragmentWG2812(
     }
   }
 
+  //noinspection ForwardReference
   val fsm = new StateMachine {
     val activeLed = Reg(UInt(log2Up(leds) bit))
     val sampledColor = Reg(RGB(8 bit))

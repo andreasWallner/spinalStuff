@@ -9,7 +9,7 @@ case class PwmConstant(state: Boolean) extends PwmResult
 case class PwmCycle(high: Long, low: Long) extends PwmResult
 
 case class PwmDetect(pwm: Bool, period_limit: Long, clockDomain: ClockDomain)(
-    report: (PwmResult) => Unit
+    report: PwmResult => Unit
 ) {
   var limit = period_limit
   var active = false
@@ -44,5 +44,5 @@ case class PwmDetect(pwm: Bool, period_limit: Long, clockDomain: ClockDomain)(
     }
     lastState = pwm.toBoolean
   }
-  clockDomain.onSamplings(fsm)
+  clockDomain.onSamplings(fsm())
 }

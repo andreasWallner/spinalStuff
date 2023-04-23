@@ -95,9 +95,7 @@ object Utils {
     *  Note: current implementation is not thread safe
     *  Implementation taken from pathikrit (https://stackoverflow.com/a/36960228, CC-BY-SA 3.0)
     */
-  def memoize[I, O](f: I => O): I => O = new mutable.HashMap[I, O]() {
-    override def apply(key: I): O = getOrElseUpdate(key, f(key))
-  }
+  def memoize[I, O](f: I => O): I => O = new mutable.HashMap[I, O]().withDefault(f)
 
   class DumpAST(indent: String, withHashCode: Boolean = false) {
     import spinal.core._

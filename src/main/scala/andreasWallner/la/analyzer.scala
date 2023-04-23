@@ -151,7 +151,7 @@ object MemoryFormatter {
       output: Stream[T2],
       pieceWidth: Int = 8,
       noDelay: Boolean = true
-  ) {
+  ) = new Area {
     val inputWidth = widthOf(input.payload)
     val paddedInputWidth = makeMultipleOf(inputWidth, pieceWidth)
     val outputWidth = widthOf(output.payload)
@@ -271,9 +271,9 @@ case class Analyzer(g: AnalyzerGenerics) extends Component {
       val circular = in port Bool()
     }
     val status = new Bundle {
-      val running = out port Bool().setAsReg init False
+      val running = out port Bool().setAsReg() init False
       val busy = out port Bool()
-      val overflow = out port Bool().setAsReg init False
+      val overflow = out port Bool().setAsReg() init False
     }
   }
 

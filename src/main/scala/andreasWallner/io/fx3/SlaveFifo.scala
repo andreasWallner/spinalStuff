@@ -4,18 +4,20 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.io.TriState
 
+import scala.language.postfixOps
+
 case class SlaveFifo() extends Bundle with IMasterSlave {
   val dq = TriState(Bits(16 bit))
-  val wr_n = out Bool()
-  val rd_n = out Bool()
-  val oe_n = out Bool()
+  val wr_n = out Bool ()
+  val rd_n = out Bool ()
+  val oe_n = out Bool ()
 
-  val empty_n = in Bool()
-  val full_n = in Bool()
+  val empty_n = in Bool ()
+  val full_n = in Bool ()
 
-  val pktend_n = out Bool()
+  val pktend_n = out Bool ()
 
-  def asMaster() = {
+  def asMaster(): Unit = {
     master(dq)
     in(empty_n, full_n)
     out(wr_n, rd_n, oe_n, pktend_n)
@@ -34,16 +36,15 @@ case class SlaveFifo() extends Bundle with IMasterSlave {
   * it could be smaller if the input was muxed and the output shifted, but
   * that would lead to LUTs before the first register.
   */
-case class ShortBuffer[T <: Data](val dataType: HardType[T], val depth: Int)
-    extends Component {
+case class ShortBuffer[T <: Data](dataType: HardType[T], depth: Int) extends Component {
   require(depth >= 1)
   val io = new Bundle {
     val push = new Bundle {
-      val data = in(dataType())
-      val en = in Bool ()
+      val data = in port dataType()
+      val en = in port Bool()
     }
-    val pop = master Stream (dataType)
-    val willBecomeEmpty = out Bool ()
+    val pop = master port Stream(dataType)
+    val willBecomeEmpty = out port Bool()
   }
 
   val buffer = Vec(Reg(dataType), depth)
@@ -51,7 +52,7 @@ case class ShortBuffer[T <: Data](val dataType: HardType[T], val depth: Int)
   valid.map(_.init(False))
   valid(depth) := False
 
-  val newValid = Vec(Bool, depth)
+  val newValid = Vec(Bool(), depth)
   when(io.push.en) {
     buffer(0) := io.push.data
     valid(0) := True
@@ -79,17 +80,17 @@ case class ShortBuffer[T <: Data](val dataType: HardType[T], val depth: Int)
 }
 
 case class ValidFlagShiftReg[T <: Data](
-    val dataType: HardType[T],
-    val depth: Int
+    dataType: HardType[T],
+    depth: Int
 ) extends Area {
   val buffer = Vec(Reg(dataType), depth)
-  val valid = Reg(Bits(depth bits)) init (0)
+  val valid = Reg(Bits(depth bits)) init 0
 
   def shift(data: T, validFlag: Bool = True): T = {
     val output = cloneOf(dataType)
     output := buffer(0)
 
-    for (i <- 1 to depth - 1)
+    for (i <- 1 until depth)
       buffer(i - 1) := buffer(i)
     buffer(depth - 1) := data
     valid := validFlag ## valid >> 1
@@ -103,24 +104,24 @@ case class SlaveFifoMaster() extends Component {
     val fx3 = master(SlaveFifo())
     val tx = new Bundle {
       val data = slave(Stream(Bits(16 bit)))
-      val en = in Bool()
-      val pktend = in Bool()
+      val en = in Bool ()
+      val pktend = in Bool ()
       val pktend_timeout = in UInt (16 bits)
-      val pktend_done = out Bool()
+      val pktend_done = out Bool ()
     }
     val rx = new Bundle {
       val data = master(Stream(Bits(16 bit)))
     }
   }
 
-  val do_rx = Reg(Bool()) init (False)
-  val do_tx = Reg(Bool()) init (False)
+  val do_rx = Reg(Bool()) init False
+  val do_tx = Reg(Bool()) init False
   val reg = new Area {
     val fx3 = new Area {
-      val rd_n = Reg(Bool) init True
-      val wr_n = Reg(Bool) init True
-      val oe_n = Reg(Bool) init True
-      val pktend_n = Reg(Bool) init True
+      val rd_n = Reg(Bool()) init True
+      val wr_n = Reg(Bool()) init True
+      val oe_n = Reg(Bool()) init True
+      val pktend_n = Reg(Bool()) init True
 
       // TODO remove inversion after register?
       io.fx3.wr_n := wr_n
@@ -129,7 +130,7 @@ case class SlaveFifoMaster() extends Component {
       io.fx3.pktend_n := pktend_n
       val dq = new Area {
         val write = Reg(Bits(16 bit))
-        val writeEnable = Reg(Bool)
+        val writeEnable = Reg(Bool())
 
         io.fx3.dq.write := write
         io.fx3.dq.writeEnable := writeEnable
@@ -152,10 +153,9 @@ case class SlaveFifoMaster() extends Component {
     }
   }
 
-
   val tx = new Area {
     val buffer = ValidFlagShiftReg(Bits(16 bits), 4)
-    val retransmit = Reg(buffer.valid.clone()) init (0)
+    val retransmit = Reg(buffer.valid.clone()) init 0
     val needs_retransmit = retransmit.orR
     io.tx.data.ready := False
     reg.fx3.dq.writeEnable := False
@@ -186,7 +186,7 @@ case class SlaveFifoMaster() extends Component {
     // TODO explain why 5
     // TODO do lazy switching? only switch if other direction would transfer?
     // TODO should we really keep transmitting as long as retransmit is set? does _not_ doing so make sense?
-    val delay = Reg(Bits(5 bits)) init (0)
+    val delay = Reg(Bits(5 bits)) init 0
     val ready_to_tx = (io.tx.en || tx.needs_retransmit) && (io.tx.data.valid || tx.needs_retransmit) && io.fx3.full_n
 
     delay := delay(0 to 3) ## B"1"
@@ -196,7 +196,7 @@ case class SlaveFifoMaster() extends Component {
         do_tx := delay(4)
         delay := 0
       }
-    } elsewhen (!do_rx && !(ready_to_tx)) {
+    } elsewhen (!do_rx && !ready_to_tx) {
       do_tx := False
       when(delay(4)) {
         do_rx := True
@@ -208,9 +208,9 @@ case class SlaveFifoMaster() extends Component {
   }
 
   val pktend = new Area {
-    val autoArmed = Reg(Bool) init (False)
-    val manualArmed = Reg(Bool) init (False)
-    val timeout = Reg(UInt(16 bits)) init (0)
+    val autoArmed = Reg(Bool()) init False
+    val manualArmed = Reg(Bool()) init False
+    val timeout = Reg(UInt(16 bits)) init 0
     val pktendRequest = History(io.tx.pktend, 2)
     reg.fx3.pktend_n := True
     io.tx.pktend_done := False

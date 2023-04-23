@@ -13,7 +13,7 @@ case class SlaveFifoLoopback() extends Component {
     val activity = out port Bool()
     val mode = in port Bits(4 bit)
 
-    val toggle1Hz = out port Bool().setAsReg
+    val toggle1Hz = out port Bool().setAsReg()
   }
 
   val sfmTxEn = RegInit(False)
@@ -30,7 +30,7 @@ case class SlaveFifoLoopback() extends Component {
     depth = 1024
   )
   fifo.io.push << sfm.io.rx.data
-  val source = StreamArbiterFactory.lowerFirst.noLock.onArgs(xorshift.io.data, fifo.io.pop)
+  val source = StreamArbiterFactory().lowerFirst.noLock.onArgs(xorshift.io.data, fifo.io.pop)
   source >> sfm.io.tx.data
 
   val rxTimeout = Timeout(100)

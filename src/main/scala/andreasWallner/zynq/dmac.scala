@@ -7,6 +7,8 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axilite.{AxiLite4, AxiLite4Config, AxiLite4SlaveFactory}
 
+import scala.language.postfixOps
+
 object ZynqDma {
   object RequestType {
     def apply() = Bits(2 bits)
@@ -110,6 +112,6 @@ object DmaTester {
       targetDirectory = "generated"
     ).generateVerilog(
       XilinxNamer(DmaTest(AxiLite4Config(addressWidth = 32, dataWidth = 32)))
-    );
+    )
   }
 }

@@ -10,72 +10,55 @@ import spinal.core._
 
 import scala.language.postfixOps
 
-object AxiLite4PwmTopLevel {
-  def main(args: Array[String]) {
-    SpinalConfig(
-      defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = HIGH),
-      device = Device.XILINX
-    ).generateVerilog(XilinxNamer(AxiLite4Pwm(PwmGenerics(8, 3))))
-  }
+object AxiLite4PwmTopLevel extends App {
+  SpinalConfig(
+    defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = HIGH),
+    device = Device.XILINX
+  ).generateVerilog(XilinxNamer(AxiLite4Pwm(PwmGenerics(8, 3))))
 }
 
-object AxiLite4PwmModule {
-  def main(args: Array[String]) {
-    val report = SpinalConfig(
-      defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = HIGH),
-      device = Device.XILINX
-    ).generateVerilog(AxiLite4Pwm(PwmGenerics(8, 3)))
-    VivadoIpify.emitComponentXml(report.toplevel)
-  }
+object AxiLite4PwmModule extends App {
+  val report = SpinalConfig(
+    defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = HIGH),
+    device = Device.XILINX
+  ).generateVerilog(AxiLite4Pwm(PwmGenerics(8, 3)))
+  VivadoIpify.emitComponentXml(report.toplevel)
 }
 
-object Apb3PwmModule {
-  def main(args: Array[String]) {
-    SpinalConfig(
-      defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = HIGH),
-      device = Device.XILINX
-    ).generateVerilog(
-      Apb3Pwm(
-        Pwm.PeripheralParameters(Pwm.CoreParameters(channelCnt = 5))
-      )
+object Apb3PwmModule extends App {
+  SpinalConfig(
+    defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = HIGH),
+    device = Device.XILINX
+  ).generateVerilog(
+    Apb3Pwm(
+      Pwm.PeripheralParameters(Pwm.CoreParameters(channelCnt = 5))
     )
-  }
+  )
 }
 
-object Ulx3sRenamer {
-  def apply[T <: Component](c: T): T = {
-    c.addPrePopTask(() => {
-      c.clockDomain.clock.setName("clk_25mhz")
-    })
-    c
-  }
-}
-
-object ApbSpinalTap {
-  def main(args: Array[String]): Unit = {
-    val report = SpinalConfig(
-      defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = LOW),
-      defaultClockDomainFrequency = FixedFrequency(100 MHz),
-      device = Device.XILINX,
-      targetDirectory = "generated"
-    ).generateVerilog(
-      XilinxNamer(XilinxInOutWrapper(new andreasWallner.spinaltap.ApbSpinalTap()))
-    )
-    new MuxConnections.CppHeader(report.toplevel.muxConnections, Some("spinaltap::iomux"))
-      .write(f"${GlobalData.get.phaseContext.config.targetDirectory}/iomux_connection.hpp")
-    for (e <- report.toplevel.elements) {
-      e match {
-        case (b: BusComponent, offset: Long) =>
-          println(f"${b.busComponentName} @ $offset%x")
-          new CHeader(b).write()
-          new CppHeader(
-            b,
-            namespace = Some(s"spinaltap::${b.busComponentName.toLowerCase}::registers")
-          ).write()
-          new YAML(b).write()
-          new HTML(b).write()
-        case other => println("Not generating for " + other)
-      }
+object ApbSpinalTap extends App {
+  val report = SpinalConfig(
+    defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = LOW),
+    defaultClockDomainFrequency = FixedFrequency(100 MHz),
+    device = Device.XILINX,
+    targetDirectory = "generated"
+  ).generateVerilog(
+    XilinxNamer(XilinxInOutWrapper(new andreasWallner.spinaltap.ApbSpinalTap()))
+  )
+  new MuxConnections.CppHeader(report.toplevel.muxConnections, Some("spinaltap::iomux"))
+    .write(f"${GlobalData.get.phaseContext.config.targetDirectory}/iomux_connection.hpp")
+  for (e <- report.toplevel.elements) {
+    e match {
+      case (b: BusComponent, offset: Long) =>
+        println(f"${b.busComponentName} @ $offset%x")
+        new CHeader(b).write()
+        new CppHeader(
+          b,
+          namespace = Some(s"spinaltap::${b.busComponentName.toLowerCase}::registers")
+        ).write()
+        new YAML(b).write()
+        new HTML(b).write()
+      case other => println("Not generating for " + other)
     }
   }
 }

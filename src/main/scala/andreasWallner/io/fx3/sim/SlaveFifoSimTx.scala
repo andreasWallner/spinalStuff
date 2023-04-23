@@ -16,7 +16,7 @@ case class SlaveFifoSimTx(intf: SlaveFifo, clockDomain: ClockDomain)(
     Random.nextInt(10)
   }
 
-  // txCallback -> data to buffer if empty, then use this 
+  // txCallback -> data to buffer if empty, then use this
   intf.empty_n #= false
   var remaining_block_size = 0
   var remaining_block_delay = 0
@@ -38,11 +38,11 @@ case class SlaveFifoSimTx(intf: SlaveFifo, clockDomain: ClockDomain)(
       buffer = x
     }
     intf.empty_n #= empty_n_next
-    if ((intf.empty_n.toBoolean && !last_rd_n && remaining_block_size > 0)) {
+    if (intf.empty_n.toBoolean && !last_rd_n && remaining_block_size > 0) {
       remaining_block_size = remaining_block_size - 1
 
       intf.dq.read #= buffer
-      
+
       val (valid, x) = txCallback()
       buffer_valid = valid
       buffer = x
@@ -52,5 +52,5 @@ case class SlaveFifoSimTx(intf: SlaveFifo, clockDomain: ClockDomain)(
     }
     last_rd_n = intf.rd_n.toBoolean
   }
-  clockDomain.onActiveEdges(fsm)
+  clockDomain.onActiveEdges(fsm())
 }

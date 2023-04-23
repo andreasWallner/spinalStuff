@@ -4,8 +4,9 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.apb._
 import spinal.lib.fsm._
-
 import andreasWallner.spinaltap.Event
+
+import scala.language.postfixOps
 
 /** Decodes commands from PC, controls bus, routes events
  *
@@ -67,12 +68,12 @@ import andreasWallner.spinaltap.Event
  */
 case class BusMaster() extends Component {
   val io = new Bundle {
-    val data = slave(Stream(Bits(16 bit)))
-    val resp = master(Stream(Bits(16 bit)))
-    val apb3 = master(Apb3(Apb3Config(16, 32)))
-    val events = slave(Stream(Event()))
-    val pktend = out Bool()
-    val pktend_done = in Bool()
+    val data = slave port Stream(Bits(16 bit))
+    val resp = master port Stream(Bits(16 bit))
+    val apb3 = master port Apb3(Apb3Config(16, 32))
+    val events = slave port Stream(Event())
+    val pktend = out port Bool()
+    val pktend_done = in port Bool()
   }
 
   val fsm = new StateMachine {
@@ -91,11 +92,11 @@ case class BusMaster() extends Component {
     val stateEventData = new State
 
     val opcode = Reg(Bits(8 bit))
-    val write = Reg(Bool)
+    val write = Reg(Bool())
     val source = Reg(Bits(8 bit))
     val address = Reg(UInt(16 bit))
     val data = Reg(Bits(32 bit))
-    val enable = Reg(Bool) init (False)
+    val enable = Reg(Bool()) init False
     val sel = Reg(Bits(1 bit))
 
     io.apb3.PSEL := sel
@@ -178,7 +179,10 @@ case class BusMaster() extends Component {
             .otherwise { goto(stateSendOpcode) }
         }
       }
-      .onExit(enable := False, sel := 0)
+      .onExit {
+        enable := False
+        sel := 0
+      }
 
     io.resp.payload := 0
     io.resp.valid := False

@@ -8,6 +8,8 @@ import spinal.lib._
 import spinal.lib.fsm._
 import spinal.lib.bus.misc.BusSlaveFactory
 
+import scala.language.postfixOps
+
 case class StrobedDacGenerics(
     count: Int = 2,
     dataWidth: Int = 8,
@@ -37,8 +39,8 @@ case class DacInterface(g: StrobedDacGenerics) extends Bundle {
 // stream, which will be fired one DAC has been updated
 case class StrobedDacPeripheralCore(g: StrobedDacGenerics) extends Component {
   val io = new Bundle {
-    val write = slave(Stream(DacRequestData(g)))
-    val dac = out(DacInterface(g)) setAsReg
+    val write = slave port Stream(DacRequestData(g))
+    val dac = out port DacInterface(g).setAsReg()
   }
 
   io.dac.wr init Bool(!g.assertPolarity)
@@ -49,6 +51,7 @@ case class StrobedDacPeripheralCore(g: StrobedDacGenerics) extends Component {
   // which makes sure that we have at least one cycle with
   // wr being deasserted before the next data is applied
   // to the output
+  //noinspection ForwardReference
   val fsm = new StateMachine {
     val Idle: State = new State with EntryPoint {
       whenIsActive {
@@ -83,8 +86,8 @@ class StrobedDacPeripheral[T <: spinal.core.Data with IMasterSlave](
 ) extends Component
     with BusComponent {
   val io = new Bundle {
-    val bus = slave(busType())
-    val dac = out(DacInterface(g))
+    val bus = slave port busType()
+    val dac = out port DacInterface(g)
   }
   val mapper = metaFactory(io.bus)
   val f = new BusSlaveFactoryRecorder(mapper)

@@ -25,7 +25,7 @@ case class SimpleStreamWG2812() extends Component {
   val io = new Bundle {
     val colors = slave(Stream(RGB(8 bit)))
     val idle = out port Bool()
-    val dout = out port Bool().setAsReg init False
+    val dout = out port Bool().setAsReg() init False
   }
 
   val freq = ClockDomain.current.frequency.getValue

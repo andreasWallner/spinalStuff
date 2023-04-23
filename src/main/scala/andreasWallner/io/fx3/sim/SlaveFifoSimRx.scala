@@ -1,25 +1,25 @@
 package andreasWallner.io.fx3.sim
 
-import spinal.core._
-import spinal.sim._
-import spinal.core.sim._
-import scala.util.Random
-import scala.collection.mutable.Queue
 import andreasWallner.io.fx3._
+import spinal.core._
+import spinal.core.sim._
+
+import scala.collection.mutable
+import scala.util.Random
 
 case class SimHistory[T](depth: Int, initial: T = None) {
   var data: Seq[T] = List.fill(depth)(initial)
 
   def apply(idx: Int) = data(idx)
-  def update(next: T) = {
+  def update(next: T): Unit = {
     data = List(next) ++ data.slice(0, depth - 1)
   }
 }
 
 case class SlaveFifoSimRx(intf: SlaveFifo, clockDomain: ClockDomain)(
-    rxCallback: (Int) => Unit
+    rxCallback: Int => Unit
 ) {
-  var pktendCallback: (Queue[Int]) => Unit = (_) => {}
+  var pktendCallback: mutable.Queue[Int] => Unit = _ => {}
   var next_remaining_space: () => Int = () => {
     // use a minimum of 4 as worst case
     // in practice the memory is much bigger, but smaller
@@ -39,7 +39,7 @@ case class SlaveFifoSimRx(intf: SlaveFifo, clockDomain: ClockDomain)(
   var remainingSpace = 1
   var emptyDelay = 10
   val full = SimHistory(4, false)
-  var packetBuffer = Queue[Int]()
+  var packetBuffer = mutable.Queue[Int]()
   def fsm(): Unit = {
     val currentRemainingSpace = remainingSpace
     if (emptyDelay == 0) {
@@ -64,5 +64,5 @@ case class SlaveFifoSimRx(intf: SlaveFifo, clockDomain: ClockDomain)(
     full.update(remainingSpace > 0)
     intf.full_n #= full(3)
   }
-  clockDomain.onActiveEdges(fsm)
+  clockDomain.onActiveEdges(fsm())
 }

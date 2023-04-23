@@ -23,7 +23,7 @@ object Debounce {
 class Debounce(stableCycles: CyclesCount) extends Component {
   val io = new Bundle {
     val i = in port Bool()
-    val o = out port Bool().setAsReg
+    val o = out port Bool().setAsReg()
   }
   val timeout = Timeout(stableCycles)
   when(timeout) {

@@ -4,30 +4,32 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.blackbox.xilinx.s7._
 import andreasWallner.blackbox.xilinx._
-import andreasWallner.test.{SlaveFifoLoopback, IOControl}
+import andreasWallner.test.{IOControl, SlaveFifoLoopback}
+
+import scala.language.postfixOps
 
 case class InterfaceTestTop() extends Component {
   val io = new Bundle {
-    val fxclk = in Bool () // P16 <-> // FIXME
-    val ifclk = in Bool () // P17 <-> ifclk_in
-    val reset = in Bool () // V16 <-> reset
+    val fxclk = in port Bool() // P16 <-> // FIXME
+    val ifclk = in port Bool() // P17 <-> ifclk_in
+    val reset = in port Bool() // V16 <-> reset
 
-    val dq = inout(Analog(Bits(16 bits))) // K17, K18... <-> fd
-    val slwr_n = out Bool () // U11 <-> SLWR
-    val sloe_n = out Bool () // U13 <-> SLOE
-    val slrd_n = out Bool () // V12 <-> SLRD
-    val flaga = in Bool () // V11 <-> empty_flag
-    val flagb = in Bool () // V14 <-> full_flag
-    val pktend_n = out Bool () // U12
+    val dq = inout port Analog(Bits(16 bits)) // K17, K18... <-> fd
+    val slwr_n = out port Bool() // U11 <-> SLWR
+    val sloe_n = out port Bool() // U13 <-> SLOE
+    val slrd_n = out port Bool() // V12 <-> SLRD
+    val flaga = in port Bool() // V11 <-> empty_flag
+    val flagb = in port Bool() // V14 <-> full_flag
+    val pktend_n = out port Bool() // U12
 
-    val gpio_n = inout(Analog(Bits(4 bits))) // with pullups
+    val gpio_n = inout port Analog(Bits(4 bits)) // with pullups
 
-    val led1_n = out Bool () // T11 <-> led
+    val led1_n = out port Bool() // T11 <-> led
 
-    val leds1 = out Bits (10 bit)
-    val leds2 = out Bits (10 bit)
-    val leds3 = out Bits (10 bit)
-    val switches = in Bits (4 bit)
+    val leds1 = out port Bits(10 bit)
+    val leds2 = out port Bits(10 bit)
+    val leds3 = out port Bits(10 bit)
+    val switches = in port Bits(4 bit)
   }
 
   val mmcm = MMCME2_BASE(
@@ -74,37 +76,35 @@ case class InterfaceTestTop() extends Component {
   }
 }
 
-object InterfaceTestTop {
-  def main(args: Array[String]) {
-    val report = SpinalConfig(
-      defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = HIGH),
-      device = Device.XILINX
-    ).generateVerilog(InterfaceTestTop())
-  }
+object InterfaceTestTop extends App {
+  val report = SpinalConfig(
+    defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = HIGH),
+    device = Device.XILINX
+  ).generateVerilog(InterfaceTestTop())
 }
 
 case class IOControlTop() extends Component {
   val io = new Bundle {
-    val fxclk = in Bool () // P16 <-> // FIXME
-    val ifclk = in Bool () // P17 <-> ifclk_in
-    val reset = in Bool () // V16 <-> reset
+    val fxclk = in port Bool() // P16 <-> // FIXME
+    val ifclk = in port Bool() // P17 <-> ifclk_in
+    val reset = in port Bool() // V16 <-> reset
 
-    val dq = inout(Analog(Bits(16 bits))) // K17, K18... <-> fd
-    val slwr_n = out Bool () // U11 <-> SLWR
-    val sloe_n = out Bool () // U13 <-> SLOE
-    val slrd_n = out Bool () // V12 <-> SLRD
-    val flaga = in Bool () // V11 <-> empty_flag
-    val flagb = in Bool () // V14 <-> full_flag
-    val pktend_n = out Bool () // U12
+    val dq = inout port Analog(Bits(16 bits)) // K17, K18... <-> fd
+    val slwr_n = out port Bool() // U11 <-> SLWR
+    val sloe_n = out port Bool() // U13 <-> SLOE
+    val slrd_n = out port Bool() // V12 <-> SLRD
+    val flaga = in port Bool() // V11 <-> empty_flag
+    val flagb = in port Bool() // V14 <-> full_flag
+    val pktend_n = out port Bool() // U12
 
-    val gpio_n = inout(Analog(Bits(4 bits))) // with pullups
+    val gpio_n = inout port Analog(Bits(4 bits)) // with pullups
 
-    val led1_n = out Bool () // T11 <-> led
+    val led1_n = out port Bool() // T11 <-> led
 
-    val leds1 = out Bits (10 bit)
-    val leds2 = out Bits (10 bit)
-    val leds3 = out Bits (10 bit)
-    val switches = in Bits (4 bit)
+    val leds1 = out port Bits(10 bit)
+    val leds2 = out port Bits(10 bit)
+    val leds3 = out port Bits(10 bit)
+    val switches = in port Bits(4 bit)
   }
 
   val mmcm = MMCME2_BASE(
@@ -148,11 +148,9 @@ case class IOControlTop() extends Component {
   }
 }
 
-object IOControlTop {
-  def main(args: Array[String]) {
-    val report = SpinalConfig(
-      defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = HIGH),
-      device = Device.XILINX
-    ).generateVerilog(IOControlTop())
-  }
+object IOControlTop extends App {
+  val report = SpinalConfig(
+    defaultConfigForClockDomains = ClockDomainConfig(resetActiveLevel = HIGH),
+    device = Device.XILINX
+  ).generateVerilog(IOControlTop())
 }

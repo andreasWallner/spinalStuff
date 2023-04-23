@@ -12,7 +12,7 @@ class ZipWithIsFirst[A](underlying: SomeIterableOps[A]) extends AbstractView[(A,
     def next(): (A, Boolean) = {
       val current = first
       first = false
-      (source.next, current)
+      (source.next(), current)
     }
   }
 

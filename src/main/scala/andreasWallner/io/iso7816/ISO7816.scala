@@ -103,20 +103,20 @@ object CtrlCommand extends SpinalEnum {
 case class StateCtrl() extends Component {
   val io = new Bundle {
     val iso = new Bundle {
-      val vcc = out Bool ()
-      val rst = out Bool ()
-      val io = master(TriState(Bool()))
+      val vcc = out port Bool()
+      val rst = out port Bool()
+      val io = master port TriState(Bool())
     }
-    val config = in(ControlConfig())
-    val command = slave(Flow(CtrlCommand()))
-    val start_rx = out Bool ()
-    val tx_done = in Bool () // strobed on TX for clkstop min time
-    val inhibit_tx = out Bool ()
+    val config = in port ControlConfig()
+    val command = slave port Flow(CtrlCommand())
+    val start_rx = out port Bool()
+    val tx_done = in port Bool() // strobed on TX for clkstop min time
+    val inhibit_tx = out port Bool()
     val state = new Bundle {
-      val driving_io = out Bool ()
-      val clock = out Bool ()
-      val busy = out Bool ()
-      val current = out(CtrlState.craft())
+      val driving_io = out port Bool()
+      val clock = out port Bool()
+      val busy = out port Bool()
+      val current = out port CtrlState.craft()
     }
   }
 
@@ -342,8 +342,8 @@ case class Timeout() extends Component {
 
     val en = in port Bool()
     val activity = in port Bool()
-    val c_timeout = out port Bool().setAsReg
-    val b_timeout = out port Bool().setAsReg
+    val c_timeout = out port Bool().setAsReg()
+    val b_timeout = out port Bool().setAsReg()
   }
 
   val cnt = Reg(UInt(32 bit))

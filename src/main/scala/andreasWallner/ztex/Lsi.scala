@@ -4,17 +4,19 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.io.TriState
 
-case class LsiHostInterface() extends Bundle with IMasterSlave {
-  val clock = Bool
-  val data = TriState(Bool)
-  val stop = Bool
+import scala.language.postfixOps
 
-  override def asMaster() {
+case class LsiHostInterface() extends Bundle with IMasterSlave {
+  val clock = Bool()
+  val data = TriState(Bool())
+  val stop = Bool()
+
+  override def asMaster(): Unit = {
     out(clock, stop)
     master(data)
   }
 
-  override def asSlave() {
+  override def asSlave(): Unit = {
     in(clock, stop)
     master(data)
   }
@@ -23,9 +25,9 @@ case class LsiHostInterface() extends Bundle with IMasterSlave {
 case class HostWriteInterface() extends Bundle with IMasterSlave {
   val address = UInt(8 bits)
   val data = UInt(32 bits)
-  val valid = Bool
+  val valid = Bool()
 
-  def asMaster() {
+  def asMaster(): Unit = {
     out(address, data, valid)
   }
 }
@@ -34,9 +36,9 @@ case class HostWriteInterface() extends Bundle with IMasterSlave {
 case class HostReadInterface() extends Bundle with IMasterSlave {
   val address = UInt(8 bits)
   val data = UInt(32 bits)
-  val strb = Bool
+  val strb = Bool()
 
-  def asMaster() {
+  def asMaster(): Unit = {
     out(address, strb)
     in(data)
   }
@@ -46,7 +48,7 @@ case class LsiMemInterface() extends Bundle with IMasterSlave {
   val hw = HostWriteInterface()
   val hr = HostReadInterface()
 
-  def asMaster() {
+  def asMaster(): Unit = {
     master(hw, hr)
   }
 }
@@ -57,8 +59,8 @@ object Direction extends SpinalEnum {
 
 case class LsiInterface() extends Component {
   val io = new Bundle {
-    val lsi = slave(LsiHostInterface())
-    val mem = master(LsiMemInterface())
+    val lsi = slave port LsiHostInterface()
+    val mem = master port LsiMemInterface()
   }
 
   val sync = new Area {

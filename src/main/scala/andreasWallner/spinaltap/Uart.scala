@@ -13,9 +13,9 @@ case class UartModule(eventSourceId: Int) extends Component {
   val g = UartCtrlGenerics()
 
   val io = new Bundle {
-    val uart = master(Uart())
-    val bus = slave(Apb3(Apb3UartCtrl.getApb3Config))
-    val events = master(Stream(spinaltap.Event()))
+    val uart = master port Uart()
+    val bus = slave port Apb3(Apb3UartCtrl.getApb3Config)
+    val events = master port Stream(spinaltap.Event())
 
     val clockDivider = in UInt(g.clockDividerWidth bits)
   }
@@ -25,7 +25,7 @@ case class UartModule(eventSourceId: Int) extends Component {
   val rx = new UartCtrlRx(g)
 
   val clockDivider = new Area {
-    val counter = Reg(UInt(g.clockDividerWidth bits)) init(0)
+    val counter = Reg(UInt(g.clockDividerWidth bits)) init 0
     val tick = counter === 0
 
     counter := counter - 1
@@ -58,12 +58,12 @@ case class UartModule(eventSourceId: Int) extends Component {
   tx.io.cts := False
   tx.io.break := False
 
-  val txOverflow = Reg(Bool).setWhen(txFifo.io.push.isStall)
+  val txOverflow = Reg(Bool()).setWhen(txFifo.io.push.isStall)
   val txEmpty = txFifo.io.occupancy === 0
-  val rxError = Reg(Bool).setWhen(rx.io.error)
+  val rxError = Reg(Bool()).setWhen(rx.io.error)
 
   val statusHistory = History(txEmpty ## txOverflow ## rxError ## rxFifo.io.pop.valid, 2)
-  val statusChange = Reg(Bool).setWhen(statusHistory(0) =/= statusHistory(1))
+  val statusChange = Reg(Bool()).setWhen(statusHistory(0) =/= statusHistory(1))
 
   val eventStateMachine = new StateMachine {
     val stateIdle = new State with EntryPoint
@@ -87,6 +87,9 @@ case class UartModule(eventSourceId: Int) extends Component {
         io.events.valid := True
         when(io.events.ready) { goto(stateIdle) }
       }
-      .onExit(rxFifo.io.pop.ready := True, statusChange.clear())
+      .onExit {
+        rxFifo.io.pop.ready := True
+        statusChange.clear()
+      }
   }
 }

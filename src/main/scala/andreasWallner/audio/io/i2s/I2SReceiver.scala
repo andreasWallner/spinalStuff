@@ -3,18 +3,20 @@ package andreasWallner.audio.io.i2s
 import spinal.core._
 import spinal.lib._
 
+import scala.language.postfixOps
+
 // https://web.archive.org/web/20070102004400/http://www.nxp.com/acrobat_download/various/I2SBUS.pdf
 
 case class I2SReceiver(width: Int) extends Component {
   val io = new Bundle {
     val i2s = new Bundle {
-      val sd = in Bool ()
-      val ws = in Bool ()
-      val sck = in Bool ()
+      val sd = in port Bool()
+      val ws = in port Bool()
+      val sck = in port Bool()
     }
     val audio = new Bundle {
-      val left = master(Flow(UInt(width bit)))
-      val right = master(Flow(UInt(width bit)))
+      val left = master port Flow(UInt(width bit))
+      val right = master port Flow(UInt(width bit))
     }
   }
 
@@ -22,7 +24,7 @@ case class I2SReceiver(width: Int) extends Component {
 
   val buffer = Reg(UInt(width bit))
   val bitcnt = Reg(UInt(log2Up(width + 1) bit))
-  val bitcnt_max = U(bitcnt.range -> true)
+  val bitcnt_max = U(bitcnt.bitsRange -> true)
   bitcnt init bitcnt_max
 
   val left_next = ws_sync.rise()

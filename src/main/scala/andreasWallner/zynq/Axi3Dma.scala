@@ -21,9 +21,9 @@ case class Axi3Dma(axiConfig: Axi4Config = Axi4Config(addressWidth = 64, dataWid
     val data = slave port Stream(Bits(16 bit))
     val dataAvailable = in port UInt(8 bit)
     val run = in port Bool()
-    val hasWrapped = out port Bool().setAsReg
+    val hasWrapped = out port Bool().setAsReg()
     val busy = out port Bool()
-    val full = out port Bool().setAsReg
+    val full = out port Bool().setAsReg()
   }
   val outstandingB = Reg(UInt(3 bit)) init 0
   val awDone = Reg(Bool()) init False
