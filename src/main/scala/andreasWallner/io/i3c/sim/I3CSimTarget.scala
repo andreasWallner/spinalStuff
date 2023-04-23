@@ -2,7 +2,8 @@ package andreasWallner.io.i3c.sim
 
 import andreasWallner.Utils.hasOddParity
 import andreasWallner.io.i3c.I3C
-import andreasWallner.sim.SimTriStatePimper
+import andreasWallner.sim.{SimTriStatePimper, simLog}
+import andreasWallner.util.IterablePimper
 import spinal.core._
 import spinal.core.sim._
 
@@ -26,7 +27,7 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
   fork {
     var repeatedStart = false
     while (true) {
-      if(!repeatedStart)
+      if (!repeatedStart)
         waitForStart()
       repeatedStart = doRxTx(repeatedStart)
     }
@@ -64,31 +65,41 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
       }
       i3c.sda.read.toBoolean
     }
-    if(!passive)
+    if (!passive)
       Byte(toInt(bits, msbFirst = true))
     else
       Passive(toInt(bits, msbFirst = true))
   }
 
-  // expected: SCL is high & SDA low
+  // decide between Sr and P
   def waitForStopOrRepeatedStart() = {
-    assert(i3c.scl.read.toBoolean)
-    assert(!i3c.sda.read.toBoolean)
-    waitUntil(!i3c.scl.read.toBoolean || i3c.sda.read.toBoolean)
-    val isStop = !i3c.sda.read.toBoolean
-    if(isStop) {
+    assert(
+      !i3c.scl.read.toBoolean,
+      "expected scl to be low when waiting for stop or repeated start"
+    )
+    assert(
+      !i3c.sda.read.toBoolean,
+      "expected sda to be low when waiting for stop or repeated start"
+    )
+    waitUntil(i3c.scl.read.toBoolean || i3c.sda.read.toBoolean)
+    val isStop = i3c.scl.read.toBoolean
+    if (isStop) {
+      waitUntil(!i3c.scl.read.toBoolean || i3c.sda.read.toBoolean)
+      if (!i3c.scl.read.toBoolean)
+        throw new Exception("SCL changed when SDA change was expected for stop")
       event(Stop())
       Stop()
     } else {
       waitUntil(i3c.scl.read.toBoolean || !i3c.sda.read.toBoolean)
-      if(!i3c.sda.read.toBoolean)
+      if (!i3c.sda.read.toBoolean)
         throw new Exception("SDA changed while waiting for repeated start initial SCL change")
       waitUntil(!i3c.scl.read.toBoolean || !i3c.sda.read.toBoolean)
-      if(!i3c.scl.read.toBoolean)
+      if (!i3c.scl.read.toBoolean)
         throw new Exception("SCL changed while waiting for repeated start SDA change")
       waitUntil(!i3c.scl.read.toBoolean || i3c.sda.read.toBoolean)
-      if(i3c.sda.read.toBoolean)
+      if (i3c.sda.read.toBoolean)
         throw new Exception("SDA changed back while waiting for repeated start ending SCL change")
+      event(Start(true))
       Start(true)
     }
   }
@@ -109,17 +120,20 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
         val isRead = (data & 1).toBoolean
         (isRead, addressReaction(data >> 1, isRead, repeated = repeatedStart))
     }
+    simLog(isRead, ack, response)
 
     if (ack)
       i3c.sda.drive(false)
     waitUntil(i3c.scl.read.toBoolean)
     // see 5.1.2.3.1 p. 34
-    i3c.sda.highz()
+    // if write, let the controller take over signalling, in NACK case we are already highz
+    if (!isRead)
+      i3c.sda.highz()
     waitUntil(!i3c.scl.read.toBoolean)
 
     if (!ack) {
-      while(true) {
-        val byte = rxBits(9, passive=true)
+      while (true) {
+        val byte = rxBits(9, passive = true)
         event(byte)
         byte match {
           case Stop() =>
@@ -129,48 +143,35 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
             seenStart(true)
             return true
           case Passive(_) =>
-          case _ => throw new Exception(f"unexpected event $byte while passively receiving")
+          case _          => throw new Exception(f"unexpected event $byte while passively receiving")
         }
       }
-    }
-    else if (isRead) {
-      assert(response.nonEmpty)
-      for(idx <- response.indices) {
-        val last = idx == response.size - 1
-        txByte(response(idx), last)
-        // txbyte left with SCL high and last driven -> handle repeated start/stop to abort
-        if(!last) {
-          i3c.sda.highz()
-          waitUntil(i3c.scl.read.toBoolean)
-          waitUntil(!i3c.sda.read.toBoolean || !i3c.scl.read.toBoolean)
-          // TODO check tCBSr
-          val hostAbort = !i3c.sda.read.toBoolean
-          if(hostAbort) {
-            event(ReadAbort())
-            seenReadAbort()
-            return true
-          }
-        } else {
-          // TODO verify that host drives low/overlapping (5.1.2.3.3 "i3c master shall drive SDA Low")
+    } else if (isRead) {
+      assert(response.nonEmpty, "instructed sim target to respond, but provided no data")
+      for ((byte, last) <- response.zipWithIsLast) {
+        simLog(byte, last)
+        val controllerEnded = txByte(byte, last)
+        if (last) {
+          simLog("waiting")
           return waitForStopOrRepeatedStart() match {
-            case Stop() => false
+            case Stop()      => false
             case Start(true) => true
           }
+        } else if (controllerEnded) {
+          return false
         }
-
-
       }
     } else {
       while (true) {
         val byte = rxBits(9)
         val parityChecked = byte match {
           case Byte(data) if hasOddParity(data) => Byte(data >> 1)
-          case b: Byte => ParityError(b)
-          case _ => byte
+          case b: Byte                          => ParityError(b)
+          case _                                => byte
         }
         parityChecked match {
-          case Stop() => delayed(9999) {event(parityChecked)}
-          case _ => event(parityChecked)
+          case Stop() => delayed(9999) { event(parityChecked) }
+          case _      => event(parityChecked)
         }
 
         byte match {
@@ -188,27 +189,42 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
     throw new Exception("invalid sequence - we should never be here")
   }
 
-  /**
-   * Unlike other functions this returns with scl high to allow for detection of repeated start/stop
-   **/
-  def txByte(data: Int, last: Boolean): Unit = {
+  def txByte(data: Int, last: Boolean) = {
     // TODO add 12 ns delay...
-    for(i <- 7 downto 0) {
+    for (i <- 7 downto 0) {
       val bit = ((data >> i) & 1).toBoolean
-      // TODO allow for hard 1
-      if(bit) i3c.sda.highz() else i3c.sda.drive(false)
+      i3c.sda.drive(bit)
       waitUntil(i3c.scl.read.toBoolean)
       waitUntil(!i3c.scl.read.toBoolean)
     }
-    // see 5.1.2.3.3 p. 35
-    i3c.sda.drive(last)
-    waitUntil(i3c.scl.read.toBoolean)
-    i3c.sda.highz()
+    // see 5.1.2.3.4 p. 56 & Figure
+    if (last) {
+      i3c.sda.drive(false)
+      waitUntil(i3c.scl.read.toBoolean)
+      i3c.sda.highz()
+      waitUntil(!i3c.scl.read.toBoolean || i3c.sda.read.toBoolean)
+      if (i3c.sda.read.toBoolean)
+        throw new Exception("Controller did not extend end of message at end of transmitted byte")
+      false
+    } else {
+      i3c.sda.drive(true)
+      waitUntil(i3c.scl.read.toBoolean)
+      i3c.sda.highz()
+      waitUntil(!i3c.scl.read.toBoolean || !i3c.scl.read.toBoolean)
+      if (!i3c.sda.read.toBoolean) {
+        event(Start(true))
+        waitUntil(!i3c.scl.read.toBoolean)
+        true
+      } else {
+        false
+      }
+    }
   }
 
   def event(e: Event): Unit = {}
   def seenStart(repeated: Boolean): Unit = {}
-  def addressReaction(address: Int, RnW: Boolean, repeated: Boolean): (Boolean, Seq[Int]) = (false, Seq())
+  def addressReaction(address: Int, RnW: Boolean, repeated: Boolean): (Boolean, Seq[Int]) =
+    (false, Seq())
   def sent(data: Int): Unit = {}
   def seenSDA(data: Int): Unit = {}
   def seenStop(): Unit = {}

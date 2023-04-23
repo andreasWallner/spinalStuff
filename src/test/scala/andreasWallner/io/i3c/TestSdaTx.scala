@@ -52,8 +52,7 @@ class TestSdaTx extends SpinalFunSuite {
     }
   }
 
-  val simString = SimString("debug_msg")
-  val dut = SimConfig.withFstWave.compile { SdaTx().add(simString) }
+  val dut = SimConfig.withFstWave.compile { SdaTx() }
 
   // test simple behavior when seeing NACK after addressing, generating stop
   test(dut, "SDA TX nack -> S") { dut =>
