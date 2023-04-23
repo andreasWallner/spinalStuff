@@ -15,8 +15,8 @@ import scala.language.postfixOps
 // TODO allow for low dividers by accounting for delay from synchronizing, etc.
 
 case class SpiType() extends Bundle {
-  val cpol = Bool
-  val cpha = Bool
+  val cpol = Bool()
+  val cpha = Bool()
 }
 
 case class Spi() extends Bundle with IMasterSlave {
