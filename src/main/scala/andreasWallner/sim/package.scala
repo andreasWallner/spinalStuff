@@ -304,7 +304,7 @@ package object sim {
     def #=(l: Long): Unit = this.#=(BigInt(l))
 
     def setRef(b: Bits): Unit = {
-      assert(reference.isEmpty)
+      assert(reference.isEmpty, "SimString can't be added to a component twice")
       reference = Some(b)
     }
   }
