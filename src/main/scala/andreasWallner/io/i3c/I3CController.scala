@@ -7,6 +7,9 @@ import spinal.lib.fsm._
 
 import scala.language.postfixOps
 
+// TODO check that we use push-pull / opendrain in the correct places
+// TODO allow for 0 size reads/writes
+
 case class I3C(slaveOnly: Boolean = false) extends Bundle with IMasterSlave {
   val scl, sda = TriState(Bool())
   val pullup = if (!slaveOnly) Some(Bool()) else None
@@ -24,6 +27,7 @@ case class SdaTx() extends Component {
     val data = slave port Stream(Fragment(Bits(8 bit)))
     val rxData = master port Flow(Bits(8 bit))
     val trigger = in port Bool()
+    val continueRx = in port Bool()
 
     val i3c = master port I3C()
 
@@ -107,9 +111,9 @@ case class SdaTx() extends Component {
   io.idle := False
   io.rStart := False
 
-  //noinspection ForwardReference
   val isRead = Reg(Bool())
   val isAddress = Reg(Bool())
+  //noinspection ForwardReference
   val fsm = new StateMachine {
     val idle: State = new State with EntryPoint {
       whenIsActive {
@@ -231,6 +235,9 @@ case class SdaTx() extends Component {
             io.i3c.sda.write := False
             io.i3c.sda.writeEnable := True
           }
+          when(isRead && !isAddress && io.i3c.sda.read && !io.continueRx) {
+            goto(rxAbort)
+          }
         }
 
         when(timing.bit) {
@@ -255,6 +262,29 @@ case class SdaTx() extends Component {
         }
       }
       onExit(timing.reset())
+    }
+
+    val rxAbort: State = new State {
+      onEntry { timing.reset() }
+      whenIsActive {
+        when(!io.i3c.sda.writeEnable && timing.cas) { // TODO should be Tcas/2 or external setting
+          io.i3c.sda.write := False // TODO needed?
+          io.i3c.sda.writeEnable := True
+          timing.reset()
+        }
+        when(io.i3c.sda.writeEnable && timing.cas) { // TODO should be Tcas/2 or external setting
+          io.i3c.scl.write := False
+          when(io.useRestart) {
+            isAddress := True
+            sendData.load(False)
+            isRead := io.data.payload.fragment(0)
+            timing.reset()
+            goto(dataLow)
+          } otherwise {
+            goto(stop)
+          }
+        }
+      }
     }
 
     val readBits: State = new State {

@@ -120,7 +120,7 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
         val isRead = (data & 1).toBoolean
         (isRead, addressReaction(data >> 1, isRead, repeated = repeatedStart))
     }
-    simLog(isRead, ack, response)
+    // TODO validate isRead/ack/response combination
 
     if (ack)
       i3c.sda.drive(false)
@@ -149,16 +149,14 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
     } else if (isRead) {
       assert(response.nonEmpty, "instructed sim target to respond, but provided no data")
       for ((byte, last) <- response.zipWithIsLast) {
-        simLog(byte, last)
         val controllerEnded = txByte(byte, last)
         if (last) {
-          simLog("waiting")
           return waitForStopOrRepeatedStart() match {
             case Stop()      => false
             case Start(true) => true
           }
         } else if (controllerEnded) {
-          return false
+          return true
         }
       }
     } else {

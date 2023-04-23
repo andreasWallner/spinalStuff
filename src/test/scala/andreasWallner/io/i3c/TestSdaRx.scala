@@ -22,6 +22,7 @@ class TestSdaRx extends SpinalFunSuite {
     dut.io.stopCnt #= 10
     dut.io.trigger #= false
     dut.io.useRestart #= false
+    dut.io.continueRx #= true
 
     dut.io.i3c.sda.simulatePullup()
     dut.io.i3c.scl.simulatePullup()
@@ -81,6 +82,30 @@ class TestSdaRx extends SpinalFunSuite {
     fixture.finish()
   }
 
+  test(dut, "SDA RX ack -> 10 byte -> P") { dut =>
+    SimTimeout((100 ns) * 8 * 15)
+    val response = Seq(0x11, 0x22, 0x33, 0x44, 0x55, 0x55, 0x77, 0x88, 0x99, 0xaa)
+    val fixture = Fixture(dut, (_, _, _) => (true, response))
+    import fixture.scoreboard
+
+    scoreboard.pushRef(Start(repeated = false))
+    scoreboard.pushRef(Byte(0x55))
+    response.foreach(i => scoreboard.pushRef(Byte(i)))
+    scoreboard.pushRef(Stop())
+
+    dut.io.data.fragment #= 0x55
+    dut.io.data.valid #= true
+    dut.io.data.last #= true
+    dut.io.trigger.strobe(dut.clockDomain)
+
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.valid #= false
+
+    dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
+
+    fixture.finish()
+  }
+
   test(dut, "SDA RX ack -> 1 byte -> Sr -> ack -> P") { dut =>
     SimTimeout((100 ns) * 8 * 5)
     val fixture = Fixture(dut, (_, _, _) => (true, Seq(0x21)))
@@ -110,6 +135,139 @@ class TestSdaRx extends SpinalFunSuite {
     dut.io.data.last #= true
     dut.io.useRestart #= false
     dut.clockDomain.waitSamplingWhere(dut.io.ack.valid.toBoolean)
+    dut.io.data.valid #= false
+
+    dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
+
+    fixture.finish()
+  }
+
+  test(dut, "SDA RX nack -> P") { dut =>
+    SimTimeout((100 ns) * 8 * 5)
+    val fixture = Fixture(dut, (_, _, _) => (false, Seq()))
+    import fixture.scoreboard
+
+    scoreboard.pushRef(Start(repeated = false))
+    scoreboard.pushRef(Byte(0x55))
+    scoreboard.pushRef(Stop())
+
+    dut.io.data.fragment #= 0x55
+    dut.io.data.valid #= true
+    dut.io.data.last #= true
+    dut.io.trigger.strobe(dut.clockDomain)
+
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.valid #= false
+
+    dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
+
+    fixture.finish()
+  }
+
+  test(dut, "SDA RX nack -> Sr -> nack -> P") { dut =>
+    SimTimeout((100 ns) * 8 * 5)
+    val fixture = Fixture(dut, (_, _, _) => (false, Seq()))
+    import fixture.scoreboard
+
+    scoreboard.pushRef(Start(repeated = false))
+    scoreboard.pushRef(Byte(0x55))
+    scoreboard.pushRef(Start(repeated = true))
+    scoreboard.pushRef(Byte(0x55))
+    scoreboard.pushRef(Stop())
+
+    dut.io.data.fragment #= 0x55
+    dut.io.data.valid #= true
+    dut.io.data.last #= true
+    dut.io.trigger.strobe(dut.clockDomain)
+    dut.io.useRestart #= true
+
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.fragment.randomize()
+    dut.io.data.valid #= false
+
+    dut.clockDomain.waitSamplingWhere(dut.io.ack.valid.toBoolean)
+    assert(!dut.io.ack.payload.toBoolean)
+    dut.io.data.fragment #= 0x55
+    dut.io.data.valid #= true
+    dut.io.useRestart #= false
+
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.valid #= false
+
+    dut.clockDomain.waitSamplingWhere(dut.io.ack.valid.toBoolean)
+    assert(!dut.io.ack.payload.toBoolean)
+
+    dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
+
+    fixture.finish()
+  }
+
+  test(dut, "SDA RX ack -> controller abort after 2 byte -> P") { dut =>
+    SimTimeout((100 ns) * 8 * 5)
+    val fixture = Fixture(dut, (_, _, _) => (true, Seq(0x21, 0x45, 0x67)))
+    import fixture.scoreboard
+
+    scoreboard.pushRef(Start(repeated = false))
+    scoreboard.pushRef(Byte(0x55))
+    scoreboard.pushRef(Byte(0x21))
+    scoreboard.pushRef(Byte(0x45))
+    scoreboard.pushRef(Start(repeated = true))
+    scoreboard.pushRef(Stop())
+
+    dut.io.data.fragment #= 0x55
+    dut.io.data.valid #= true
+    dut.io.data.last #= true
+    dut.io.trigger.strobe(dut.clockDomain)
+
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.valid #= false
+
+    dut.clockDomain.waitSamplingWhere(dut.io.rxData.valid.toBoolean)
+    dut.clockDomain.waitSamplingWhere(dut.io.rxData.valid.toBoolean)
+    dut.io.continueRx #= false
+
+    dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
+
+    fixture.finish()
+  }
+
+  test(dut, "SDA RX ack -> controller abort after 2 byte -> Sr -> ack -> 1 byte -> P") { dut =>
+    SimTimeout((100 ns) * 8 * 10)
+    val fixture = Fixture(dut, (_, _, _) => (true, Seq(0x21, 0x45, 0x67)))
+    import fixture.scoreboard
+
+    scoreboard.pushRef(Start(repeated = false))
+    scoreboard.pushRef(Byte(0x55))
+    scoreboard.pushRef(Byte(0x21))
+    scoreboard.pushRef(Byte(0x45))
+    scoreboard.pushRef(Start(repeated = true))
+    scoreboard.pushRef(Byte(0x40))
+    scoreboard.pushRef(Byte(0x41))
+    scoreboard.pushRef(Stop())
+
+    dut.io.data.fragment #= 0x55
+    dut.io.data.valid #= true
+    dut.io.data.last #= true
+    dut.io.useRestart #= true
+    dut.io.trigger.strobe(dut.clockDomain)
+
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.fragment.randomize()
+    dut.io.data.valid #= false
+
+    dut.clockDomain.waitSamplingWhere(dut.io.rxData.valid.toBoolean)
+    dut.clockDomain.waitSamplingWhere(dut.io.rxData.valid.toBoolean)
+    dut.io.continueRx #= false
+
+    dut.io.data.fragment #= 0x40
+    dut.io.data.valid #= true
+    dut.io.data.last #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.useRestart #= false
+    dut.io.data.fragment #= 0x41
+    dut.io.data.last #= true
+    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.data.fragment.randomize()
     dut.io.data.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
