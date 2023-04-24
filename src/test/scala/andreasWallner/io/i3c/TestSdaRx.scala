@@ -67,13 +67,13 @@ class TestSdaRx extends SpinalFunSuite {
     scoreboard.pushRef(Byte(0x21))
     scoreboard.pushRef(Stop())
 
-    dut.io.data.fragment #= 0x55
-    dut.io.data.valid #= true
-    dut.io.data.last #= true
+    dut.io.txData.fragment #= 0x55
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= true
     dut.io.trigger.strobe(dut.clockDomain)
 
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.valid #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
@@ -91,13 +91,13 @@ class TestSdaRx extends SpinalFunSuite {
     response.foreach(i => scoreboard.pushRef(Byte(i)))
     scoreboard.pushRef(Stop())
 
-    dut.io.data.fragment #= 0x55
-    dut.io.data.valid #= true
-    dut.io.data.last #= true
+    dut.io.txData.fragment #= 0x55
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= true
     dut.io.trigger.strobe(dut.clockDomain)
 
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.valid #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
@@ -116,24 +116,24 @@ class TestSdaRx extends SpinalFunSuite {
     scoreboard.pushRef(Byte(0x54))
     scoreboard.pushRef(Stop())
 
-    dut.io.data.fragment #= 0x55
-    dut.io.data.valid #= true
-    dut.io.data.last #= true
+    dut.io.txData.fragment #= 0x55
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= true
     dut.io.trigger.strobe(dut.clockDomain)
     dut.io.useRestart #= true
 
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.valid #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.valid #= false
     dut.clockDomain.waitSamplingWhere(dut.io.ack.valid.toBoolean)
     dut.clockDomain.waitSamplingWhere(dut.io.ack.valid.toBoolean)
     assert(!dut.io.ack.payload.toBoolean)
 
-    dut.io.data.fragment #= 0x54
-    dut.io.data.valid #= true
-    dut.io.data.last #= true
+    dut.io.txData.fragment #= 0x54
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= true
     dut.io.useRestart #= false
     dut.clockDomain.waitSamplingWhere(dut.io.ack.valid.toBoolean)
-    dut.io.data.valid #= false
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
@@ -149,13 +149,13 @@ class TestSdaRx extends SpinalFunSuite {
     scoreboard.pushRef(Byte(0x55))
     scoreboard.pushRef(Stop())
 
-    dut.io.data.fragment #= 0x55
-    dut.io.data.valid #= true
-    dut.io.data.last #= true
+    dut.io.txData.fragment #= 0x55
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= true
     dut.io.trigger.strobe(dut.clockDomain)
 
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.valid #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
@@ -173,24 +173,24 @@ class TestSdaRx extends SpinalFunSuite {
     scoreboard.pushRef(Byte(0x55))
     scoreboard.pushRef(Stop())
 
-    dut.io.data.fragment #= 0x55
-    dut.io.data.valid #= true
-    dut.io.data.last #= true
+    dut.io.txData.fragment #= 0x55
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= true
     dut.io.trigger.strobe(dut.clockDomain)
     dut.io.useRestart #= true
 
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.fragment.randomize()
-    dut.io.data.valid #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.fragment.randomize()
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.ack.valid.toBoolean)
     assert(!dut.io.ack.payload.toBoolean)
-    dut.io.data.fragment #= 0x55
-    dut.io.data.valid #= true
+    dut.io.txData.fragment #= 0x55
+    dut.io.txData.valid #= true
     dut.io.useRestart #= false
 
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.valid #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.ack.valid.toBoolean)
     assert(!dut.io.ack.payload.toBoolean)
@@ -212,13 +212,13 @@ class TestSdaRx extends SpinalFunSuite {
     scoreboard.pushRef(Start(repeated = true))
     scoreboard.pushRef(Stop())
 
-    dut.io.data.fragment #= 0x55
-    dut.io.data.valid #= true
-    dut.io.data.last #= true
+    dut.io.txData.fragment #= 0x55
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= true
     dut.io.trigger.strobe(dut.clockDomain)
 
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.valid #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.rxData.valid.toBoolean)
     dut.clockDomain.waitSamplingWhere(dut.io.rxData.valid.toBoolean)
@@ -243,30 +243,30 @@ class TestSdaRx extends SpinalFunSuite {
     scoreboard.pushRef(Byte(0x41))
     scoreboard.pushRef(Stop())
 
-    dut.io.data.fragment #= 0x55
-    dut.io.data.valid #= true
-    dut.io.data.last #= true
+    dut.io.txData.fragment #= 0x55
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= true
     dut.io.useRestart #= true
     dut.io.trigger.strobe(dut.clockDomain)
 
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.fragment.randomize()
-    dut.io.data.valid #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.fragment.randomize()
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.rxData.valid.toBoolean)
     dut.clockDomain.waitSamplingWhere(dut.io.rxData.valid.toBoolean)
     dut.io.continueRx #= false
 
-    dut.io.data.fragment #= 0x40
-    dut.io.data.valid #= true
-    dut.io.data.last #= false
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.io.txData.fragment #= 0x40
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
     dut.io.useRestart #= false
-    dut.io.data.fragment #= 0x41
-    dut.io.data.last #= true
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.fragment.randomize()
-    dut.io.data.valid #= false
+    dut.io.txData.fragment #= 0x41
+    dut.io.txData.last #= true
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.fragment.randomize()
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 

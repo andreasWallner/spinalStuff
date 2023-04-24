@@ -63,13 +63,13 @@ class TestSdaTx extends SpinalFunSuite {
     txScoreboard.pushRef(Byte(0x54))
     txScoreboard.pushRef(Stop())
 
-    dut.io.data.fragment #= 0x54
-    dut.io.data.valid #= true
-    dut.io.data.last #= true
+    dut.io.txData.fragment #= 0x54
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= true
     dut.io.trigger.strobe(dut.clockDomain)
 
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.valid #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
@@ -91,25 +91,25 @@ class TestSdaTx extends SpinalFunSuite {
 
     dut.io.useRestart #= true
 
-    dut.io.data.fragment #= 0x54
-    dut.io.data.last #= false
-    dut.io.data.valid #= true
+    dut.io.txData.fragment #= 0x54
+    dut.io.txData.last #= false
+    dut.io.txData.valid #= true
     dut.io.trigger.strobe(dut.clockDomain)
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
 
     // assign data to be sent as control SM would, keep last == 0
-    dut.io.data.fragment #= 0x77
+    dut.io.txData.fragment #= 0x77
 
     // wait for NACK to be reported
     dut.clockDomain.waitSamplingWhere(dut.io.ack.valid.toBoolean)
     assert(!dut.io.ack.payload.toBoolean)
 
     // assign new address
-    dut.io.data.fragment #= 0x43
-    dut.io.data.last #= true
+    dut.io.txData.fragment #= 0x43
+    dut.io.txData.last #= true
     dut.io.useRestart #= false
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.valid #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
@@ -125,17 +125,17 @@ class TestSdaTx extends SpinalFunSuite {
     txScoreboard.pushRef(Byte(0x76))
     txScoreboard.pushRef(Stop())
 
-    dut.io.data.fragment #= 0x54
-    dut.io.data.valid #= true
-    dut.io.data.last #= false
+    dut.io.txData.fragment #= 0x54
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= false
     dut.io.trigger.strobe(dut.clockDomain)
 
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.fragment #= 0x76
-    dut.io.data.last #= true
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.fragment #= 0x76
+    dut.io.txData.last #= true
 
-    dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-    dut.io.data.valid #= false
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
@@ -154,14 +154,14 @@ class TestSdaTx extends SpinalFunSuite {
     dut.clockDomain.waitSampling()
 
     for (((i, idx), first, last) <- sequence.zipWithIndex.zipWithIsFirstLast) {
-      dut.io.data.fragment #= i
-      dut.io.data.valid #= true
-      dut.io.data.last #= last
+      dut.io.txData.fragment #= i
+      dut.io.txData.valid #= true
+      dut.io.txData.last #= last
       if(first)
         dut.io.trigger.strobe(dut.clockDomain) // TODO only do o first
-      dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
+      dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
     }
-    dut.io.data.valid #= false
+    dut.io.txData.valid #= false
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
@@ -182,21 +182,21 @@ class TestSdaTx extends SpinalFunSuite {
 
       val address = Random.nextInt(256) & ~0x01 // ensure write transfer
       txScoreboard.pushRef(Byte(address))
-      dut.io.data.fragment #= address
-      dut.io.data.last #= n == 0
-      dut.io.data.valid #= true
+      dut.io.txData.fragment #= address
+      dut.io.txData.last #= n == 0
+      dut.io.txData.valid #= true
       dut.io.trigger.strobe()
 
-      dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-      dut.io.data.valid #= false
+      dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+      dut.io.txData.valid #= false
 
       for ((_, lastByte) <- (0 until n).zipWithIsLast) {
-        val byte = dut.io.data.fragment.randomize().toInt
+        val byte = dut.io.txData.fragment.randomize().toInt
         txScoreboard.pushRef(Byte(byte))
-        dut.io.data.valid #= true
-        dut.io.data.last #= lastByte
-        dut.clockDomain.waitSamplingWhere(dut.io.data.ready.toBoolean)
-        dut.io.data.valid #= false
+        dut.io.txData.valid #= true
+        dut.io.txData.last #= lastByte
+        dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
+        dut.io.txData.valid #= false
       }
 
       if(dut.io.useRestart.toBoolean)

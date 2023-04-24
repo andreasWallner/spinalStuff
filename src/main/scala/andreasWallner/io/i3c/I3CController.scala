@@ -24,15 +24,15 @@ case class I3C(slaveOnly: Boolean = false) extends Bundle with IMasterSlave {
 // TODO enforce time between stop & start
 case class SdaTx() extends Component {
   val io = new Bundle {
-    val data = slave port Stream(Fragment(Bits(8 bit)))
+    val i3c = master port I3C()
+
+    val txData = slave port Stream(Fragment(Bits(8 bit)))
     val rxData = master port Flow(Bits(8 bit))
     val trigger = in port Bool()
     val continueRx = in port Bool()
-
-    val i3c = master port I3C()
+    val useRestart = in port Bool()
 
     val ack = master port Flow(Bool())
-    val useRestart = in port Bool()
 
     val tCas = in port UInt(5 bit) // 38.4 ns < tCas < 50 mill (lowest activity state) Table 74
     val tCbp = in port UInt(5 bit)
@@ -59,7 +59,7 @@ case class SdaTx() extends Component {
     private val bits = Reg(Bits(9 bit))
     val lastByte = Reg(Bool())
     val paritySent = Reg(Bool())
-    val parityBit = Reg(Bool())
+    val calculatedParity = Reg(Bool())
     val isAddress = Reg(Bool())
 
     val isRead = Reg(Bool())
@@ -67,21 +67,21 @@ case class SdaTx() extends Component {
 
     val allSent = bits === B"000000001"
 
-    io.data.ready := False
+    io.txData.ready := False
     def load(loadsAddress: Boolean): Unit = {
-      lastByte := io.data.last
-      bits := True ## io.data.fragment.reversed
-      io.data.ready := True
+      lastByte := io.txData.last
+      bits := True ## io.txData.fragment.reversed
+      io.txData.ready := True
 
       isAddress := Bool(loadsAddress)
       paritySent := False
-      parityBit := True
+      calculatedParity := True
       if(loadsAddress)
-        isRead := io.data.fragment(0)
+        isRead := io.txData.fragment(0)
     }
     def nextBit() = {
       bits := bits |>> 1
-      parityBit := parityBit ^ bits(0)
+      calculatedParity := calculatedParity ^ bits(0)
       bits(0)
     }
   }
@@ -189,7 +189,7 @@ case class SdaTx() extends Component {
           when(!sendData.allSent) {
             io.i3c.sda.writeEnable := !sendData.nextBit()
           } otherwise {
-            io.i3c.sda.writeEnable := !sendData.parityBit
+            io.i3c.sda.writeEnable := !sendData.calculatedParity
             sendData.paritySent := True
           }
         }
