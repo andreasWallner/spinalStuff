@@ -2,8 +2,8 @@ package andreasWallner.io.i3c
 
 import spinal.core._
 import spinal.lib._
-import spinal.lib.io.TriState
 import spinal.lib.fsm._
+import spinal.lib.io.TriState
 
 import scala.language.postfixOps
 
@@ -21,6 +21,7 @@ case class I3C(slaveOnly: Boolean = false) extends Bundle with IMasterSlave {
     keeper.map(out.applyIt)
   }
 }
+
 // TODO enforce time between stop & start
 case class SdaTx() extends Component {
   val io = new Bundle {
@@ -79,10 +80,13 @@ case class SdaTx() extends Component {
       if(loadsAddress)
         isRead := io.txData.fragment(0)
     }
+    val next = !allSent ? bits(0) | calculatedParity
     def nextBit() = {
-      bits := bits |>> 1
-      calculatedParity := calculatedParity ^ bits(0)
-      bits(0)
+      when(!allSent) {
+        bits := bits |>> 1
+        calculatedParity := calculatedParity ^ bits(0)
+      }
+      next
     }
   }
   val receiveData = new Area {
@@ -182,14 +186,15 @@ case class SdaTx() extends Component {
     val transmitBits: State = new State {
       onEntry {
         timing.reset()
-        io.i3c.sda.write := False
       }
       whenIsActive {
         when(timing.change) {
-          when(!sendData.allSent) {
+          when(sendData.isAddress) {
             io.i3c.sda.writeEnable := !sendData.nextBit()
           } otherwise {
-            io.i3c.sda.writeEnable := !sendData.calculatedParity
+            io.i3c.sda.write := sendData.nextBit()
+          }
+          when(sendData.allSent) {
             sendData.paritySent := True
           }
         }
@@ -197,6 +202,7 @@ case class SdaTx() extends Component {
           io.i3c.scl.write := True
         }
         when(timing.bit) {
+          timing.reset()
           io.i3c.scl.write := False
           when(sendData.allSent && !sendData.sendParity) {
             goto(ack)
@@ -263,7 +269,7 @@ case class SdaTx() extends Component {
       onEntry { timing.reset() }
       whenIsActive {
         when(!io.i3c.sda.writeEnable && timing.cas) { // TODO should be Tcas/2 or external setting
-          io.i3c.sda.write := False // TODO needed?
+          io.i3c.sda.write := False
           io.i3c.sda.writeEnable := True
           timing.reset()
         }
