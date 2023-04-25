@@ -8,6 +8,7 @@ import spinal.core.sim._
 import spinal.lib.sim._
 
 import scala.language.postfixOps
+import scala.util.Random
 
 class TestSdaRx extends SpinalFunSuite {
   case class Fixture(dut: SdaTx, onAddress: (Int, Boolean, Boolean) => (Boolean, Seq[Int]) ) {
@@ -267,6 +268,29 @@ class TestSdaRx extends SpinalFunSuite {
     dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
     dut.io.txData.fragment.randomize()
     dut.io.txData.valid #= false
+
+    dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
+
+    fixture.finish()
+  }
+
+  test(dut, "SDA RX ack -> 100 bytes -> P") { dut =>
+    SimTimeout((100 ns) * 8 * 110)
+    val expected = Seq.fill(100){Random.nextInt(256)}
+    val fixture = Fixture(dut, (_, _, _) => (true, expected))
+    import fixture.scoreboard
+
+    scoreboard.pushRef(Start(repeated=false))
+    scoreboard.pushRef(Byte(0x55))
+    expected.foreach(i => scoreboard.pushRef(Byte(i)))
+    scoreboard.pushRef(Stop())
+    dut.clockDomain.waitSampling()
+
+    dut.io.txData.fragment #= 0x55
+    dut.io.txData.valid #= true
+    dut.io.txData.last #= true
+    dut.io.trigger.strobe(dut.clockDomain)
+    dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
 
     dut.clockDomain.waitSamplingWhere(dut.io.idle.toBoolean)
 
