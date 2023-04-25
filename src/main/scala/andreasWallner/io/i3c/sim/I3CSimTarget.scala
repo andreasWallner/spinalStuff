@@ -47,15 +47,22 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
     // TODO verify open-drain
   }
 
-  def rxBits(bitCnt: Int, passive: Boolean = false): Event = {
+  def rxBits(bitCnt: Int, passive: Boolean = false, requireOpenDrain: Boolean = false): Event = {
     val bits = for (i <- 0 until bitCnt) yield {
       waitUntil(i3c.scl.read.toBoolean)
       val bitLevel = i3c.sda.read.toBoolean
+      val correctMode = if (requireOpenDrain) i3c.sda.isOpenDrain else i3c.sda.isPushPull
+      simLog(correctMode, i3c.sda.isOpenDrain, i3c.sda.isPushPull)
 
       val changedSda = !i3c.sda.read.toBoolean
       waitUntil(!i3c.scl.read.toBoolean || i3c.sda.read.toBoolean == changedSda)
       (i3c.scl.read.toBoolean, i3c.sda.read.toBoolean) match {
         case (false, _) =>
+          if (!correctMode)
+            throw new Exception(
+              "Drive mode not " + (if (requireOpenDrain) "open-drain" else "push-pull") + " as required"
+            )
+
           event(Bit(bitLevel))
         case _ if i != 0 =>
           throw new Exception("P/Sr only allowed at first bit")
@@ -64,7 +71,7 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
           return Stop()
         case (true, false) =>
           waitUntil(!i3c.scl.read.toBoolean || i3c.sda.read.toBoolean != changedSda)
-          if(i3c.scl.read.toBoolean)
+          if (i3c.scl.read.toBoolean)
             throw new Exception("invalid SDA transition found during Sr")
           seenStart(true)
           return Start(true)
@@ -113,7 +120,7 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
   def doRxTx(repeatedStart: Boolean): Boolean = {
     val startTime = simTime()
 
-    val header = rxBits(8)
+    val header = rxBits(8, requireOpenDrain = !repeatedStart)
     event(header)
     val (isRead, (ack, response)) = header match {
       case Stop() =>

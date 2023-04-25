@@ -62,6 +62,7 @@ case class SdaTx() extends Component {
     val paritySent = Reg(Bool())
     val calculatedParity = Reg(Bool())
     val isAddress = Reg(Bool())
+    val useOpenDrain = Reg(Bool())
 
     val isRead = Reg(Bool())
     val sendParity = !isAddress
@@ -149,6 +150,7 @@ case class SdaTx() extends Component {
         when(timing.cas) { goto(transmitBits) }
       }
       onExit {
+        sendData.useOpenDrain := True
         io.i3c.scl.write := False
         timing.reset()
       }
@@ -189,7 +191,7 @@ case class SdaTx() extends Component {
       }
       whenIsActive {
         when(timing.change) {
-          when(sendData.isAddress) {
+          when(sendData.useOpenDrain) {
             io.i3c.sda.writeEnable := !sendData.nextBit()
           } otherwise {
             io.i3c.sda.write := sendData.nextBit()
@@ -219,7 +221,11 @@ case class SdaTx() extends Component {
           }
         }
       }
-      onExit(timing.reset())
+      onExit {
+        timing.reset()
+        // after first address all data or address (after restart) is push-pull
+        sendData.useOpenDrain := False
+      }
     }
 
     val ackIsLow = !(sendData.isRead && !sendData.isAddress)

@@ -174,6 +174,9 @@ package object sim {
       val state = DriverStates.boolStates(tri)
       state.driveEnable = false
     }
+
+    def isOpenDrain: Boolean = !tri.writeEnable.toBoolean || (tri.writeEnable.toBoolean && !tri.write.toBoolean)
+    def isPushPull: Boolean = tri.writeEnable.toBoolean
   }
 
   implicit class SimBool(b: Bool) {
