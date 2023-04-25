@@ -209,7 +209,6 @@ case class SdaTx() extends Component {
           } elsewhen (sendData.allSent && sendData.sendParity && sendData.paritySent) {
             when(!sendData.lastByte) {
               sendData.load(false)
-              timing.reset()
             } otherwise {
               when(!io.useRestart) {
                 goto(stop)
@@ -217,8 +216,6 @@ case class SdaTx() extends Component {
                 goto(rStart)
               }
             }
-          } otherwise {
-            timing.reset()
           }
         }
       }
@@ -227,8 +224,8 @@ case class SdaTx() extends Component {
 
     val ackIsLow = !(sendData.isRead && !sendData.isAddress)
     val ack: State = new State {
+      onEntry {io.i3c.sda.writeEnable := False}
       whenIsActive {
-        when(timing.change) { io.i3c.sda.writeEnable := False }
         when(timing.clock) {
           io.i3c.scl.write := True
           io.ack.payload := io.i3c.sda.read ^ ackIsLow

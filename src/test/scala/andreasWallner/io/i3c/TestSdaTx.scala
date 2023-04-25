@@ -153,12 +153,12 @@ class TestSdaTx extends SpinalFunSuite {
     txScoreboard.pushRef(Stop())
     dut.clockDomain.waitSampling()
 
-    for (((i, idx), first, last) <- sequence.zipWithIndex.zipWithIsFirstLast) {
+    for ((i, first, last) <- sequence.zipWithIsFirstLast) {
       dut.io.txData.fragment #= i
       dut.io.txData.valid #= true
       dut.io.txData.last #= last
       if(first)
-        dut.io.trigger.strobe(dut.clockDomain) // TODO only do o first
+        dut.io.trigger.strobe(dut.clockDomain)
       dut.clockDomain.waitSamplingWhere(dut.io.txData.ready.toBoolean)
     }
     dut.io.txData.valid #= false

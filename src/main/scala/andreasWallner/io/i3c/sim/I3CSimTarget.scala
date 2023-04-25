@@ -48,22 +48,28 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
   }
 
   def rxBits(bitCnt: Int, passive: Boolean = false): Event = {
-    val bits = for (_ <- 0 until bitCnt) yield {
+    val bits = for (i <- 0 until bitCnt) yield {
       waitUntil(i3c.scl.read.toBoolean)
-      val stopPossible = !i3c.sda.read.toBoolean
-      waitUntil(!i3c.scl.read.toBoolean || (stopPossible == i3c.sda.read.toBoolean))
-      (stopPossible, i3c.sda.read.toBoolean) match {
+      val bitLevel = i3c.sda.read.toBoolean
+
+      val changedSda = !i3c.sda.read.toBoolean
+      waitUntil(!i3c.scl.read.toBoolean || i3c.sda.read.toBoolean == changedSda)
+      (i3c.scl.read.toBoolean, i3c.sda.read.toBoolean) match {
+        case (false, _) =>
+          event(Bit(bitLevel))
+        case _ if i != 0 =>
+          throw new Exception("P/Sr only allowed at first bit")
         case (true, true) =>
           seenStop()
           return Stop()
-        case (false, false) =>
-          waitUntil(!i3c.scl.read.toBoolean)
+        case (true, false) =>
+          waitUntil(!i3c.scl.read.toBoolean || i3c.sda.read.toBoolean != changedSda)
+          if(i3c.scl.read.toBoolean)
+            throw new Exception("invalid SDA transition found during Sr")
           seenStart(true)
           return Start(true)
-        case (_, b) =>
-          event(Bit(b))
       }
-      i3c.sda.read.toBoolean
+      bitLevel
     }
     if (!passive)
       Byte(toInt(bits, msbFirst = true))
