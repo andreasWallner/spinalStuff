@@ -180,10 +180,7 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
           case b: Byte                          => ParityError(b)
           case _                                => byte
         }
-        parityChecked match {
-          case Stop() => delayed(9999) { event(parityChecked) }
-          case _      => event(parityChecked)
-        }
+        event(parityChecked)
 
         byte match {
           case Stop() =>
