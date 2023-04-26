@@ -7,6 +7,8 @@ import andreasWallner.util.IterablePimper
 import spinal.core._
 import spinal.core.sim._
 
+import scala.language.postfixOps
+
 abstract class Event
 case class Start(repeated: Boolean) extends Event
 case class Stop() extends Event
@@ -198,9 +200,9 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
   }
 
   def txByte(data: Int, last: Boolean) = {
-    // TODO add 12 ns delay...
     for (i <- 7 downto 0) {
       val bit = ((data >> i) & 1).toBoolean
+      sleep(timeToLong(12 ns))
       i3c.sda.drive(bit)
       waitUntil(i3c.scl.read.toBoolean)
       waitUntil(!i3c.scl.read.toBoolean)
@@ -209,15 +211,18 @@ case class I3CSimTarget(i3c: I3C, cd: ClockDomain) {
     if (last) {
       i3c.sda.drive(false)
       waitUntil(i3c.scl.read.toBoolean)
+      if (!i3c.sda.isOpenDrain)
+        throw new Exception("Controller push-pull drives during ACK")
       i3c.sda.highz()
       waitUntil(!i3c.scl.read.toBoolean || i3c.sda.read.toBoolean)
       if (i3c.sda.read.toBoolean)
         throw new Exception("Controller did not extend end of message at end of transmitted byte")
       false
     } else {
-      i3c.sda.drive(true)
-      waitUntil(i3c.scl.read.toBoolean)
       i3c.sda.highz()
+      waitUntil(i3c.scl.read.toBoolean)
+      if(!i3c.sda.isOpenDrain)
+        throw new Exception("Controller push-pull drives during ACK")
       waitUntil(!i3c.scl.read.toBoolean || !i3c.scl.read.toBoolean)
       if (!i3c.sda.read.toBoolean) {
         event(Start(true))
