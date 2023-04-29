@@ -29,6 +29,7 @@ case class SdaTx() extends Component {
 
     val txData = slave port Stream(Fragment(Bits(8 bit)))
     val rxData = master port Flow(Bits(8 bit))
+    val isIbi = out port Bool()
     val trigger = in port Bool()
     val continueRx = in port Bool()
     val useRestart = in port Bool()
@@ -56,6 +57,8 @@ case class SdaTx() extends Component {
     val bit = cnt === io.bitCnt
     val stop = cnt === io.stopCnt
   }
+  val isIbi = Reg(Bool())
+  io.isIbi := isIbi
   val sendData = new Area {
     private val bits = Reg(Bits(9 bit))
     val lastByte = Reg(Bool())
@@ -130,11 +133,19 @@ case class SdaTx() extends Component {
         io.i3c.sda.writeEnable := False
         io.i3c.scl.write := True
         io.i3c.sda.write := True
+        isIbi := False
         io.idle := True
 
         when(io.trigger) {
           sendData.load(true)
           goto(start)
+        }
+        when(!io.i3c.sda.read) {
+          io.i3c.scl.write := False
+          io.i3c.scl.writeEnable := True
+          isIbi := True
+          sendData.isAddress := True
+          goto(readBits)
         }
       }
     }
@@ -228,19 +239,25 @@ case class SdaTx() extends Component {
       }
     }
 
-    val ackIsLow = !(sendData.isRead && !sendData.isAddress)
+    val ackIsLow = !(sendData.isRead && !sendData.isAddress) && !(isIbi && !sendData.isAddress)
     val ack: State = new State {
       onEntry {io.i3c.sda.writeEnable := False}
       whenIsActive {
+        when(timing.change) {
+          when(isIbi) {
+            io.i3c.sda.write := False
+            io.i3c.sda.writeEnable := True
+          }
+        }
         when(timing.clock) {
           io.i3c.scl.write := True
           io.ack.payload := io.i3c.sda.read ^ ackIsLow
           // if write continue driving ACK, overlapping with target
-          when(!io.i3c.sda.read && (!sendData.isRead || (sendData.isRead && !sendData.isAddress))) {
+          when(!io.i3c.sda.read && (!sendData.isRead || (sendData.isRead && !sendData.isAddress) || isIbi)) {
             io.i3c.sda.write := False
             io.i3c.sda.writeEnable := True
           }
-          when(sendData.isRead && !sendData.isAddress && io.i3c.sda.read && !io.continueRx) {
+          when((sendData.isRead && !sendData.isAddress && io.i3c.sda.read && !io.continueRx) || (io.i3c.sda.read && !sendData.isAddress && isIbi && io.continueRx)) {
             goto(rxAbort)
           }
         }
@@ -248,7 +265,10 @@ case class SdaTx() extends Component {
           sendData.isAddress := False
           io.i3c.scl.write := False
           io.ack.valid := True
-          when(sendData.isRead && io.ack.payload) {
+          when(isIbi && io.ack.payload) {
+            io.i3c.sda.writeEnable := False
+            goto(readBits)
+          } elsewhen(sendData.isRead && io.ack.payload) {
             goto(readBits)
           } elsewhen(!sendData.isRead && io.ack.payload && !sendData.lastByte) {
             sendData.load(false)
