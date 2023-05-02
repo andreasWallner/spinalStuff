@@ -295,7 +295,7 @@ package object sim {
     private var reference: Option[Bits] = None
 
     def #=(s: String): Unit = {
-      assert(reference.isDefined, "SimString has not been added to any component before use")
+      assert(reference.isDefined, s"SimString '$name' has not been added to any component before use")
       var toAssignBI = BigInt(0)
       s.take(20).padTo(20, ' ').foreach(c => toAssignBI = (toAssignBI << 8) + c)
       reference.get #= toAssignBI
@@ -308,7 +308,7 @@ package object sim {
     def #=(l: Long): Unit = this.#=(BigInt(l))
 
     def setRef(b: Bits): Unit = {
-      assert(reference.isEmpty, "SimString can't be added to a component twice")
+      assert(reference.isEmpty, s"SimString '$name' can't be added to a component twice")
       reference = Some(b)
     }
   }
@@ -325,6 +325,14 @@ package object sim {
         signal.dontSimplifyIt()
         signal.setName(ss.name)
       }
+      c
+    }
+    def add(ss: SimString*): T = {
+      ss.foreach{add}
+      c
+    }
+    def add(ss: IterableOnce[SimString]): T = {
+      ss.iterator.foreach{add}
       c
     }
   }

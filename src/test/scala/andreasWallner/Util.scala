@@ -68,7 +68,7 @@ object LoggingScoreboardInOrder {
   }
   def fmtLogFn[T](name: String, fmtFn: T => String)(isRef: Boolean, data: T): Unit = {
     val color = if (isRef) Console.BLUE else Console.GREEN
-    val dirStr = if (isRef) "ref" else "dut"
+    val dirStr = if (isRef) "ref" else "  dut"
     simLog(s"$name$color$dirStr${Console.RESET}", fmtFn(data))
   }
   def apply[T]() = new LoggingScoreboardInOrder[T](simLogFn[T](""))
