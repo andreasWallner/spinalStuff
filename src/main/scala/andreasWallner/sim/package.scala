@@ -293,7 +293,7 @@ package object sim {
    */
   case class SimString(name: String, length: Int = 20) {
     private var reference: Option[Bits] = None
-
+// TODO check if there is a current scope with a component, if so register automatically
     def #=(s: String): Unit = {
       assert(reference.isDefined, s"SimString '$name' has not been added to any component before use")
       var toAssignBI = BigInt(0)
@@ -311,6 +311,15 @@ package object sim {
       assert(reference.isEmpty, s"SimString '$name' can't be added to a component twice")
       reference = Some(b)
     }
+
+    def materialize() = {
+      val signal = Reg(Bits(length * 8 bit)) init B(0x20, 8 bit) #* length
+      setRef(signal)
+      signal.simPublic()
+      signal.dontSimplifyIt()
+      signal.setName(name)
+      this
+    }
   }
 
   /**
@@ -318,13 +327,7 @@ package object sim {
    */
   implicit class ComponentSimStringPimper[T <: Component](c: T) {
     def add(ss: SimString): T = {
-      c.rework {
-        val signal = Reg(Bits(ss.length * 8 bit)) init B(0x20, 8 bit) #* ss.length
-        ss.setRef(signal)
-        signal.simPublic()
-        signal.dontSimplifyIt()
-        signal.setName(ss.name)
-      }
+      c.rework { ss.materialize() }
       c
     }
     def add(ss: SimString*): T = {
