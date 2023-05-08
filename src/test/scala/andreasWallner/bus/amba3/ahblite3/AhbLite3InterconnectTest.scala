@@ -14,11 +14,11 @@ import scala.collection.mutable
 import scala.language.postfixOps
 
 case class AhbInterconnectTester(
-                                  masterCount: Int,
-                                  slaveCount: Int,
-                                  mappedSlaves: Seq[Seq[Int]],
-                                  mappings: Seq[SizeMapping]
-                                ) extends Component {
+    masterCount: Int,
+    slaveCount: Int,
+    mappedSlaves: Seq[Seq[Int]],
+    mappings: Seq[SizeMapping]
+) extends Component {
   val ahbConfig = AhbLite3Config(addressWidth = 16, dataWidth = 4)
   val masterStrings = Seq.tabulate(masterCount) { i =>
     SimString(s"master_$i").materialize()
@@ -54,7 +54,9 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
       mappings: Seq[SizeMapping]
   ) {
     def name = {
-      val connStr = connectivity.zipWithIndex.map{case (slaves, master) => f"""${master}_${slaves.mkString("")}"""}.mkString("_")
+      val connStr = connectivity.zipWithIndex
+        .map { case (slaves, master) => f"""${master}_${slaves.mkString("")}""" }
+        .mkString("_")
       f"${masterCount}M${slaveCount}S_${connStr}_${mappings.hashCode()}%x"
     }
   }
@@ -66,18 +68,25 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
         params.slaveCount,
         params.connectivity,
         params.mappings
-      ).setDefinitionName("AhbInterconnectTester_" + params.name).setName("AhbInterconnectTester"))
+      ).setDefinitionName("AhbInterconnectTester_" + params.name).setName("AhbInterconnectTester")
+    )
   }
 
   val toTest = Seq(
     TestParams(2, 1, Seq(Seq(0), Seq(0)), Seq(SizeMapping(0x1000, 0x1000))),
-    TestParams(1, 3, Seq(Seq(0,1,2)), Seq.tabulate(3){i=>SizeMapping(0x1000*i, 0x1000)}),
-    TestParams(2, 2, Seq.fill(2)(Seq(0,1)), Seq.tabulate(2){i=>SizeMapping(0x1000*i, 0x1000)}),
-    TestParams(3, 5, Seq.fill(3)(Seq(0,1,2,3,4)), Seq.tabulate(5){i=>SizeMapping(0x1000*i, 0x1000)})
+    TestParams(1, 3, Seq(Seq(0, 1, 2)), Seq.tabulate(3) { i =>
+      SizeMapping(0x1000 * i, 0x1000)
+    }),
+    TestParams(2, 2, Seq.fill(2)(Seq(0, 1)), Seq.tabulate(2) { i =>
+      SizeMapping(0x1000 * i, 0x1000)
+    }),
+    TestParams(3, 5, Seq.fill(3)(Seq(0, 1, 2, 3, 4)), Seq.tabulate(5) { i =>
+      SizeMapping(0x1000 * i, 0x1000)
+    })
   )
-  for(params <- toTest) {
+  for (params <- toTest) {
     test(dutFactory(params), "randomized " + params.name) { dut =>
-      SimTimeout(10000*10)
+      SimTimeout(10000 * 10)
       val masterTransactions = mutable.ArrayBuffer.fill(params.masterCount)(0)
       val slaveTransactions = mutable.ArrayBuffer.fill(params.slaveCount)(0)
       val scoreboards = IndexedSeq.tabulate(params.slaveCount) { i =>
@@ -131,7 +140,9 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
         }
       }
       dut.clockDomain.forkStimulus(10)
-      waitUntil(masterTransactions.min > 50*params.slaveCount && slaveTransactions.min > 50*params.slaveCount)
+      waitUntil(
+        masterTransactions.min > 50 * params.slaveCount && slaveTransactions.min > 50 * params.slaveCount
+      )
       println(masterTransactions.mkString(" "), slaveTransactions.mkString(" "))
     }
   }

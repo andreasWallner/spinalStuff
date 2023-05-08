@@ -116,14 +116,15 @@ case class AhbLite3Response(config: AhbLite3Config) extends Bundle {
 case class AhbLite3Interconnect(
     masterPorts: Int = 2,
     slavePorts: Int = 1,
-    decodings: Seq[SizeMapping]
+    decodings: Seq[SizeMapping],
+    ahbConfig: AhbLite3Config = AhbLite3Config(addressWidth = 16, dataWidth = 4)
 ) extends Component {
-  val ahbConfig = AhbLite3Config(addressWidth = 16, dataWidth = 4)
   val io = new Bundle {
     val masters = Vec(slave(AhbLite3Master(ahbConfig)), masterPorts)
     val slaves = Vec(master(AhbLite3(ahbConfig)), slavePorts)
   }
 
+  // TODO investigate different options of implementing this
   def priorityMux[T <: Data](selector: Bits, values: Seq[T], defaultValue: T = null) = {
     val selectors = values.zipWithIndex.map {
       case (v, idx) =>
@@ -137,19 +138,17 @@ case class AhbLite3Interconnect(
       selector.muxListDc(selectors)
   }
 
-  val masterReq = IndexedSeq.fill(masterPorts) { Vec.fill(slavePorts) { Bool() } }
-  val masterReqDel = IndexedSeq.tabulate(masterPorts) { i =>
-    RegNext(masterReq(i), Vec.fill(slavePorts)(False))
-  }
-  val hold = Vec(Bool(), masterPorts)
+  val masterReq = Vec.fill(masterPorts) { Vec.fill(slavePorts) { Bool() } }
+  val masterReqDel = RegNext(masterReq, init = Vec.fill(masterPorts)(Vec.fill(slavePorts)(False)))
   // who is currently in the dataphase?
-  val activeArbitration = IndexedSeq.fill(slavePorts) { Vec.fill(masterPorts) { Bool() } }
-  val slaveAdvancing = IndexedSeq.fill(slavePorts) { Bool() }
-  // inverted / swivelled version of activeArbitration, for easier indexing on master side
+  val activeArbitration = Vec.fill(slavePorts) { Vec.fill(masterPorts) { Bool() } }
+  val slaveAdvancing = Vec.fill(slavePorts) { Bool() }
+  // inverted & transposed version of activeArbitration, for easier indexing on master side
   // inversion is done since spinal can't currently invert a whole Vec, remove when switching to Bits
-  val masterInactiveArbitration = Seq.tabulate(masterPorts) { i =>
+  val masterInactiveArbitration = Vec.tabulate(masterPorts) { i =>
     Vec(activeArbitration.map(aa => !aa(i)))
   }
+
 
   // TODO add default slave
   // master side
@@ -159,33 +158,32 @@ case class AhbLite3Interconnect(
   //     detail: even if we have to hold because our new slave is not yet ready for us we have to
   //     provide the response from the previous slave, therefore we route HRESP if we are
   //     active somewhere, even while holding -> hold=0 even if otherwise 1
+  val hold = Vec(Bool(), masterPorts)
   val bufferedCtrl = Vec.tabulate(masterPorts) { i =>
     SkidBuffer(AhbLite3Control.apply(io.masters(i)), hold(i))
   }
   // TODO improve, need to reverse because of index handling difference between Vec & Bits
-  val responseSel = Seq.tabulate(masterPorts) { i =>
-    activeArbitration.map(_(i)).asBits().reversed
-  }
-  val muxedResponse = (0 until masterPorts).map { i =>
-    priorityMux(
+  val responseSel = Vec(Bits(slavePorts bits), masterPorts)
+  val muxedResponse = Vec(AhbLite3Response(ahbConfig), masterPorts)
+  val gatedResponse = Vec(AhbLite3Response(ahbConfig), masterPorts)
+
+  // gate the request: we dont want slave B getting a masters address phase signals while
+  // it's still being stalled by slave A and couldn't continue
+  val masterReqGated = Vec(Vec(Bool(), slavePorts), masterPorts)
+
+  (0 until masterPorts).foreach { i =>
+    responseSel(i) := activeArbitration.map(_(i)).asBits().reversed
+    muxedResponse(i) := priorityMux(
       responseSel(i),
       io.slaves.map(AhbLite3Response(_)).toSeq,
       defaultValue = AhbLite3Response.okayResponse(ahbConfig)
     )
-  }
-  val gatedResponse = (0 until masterPorts).map { i =>
-    (hold(i) & masterInactiveArbitration(i).andR) ? AhbLite3Response.stallResponse(ahbConfig) | muxedResponse(
-      i
-    )
-  }
+    gatedResponse(i) := (hold(i) & masterInactiveArbitration(i).andR) ?
+      AhbLite3Response.stallResponse(ahbConfig) |
+      muxedResponse(i)
 
-  // gate the request: we dont want slave B getting a masters address phase signals while
-  // it's still being stalled by slave A and couldn't continue
-  val masterReqGated: IndexedSeq[Vec[Bool]] = (0 until masterPorts).map { i =>
-    Vec(masterReq(i).map { _ & muxedResponse(i).HREADY })
-  }
+    masterReqGated(i) := Vec(masterReq(i).map { _ & muxedResponse(i).HREADY })
 
-  (0 until masterPorts).foreach { i =>
     gatedResponse(i).drive(io.masters(i))
     masterReq(i) := Vec(decodings.map {
       _.hit(bufferedCtrl(i).HADDR) & (bufferedCtrl(i).HTRANS =/= 0)
