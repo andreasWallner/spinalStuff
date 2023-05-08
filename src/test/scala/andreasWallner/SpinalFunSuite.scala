@@ -22,7 +22,7 @@ import scala.util.Random
   * }
   *
   * // specifying a seed
-  * test(dut, "my other test", 24) { dut =>
+  * test(dut, "my other test", seed=24) { dut =>
   * ...
   * }
   * }
@@ -46,13 +46,13 @@ class SpinalFunSuite extends AnyFunSuite with BeforeAndAfterAllConfigMap {
       .map(s => java.lang.Integer.parseInt(s))
   }
 
-  def test[T <: Component](dut: SimCompiled[T], testName: String)(
+  def test[T <: Component](dut: => SimCompiled[T], testName: String)(
       body: T => Unit
   ): Unit = {
     test(dut, testName, Random.nextInt())(body)
   }
 
-  def test[T <: Component](dut: SimCompiled[T], testName: String, seed: Int)(
+  def test[T <: Component](dut: => SimCompiled[T], testName: String, seed: Int)(
       body: T => Unit
   ): Unit = {
     test(testName) {
