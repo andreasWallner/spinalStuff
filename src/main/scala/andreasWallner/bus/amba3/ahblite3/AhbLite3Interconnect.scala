@@ -88,7 +88,7 @@ object AhbLite3Response {
     val resp = new AhbLite3Response(config)
     resp.HRESP := False
     resp.HREADY := True
-    resp.HRDATA.assignDontCare()
+    resp.HRDATA := 0
     resp
   }
 
@@ -96,7 +96,7 @@ object AhbLite3Response {
     val resp = new AhbLite3Response(config)
     resp.HRESP := False
     resp.HREADY := False
-    resp.HRDATA.assignDontCare()
+    resp.HRDATA := 0
     resp
   }
 }
@@ -139,7 +139,7 @@ case class AhbLite3Interconnect(
   }
 
   val masterReq = Vec(Bits(slavePorts bit), masterPorts)
-  val masterReqDel = masterReq.map(req => RegNext(req, init = B(0, slavePorts bit)))
+  val masterReqDel = masterReq.map(req => RegNext(req, init=B(0)))
   // who is currently in the dataphase?
   val activeArbitration = Vec(Bits(masterPorts bit), slavePorts)
   val slaveAdvancing = Vec(Bool(), slavePorts)
