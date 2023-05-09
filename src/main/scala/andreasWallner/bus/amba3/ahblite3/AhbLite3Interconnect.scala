@@ -138,78 +138,83 @@ case class AhbLite3Interconnect(
       selector.muxListDc(selectors)
   }
 
-  val masterReq = Vec.fill(masterPorts) { Vec.fill(slavePorts) { Bool() } }
-  val masterReqDel = RegNext(masterReq, init = Vec.fill(masterPorts)(Vec.fill(slavePorts)(False)))
+  val masterReq = Vec(Bits(slavePorts bit), masterPorts)
+  val masterReqDel = masterReq.map(req => RegNext(req, init = B(0, slavePorts bit)))
   // who is currently in the dataphase?
-  val activeArbitration = Vec.fill(slavePorts) { Vec.fill(masterPorts) { Bool() } }
-  val slaveAdvancing = Vec.fill(slavePorts) { Bool() }
-  // inverted & transposed version of activeArbitration, for easier indexing on master side
-  // inversion is done since spinal can't currently invert a whole Vec, remove when switching to Bits
-  val masterInactiveArbitration = Vec.tabulate(masterPorts) { i =>
-    Vec(activeArbitration.map(aa => !aa(i)))
+  val activeArbitration = Vec(Bits(masterPorts bit), slavePorts)
+  val slaveAdvancing = Vec(Bool(), slavePorts)
+  // transposed alias of activeArbitration, for easier indexing on master side
+  val masterActiveArbitration = Vec.tabulate(masterPorts) { i =>
+    Vec(activeArbitration.map(aa => aa(i))).asBits
   }
-
 
   // TODO add default slave
   // master side
   // we need to handle special cases:
-  //   - no request is here and we need to provide the IDLE OKAY response (TODO: handle this via default slave?)
+  //   - no request is here and we need to provide the IDLE OKAY response
   //   - access has not yet been granted and we need to provide a response with HREADY = 0 -> hold=1
-  //     detail: even if we have to hold because our new slave is not yet ready for us we have to
+  //   - even if we have to hold because our new slave is not yet ready for us we have to
   //     provide the response from the previous slave, therefore we route HRESP if we are
   //     active somewhere, even while holding -> hold=0 even if otherwise 1
   val hold = Vec(Bool(), masterPorts)
   val bufferedCtrl = Vec.tabulate(masterPorts) { i =>
     SkidBuffer(AhbLite3Control.apply(io.masters(i)), hold(i))
   }
-  // TODO improve, need to reverse because of index handling difference between Vec & Bits
+
   val responseSel = Vec(Bits(slavePorts bits), masterPorts)
   val muxedResponse = Vec(AhbLite3Response(ahbConfig), masterPorts)
+  // as long
   val gatedResponse = Vec(AhbLite3Response(ahbConfig), masterPorts)
 
   // gate the request: we dont want slave B getting a masters address phase signals while
   // it's still being stalled by slave A and couldn't continue
-  val masterReqGated = Vec(Vec(Bool(), slavePorts), masterPorts)
+  val masterReqGated = Vec(Bits(slavePorts bit), masterPorts)
 
-  (0 until masterPorts).foreach { i =>
-    responseSel(i) := activeArbitration.map(_(i)).asBits().reversed
+  for (i <- 0 until masterPorts) {
+    responseSel(i) := activeArbitration.map(_(i)).asBits()
+    // reverse needed bec. auf Vec vs Bits ordering
     muxedResponse(i) := priorityMux(
       responseSel(i),
-      io.slaves.map(AhbLite3Response(_)).toSeq,
+      io.slaves.map(AhbLite3Response(_)).toSeq.reverse,
       defaultValue = AhbLite3Response.okayResponse(ahbConfig)
     )
-    gatedResponse(i) := (hold(i) & masterInactiveArbitration(i).andR) ?
+    // TODO check if don't care here leads to useful hardware, otherwise connect HRDATA through
+    // We need to block the response to the master until we have been arbitrated and the
+    // slave has gotten the masters' address phase. Let that through though if we are
+    // currently in a data phase with a previous slave
+    gatedResponse(i) := (hold(i) & (~masterActiveArbitration(i)).andR) ?
       AhbLite3Response.stallResponse(ahbConfig) |
       muxedResponse(i)
 
-    masterReqGated(i) := Vec(masterReq(i).map { _ & muxedResponse(i).HREADY })
+    // don't request a slave until the last cycle of the data phase
+    // with the previous slave - the second slave might be faster and
+    // the master would not yet have data to provide
+    masterReqGated(i) := masterReq(i) & B(slavePorts bits, default -> muxedResponse(i).HREADY)
 
     gatedResponse(i).drive(io.masters(i))
     masterReq(i) := Vec(decodings.map {
       _.hit(bufferedCtrl(i).HADDR) & (bufferedCtrl(i).HTRANS =/= 0)
-    })
-    hold(i) := (masterReqDel(i) & masterInactiveArbitration(i)).orR
+    }).asBits
+    hold(i) := (masterReqDel(i) & ~masterActiveArbitration(i)).orR
   }
 
   // slave side
   // TODO evaluate strapping HSEL to high, always sending IDLE and therefore be able to rely on HREADY...
+  // track if the slave is currently in a dataphase (might not be due to HSEL)
   val slaveActive = Vec(Reg(Bool()), slavePorts)
-  val arbitratedReq = Vec(Vec(Bool(), masterPorts), slavePorts)
+  val arbitratedReq = Vec(Bits(masterPorts bit), slavePorts)
   val muxedControl = Vec(AhbLite3Control(ahbConfig), slavePorts)
   val muxedHWDATA = Vec(Bits(ahbConfig.dataWidth bit), slavePorts)
   for (i <- 0 until slavePorts) {
-    // track if the slave is currently in a dataphase (might not be due to HSEL
     slaveActive(i).clearWhen(io.slaves(i).HREADYOUT).setWhen(io.slaves(i).HTRANS =/= 0).init(False)
 
-    arbitratedReq(i) := OHMasking.first(masterReqGated.map { _(i) }).setName(f"arbitratedReq_$i")
-    activeArbitration(i) := RegNextWhen(
-      arbitratedReq(i),
-      slaveAdvancing(i),
-      Vec.fill(masterPorts)(False)
-    )
-    slaveAdvancing(i) := (io.slaves(i).HSEL.rise() && !slaveActive(i)) || (slaveActive(i) && io
-      .slaves(i)
-      .HREADYOUT)
+    arbitratedReq(i) := OHMasking.first(masterReqGated.map { _(i) }.asBits())
+    activeArbitration(i) := RegNextWhen(arbitratedReq(i), slaveAdvancing(i), B(0))
+    // if the slave is inactive it's moving to a data phase if HSEL rises
+    // if it's active then is moves to the next data phase when HREADYOUT is set
+    slaveAdvancing(i) :=
+      (io.slaves(i).HSEL.rise() && !slaveActive(i)) ||
+      (slaveActive(i) && io.slaves(i).HREADYOUT)
 
     muxedControl(i) := MuxOH(arbitratedReq(i), bufferedCtrl.map(_.withoutOffset(decodings(i))))
     muxedHWDATA(i) := MuxOH(activeArbitration(i), io.masters.map { _.HWDATA })
