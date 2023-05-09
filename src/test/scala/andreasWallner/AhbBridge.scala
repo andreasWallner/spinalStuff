@@ -1,192 +1,17 @@
 package andreasWallner
 
+import andreasWallner.bus.amba3.ahblite3.sim._
 import andreasWallner.sim.{ComponentSimStringPimper, SimString, simLog}
 import org.scalatest.Ignore
 import spinal.core._
 import spinal.lib._
 import spinal.core.sim._
 import spinal.lib.bus.amba3.ahblite._
+import spinal.lib.bus.misc.SizeMapping
 
+import scala.collection.mutable
+import scala.language.postfixOps
 import scala.util.Random
-
-case class AhbLite3Control(address: BigInt, write: Boolean, size: Int, prot: Int, trans: Int) {
-  override def toString() = {
-    val action = if (write) "W" else "R"
-    f"($address%04x $action)"
-  }
-}
-
-abstract case class AhbLite3SlaveAgent(ahb: AhbLite3, cd: ClockDomain, ss: SimString) {
-  var delay = 0
-  var addressPhase: Option[AhbLite3Control] = None
-
-  cd.onSamplings {
-    ahb.HRDATA.randomize()
-    ahb.HRESP.randomize()
-
-    if (addressPhase.isDefined)
-      delay = 0.max(delay - 1)
-
-    if (addressPhase.isDefined && delay == 0) {
-      val ap = addressPhase.get
-      if (ap.write) {
-        val resp = onWrite(ap.address, ahb.HWDATA.toBigInt)
-        ahb.HRESP #= resp
-      } else {
-        val (value, resp) = onRead(ap.address)
-        ahb.HRDATA #= value
-        ahb.HRESP #= resp
-      }
-      addressPhase = None
-    }
-    // TODO verify that HWRITE stays constant during data phase
-    // TODO can HREADYOUT be low before a transfer starts?? model does not do that currently
-    if (ahb.HSEL.toBoolean && ahb.HREADY.toBoolean && delay == 0) {
-      addressPhase = Some(
-        AhbLite3Control(
-          ahb.HADDR.toBigInt,
-          ahb.HWRITE.toBoolean,
-          ahb.HSIZE.toInt,
-          ahb.HPROT.toInt,
-          ahb.HTRANS.toInt
-        )
-      )
-      delay = nextDelay()
-    }
-    if (delay > 0 && addressPhase.isDefined) {
-      ahb.HREADYOUT #= false
-    } else {
-      ahb.HREADYOUT #= true
-    }
-    ss #= s"$delay $addressPhase"
-  }
-  def nextDelay(): Int = Random.nextInt(3)
-  def onRead(address: BigInt): (BigInt, Boolean)
-  def onWrite(address: BigInt, value: BigInt): Boolean
-}
-
-abstract case class AhbLite3SlaveMonitor(ahb: AhbLite3, cd: ClockDomain) {
-  var addressPhase: Option[AhbLite3Control] = None
-  cd.onSamplings {
-    if (addressPhase.isDefined && ahb.HREADY.toBoolean) {
-      val ap = addressPhase.get
-      if (ap.write) {
-        onWrite(ap.address, ahb.HWDATA.toBigInt)
-      } else {
-        onRead(ap.address, ahb.HRDATA.toBigInt)
-      }
-      addressPhase = None
-    }
-
-    if (ahb.HSEL.toBoolean && ahb.HREADY.toBoolean) {
-      addressPhase = Some(
-        AhbLite3Control(
-          ahb.HADDR.toBigInt,
-          ahb.HWRITE.toBoolean,
-          ahb.HSIZE.toInt,
-          ahb.HPROT.toInt,
-          ahb.HTRANS.toInt
-        )
-      )
-    }
-  }
-
-  def onRead(address: BigInt, value: BigInt): Unit
-  def onWrite(address: BigInt, value: BigInt): Unit
-}
-
-// TODO handle early error response
-// TODO add parameter to simulate interconnect (which may change control during "address phase"
-abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss: SimString) {
-  def setupNextTransfer(): Option[BigInt]
-  def nextDelay(): Int = Random.nextInt(3)
-
-  ahb.HTRANS #= 0 // IDLE
-  ahb.HBURST #= 0
-  var delay = nextDelay()
-  var nextHWDATA: Option[BigInt] = None
-  var inAddressPhase = false
-  var inDataPhase = false
-  cd.onSamplings {
-    delay = 0.max(delay - 1)
-
-    if(inDataPhase && ahb.HREADY.toBoolean)
-      inDataPhase = false
-
-    if (inAddressPhase && !inDataPhase) {
-      // TODO fix error here: address phase is always only a single cycle,
-      // watching HREADY for address phase is only a slave thing -> master
-      // must not change
-      // - 3.1 states that address may be extended by previous bus transfer
-      // - 3.6.1 when transfer is started HTRANS must stay constant
-      // - 3.6.2 once HTRANS is nonseq, address must stay constant
-      // - 4.1 slave samples address & control when HSEL && HREADY -> interconnect may change prio during wait
-      ahb.HTRANS #= 0 // IDLE
-      if (nextHWDATA.isDefined)
-        ahb.HWDATA #= nextHWDATA.get
-      nextHWDATA = None
-
-      inAddressPhase = false
-      inDataPhase = true
-    }
-
-    if (delay == 0 && !inAddressPhase) {
-      ahb.HTRANS #= 2 // NONSEQ
-      ahb.HBURST #= 0
-      ahb.HMASTLOCK #= false
-      //ahb.HSIZE #= 2
-      nextHWDATA = setupNextTransfer()
-      //ahb.HWRITE #= nextHWRITE.isDefined
-      delay = nextDelay()
-      inAddressPhase = true
-    } else if (!inAddressPhase) {
-      ahb.HWRITE.randomize()
-      ahb.HADDR.randomize()
-      ahb.HSIZE.randomize()
-      ahb.HBURST.randomize()
-      ahb.HMASTLOCK.randomize()
-      ahb.HPROT.randomize()
-      //delay = 0.max(delay - 1)
-    }
-
-    if (!inDataPhase) { // TODO no need to keep stable through read (note in 3.1)
-      ahb.HWRITE.randomize()
-    }
-    ss #= s"$delay $inAddressPhase $inDataPhase"
-  }
-}
-
-abstract case class AhbLite3MasterMonitor(ahb: AhbLite3Master, cd: ClockDomain, idx: Int) {
-  var addressPhase: Option[AhbLite3Control] = None
-  cd.onSamplings {
-    if (addressPhase.isDefined && ahb.HREADY.toBoolean) {
-      val ap = addressPhase.get
-      if (ap.write) {
-        onWrite(ap.address, ahb.HWDATA.toBigInt)
-      } else {
-        onRead(ap.address, ahb.HRDATA.toBigInt)
-      }
-      addressPhase = None
-    }
-
-    if (ahb.HTRANS.toInt != 0 && addressPhase.isEmpty) {
-      assert(ahb.HTRANS.toInt == 2, "only NONSEQ is currently supported")
-      addressPhase = Some(
-        AhbLite3Control(
-          ahb.HADDR.toBigInt,
-          ahb.HWRITE.toBoolean,
-          ahb.HSIZE.toInt,
-          ahb.HPROT.toInt,
-          ahb.HTRANS.toInt
-        )
-      )
-      simLog(idx, addressPhase)
-    }
-  }
-
-  def onRead(address: BigInt, value: BigInt): Unit
-  def onWrite(address: BigInt, value: BigInt): Unit
-}
 
 class Tester extends Component {
   val ahbConfig = AhbLite3Config(addressWidth = 16, dataWidth = 4)
@@ -323,8 +148,12 @@ class TesterM2S1 extends Component {
 }
 
 class AhbBridgeTest2M1S extends SpinalFunSuite {
-  val masterStrings = (0 until 2).map { i => SimString(s"master_$i") }
-  val slaveStrings = (0 until 1).map { i => SimString(s"slave_$i") }
+  val masterStrings = Seq.tabulate(2) { i =>
+    SimString(s"master_$i")
+  }
+  val slaveStrings = Seq.tabulate(1) { i =>
+    SimString(s"slave_$i")
+  }
   val dut = namedSimConfig.compile(new TesterM2S1().add(masterStrings).add(slaveStrings))
 
   test(dut, "randomized", seed = 2) { dut =>
@@ -377,3 +206,5 @@ class AhbBridgeTest2M1S extends SpinalFunSuite {
     waitUntil(scoreboards.last.matches == 10)
   }
 }
+
+
