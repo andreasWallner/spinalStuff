@@ -23,39 +23,14 @@ case class AhbLite3ControlSignals(
 abstract case class AhbLite3SlaveAgent(ahb: AhbLite3, cd: ClockDomain, ss: SimString) {
   var delay = 0
   var addressPhase: Option[AhbLite3ControlSignals] = None
+  def inDataPhase = addressPhase.isDefined
 
   // 7.1.2 "during reset all slaves must ensure that HREADYOUT is high"
   ahb.HREADYOUT #= true
 
   cd.onSamplings {
-    ahb.HRDATA.randomize()
-    ahb.HRESP.randomize()
-
-    if (addressPhase.isDefined) {
-      delay = 0.max(delay - 1)
-
-      // 3.2 "slave must provide zero wait OKAY response to IDLE transfer"
-      if (addressPhase.get.trans == 0) {
-        ahb.HRESP #= true
-        ahb.HREADYOUT #= true
-        ahb.HRDATA.randomize()
-        addressPhase = None
-      } else if (addressPhase.get.trans == 2 && delay == 0) {
-        val ap = addressPhase.get
-        if (ap.write) {
-          val resp = onWrite(ap.address, ahb.HWDATA.toBigInt)
-          ahb.HRESP #= resp
-        } else {
-          val (value, resp) = onRead(ap.address)
-          ahb.HRDATA #= value
-          ahb.HRESP #= resp
-        }
-        addressPhase = None
-      }
-    }
-    // TODO verify that HWRITE stays constant during data phase
-    // TODO can HREADYOUT be low before a transfer starts?? model does not do that currently
-    if (ahb.HSEL.toBoolean && ahb.HREADY.toBoolean && delay == 0) {
+    if (ahb.HSEL.toBoolean && ahb.HREADY.toBoolean) {
+      assert(!inDataPhase, "HSEL & HREADY are high even though the slave is still stalling the bus")
       assert(Seq(0, 2).contains(ahb.HTRANS.toInt), "agent only supports IDLE/NONSEQ transfers ATM")
       addressPhase = Some(
         AhbLite3ControlSignals(
@@ -66,14 +41,45 @@ abstract case class AhbLite3SlaveAgent(ahb: AhbLite3, cd: ClockDomain, ss: SimSt
           ahb.HTRANS.toInt
         )
       )
-      delay = nextDelay()
+      delay = if (addressPhase.get.trans == 0) 0 else nextDelay()
     }
-    if (delay > 0 && addressPhase.isDefined) {
-      ahb.HREADYOUT #= false
+    ss #= s"$delay $inDataPhase $addressPhase"
+    if (inDataPhase) {
+      // HRESP might be left high from last random cycle before
+      ahb.HRESP #= false
+
+      // 3.2 "slave must provide zero wait OKAY response to IDLE transfer"
+      if (addressPhase.get.trans == 0) {
+        ahb.HRESP #= false
+        ahb.HREADYOUT #= true
+        ahb.HRDATA.randomize()
+        addressPhase = None
+      } else if (addressPhase.get.trans == 2 && delay == 0) {
+        // we enter this code at the start of the cycle that has HREADY=1
+        val ap = addressPhase.get
+        if (ap.write) {
+          val resp = onWrite(ap.address, ahb.HWDATA.toBigInt)
+          ahb.HRESP #= resp
+        } else {
+          val (value, resp) = onRead(ap.address)
+          ahb.HRDATA #= value
+          ahb.HRESP #= resp
+        }
+
+        ahb.HREADYOUT #= true
+        addressPhase = None
+      } else {
+        // in a data-phase,
+        ahb.HREADYOUT #= false
+      }
     } else {
-      ahb.HREADYOUT #= true
+      ahb.HRDATA.randomize()
+      ahb.HRESP.randomize()
+      ahb.HREADYOUT #= false
     }
-    ss #= s"$delay $addressPhase"
+    // TODO verify that HWRITE stays constant during data phase
+    // TODO can HREADYOUT be low before a transfer starts?? model does not do that currently
+    delay = 0.max(delay - 1)
   }
   def nextDelay(): Int = Random.nextInt(3)
   def onRead(address: BigInt): (BigInt, Boolean)
