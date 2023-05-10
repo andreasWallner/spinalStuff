@@ -20,7 +20,7 @@ case class AhbLite3ControlSignals(
   }
 }
 
-abstract case class AhbLite3SlaveAgent(ahb: AhbLite3, cd: ClockDomain, ss: SimString) {
+abstract case class AhbLite3SlaveAgent(ahb: AhbLite3, cd: ClockDomain, ss: SimString, hreadyoutWhenIdle:Option[Boolean]=None) {
   var delay = 0
   var addressPhase: Option[AhbLite3ControlSignals] = None
   def inDataPhase = addressPhase.isDefined
@@ -75,7 +75,7 @@ abstract case class AhbLite3SlaveAgent(ahb: AhbLite3, cd: ClockDomain, ss: SimSt
     } else {
       ahb.HRDATA.randomize()
       ahb.HRESP.randomize()
-      ahb.HREADYOUT #= false
+      ahb.HREADYOUT #= hreadyoutWhenIdle.getOrElse(Random.nextBoolean())
     }
     // TODO verify that HWRITE stays constant during data phase
     // TODO can HREADYOUT be low before a transfer starts?? model does not do that currently
@@ -100,6 +100,7 @@ abstract case class AhbLite3SlaveMonitor(ahb: AhbLite3, cd: ClockDomain) {
     }
 
     if (ahb.HSEL.toBoolean && ahb.HREADY.toBoolean) {
+      assert(ahb.HTRANS.toInt == 2, "IDLE transfers are not allowed in this testcase (temp)")
       addressPhase = Some(
         AhbLite3ControlSignals(
           ahb.HADDR.toBigInt,
@@ -151,6 +152,7 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
       inDataPhase = true
     }
 
+    ss #= s"$delay $inAddressPhase $inDataPhase"
     if (delay == 0 && !inAddressPhase) {
       ahb.HTRANS #= 2 // NONSEQ
       ahb.HBURST #= 0
@@ -161,6 +163,8 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
       delay = nextDelay()
       inAddressPhase = true
     } else if (!inAddressPhase) {
+      // TODO while master is being stalled we first randomize for delay cycles
+      // afterwards we stop randomizing - in which case HTRANS should also be randomized
       ahb.HWRITE.randomize()
       ahb.HADDR.randomize()
       ahb.HSIZE.randomize()
@@ -173,7 +177,6 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
     if (!inDataPhase) { // TODO no need to keep stable through read (note in 3.1)
       ahb.HWRITE.randomize()
     }
-    ss #= s"$delay $inAddressPhase $inDataPhase"
   }
 }
 

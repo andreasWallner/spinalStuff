@@ -206,7 +206,8 @@ case class AhbLite3Interconnect(
   val muxedControl = Vec(AhbLite3Control(ahbConfig), slavePorts)
   val muxedHWDATA = Vec(Bits(ahbConfig.dataWidth bit), slavePorts)
   for (i <- 0 until slavePorts) {
-    slaveActive(i).clearWhen(io.slaves(i).HREADYOUT).setWhen(io.slaves(i).HTRANS =/= 0).init(False)
+    // track the state of the slave the same way the slave does it itself
+    slaveActive(i).clearWhen(io.slaves(i).HREADYOUT).setWhen(io.slaves(i).HSEL && io.slaves(i).HREADY).init(False)
 
     arbitratedReq(i) := OHMasking.first(masterReqGated.map { _(i) }.asBits())
     activeArbitration(i) := RegNextWhen(arbitratedReq(i), slaveAdvancing(i), B(0))
@@ -216,12 +217,16 @@ case class AhbLite3Interconnect(
       (io.slaves(i).HSEL.rise() && !slaveActive(i)) ||
       (slaveActive(i) && io.slaves(i).HREADYOUT)
 
+    // TODO add option that sets defaults here for idle state -> less transitions
     muxedControl(i) := MuxOH(arbitratedReq(i), bufferedCtrl.map(_.withoutOffset(decodings(i))))
     muxedHWDATA(i) := MuxOH(activeArbitration(i), io.masters.map { _.HWDATA })
 
     muxedControl(i).drive(io.slaves(i))
     io.slaves(i).HSEL := arbitratedReq(i).orR && (io.slaves(i).HTRANS =/= 0)
     io.slaves(i).HWDATA := muxedHWDATA(i)
-    io.slaves(i).HREADY := io.slaves(i).HREADYOUT
+    // Provide HREADY if the slave is not active, the specifiction does not require
+    // specific behaviour in this case. If we don't do this a slave that generates a
+    // low HREADYOUT would deadlock itself.
+    io.slaves(i).HREADY := io.slaves(i).HREADYOUT || !slaveActive(i)
   }
 }
