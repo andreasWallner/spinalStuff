@@ -46,6 +46,10 @@ package object sim {
   /** calculate number of simulation cycles for given frequency */
   def simCycles(f: HertzNumber) =
     (f.toTime / TimeNumber(SimManagerContext.current.manager.timePrecision)).toLong
+  def simCycles(t: TimeNumber) =
+    (t / TimeNumber(SimManagerContext.current.manager.timePrecision)).toLong
+  def cyclesToTime(cycles: Long) =
+    TimeNumber(SimManagerContext.current.manager.timePrecision) * cycles
 
   implicit class SimTriStatePimperBitVector[T <: BitVector](tri: TriState[T]) {
     def simulatePullup(readDelay: Int = 0): Unit = {

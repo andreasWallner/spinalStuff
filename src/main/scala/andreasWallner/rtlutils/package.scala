@@ -72,6 +72,11 @@ package object rtlutils {
       c.walkComponents(c => c.dslBody.walkStatements(s => s.foreachClockDomain(clockDomains.add)))
       clockDomains.toSet
     }
+
+    def getFastestClock() =
+      c.getAllClockDomains()
+        .map(cd => cd.frequency.getValue)
+        .max(Ordering.by[HertzNumber, BigDecimal](hn => hn.toBigDecimal))
   }
 
   implicit class DataPimper(d: Data) {
@@ -82,15 +87,15 @@ package object rtlutils {
   }
 
   /** Pull all marked signal to the toplevel
-   *
-   * {{{
-   * // somewhere in a component
-   * somesignal.markToPullToTop()
-   *
-   * // for generation
-   * val report = SpinalVerilog(PullToTop(MyComponent()))
-   * }}}
-   */
+    *
+    * {{{
+    * // somewhere in a component
+    * somesignal.markToPullToTop()
+    *
+    * // for generation
+    * val report = SpinalVerilog(PullToTop(MyComponent()))
+    * }}}
+    */
   object PullToTop {
     val toPull = mutable.Set[(Data, String)]()
     def apply[T <: Component](c: T, filter: ((Data, String)) => Boolean = _ => true) = {
