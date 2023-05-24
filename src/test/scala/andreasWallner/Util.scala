@@ -61,6 +61,7 @@ case class PayloadRandmizer(elementCnt: Long) {
 }
 
 object LoggingScoreboardInOrder {
+  def noLogFn[T](isRef: Boolean, data: T): Unit = {}
   def simLogFn[T](name: String)(isRef: Boolean, data: T): Unit = {
     val color = if (isRef) Console.BLUE else Console.GREEN
     val dirStr = if (isRef) "ref" else "  dut"
@@ -76,6 +77,10 @@ object LoggingScoreboardInOrder {
   def apply[T](logFn: (Boolean, T) => Unit) = new LoggingScoreboardInOrder[T](logFn)
   def apply[T](name: String, fmtFn: T => String) =
     new LoggingScoreboardInOrder[T](fmtLogFn(name + " ", fmtFn))
+  def apply[T](enable: Boolean, name: String) =
+    new LoggingScoreboardInOrder[T](if(!enable) noLogFn else simLogFn[T](name + " "))
+  def apply[T](enable: Boolean, name: String, fmtFn: T => String) =
+    new LoggingScoreboardInOrder[T](if(!enable) noLogFn else fmtLogFn(name + " ", fmtFn))
 }
 
 class LoggingScoreboardInOrder[T](logFn: (Boolean, T) => Unit) extends ScoreboardInOrder[T] {
