@@ -132,14 +132,9 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
         }
       }
 
-      val readData = Seq.fill(params.slaveCount)(mutable.ArrayBuffer[Int]())
       for (i <- 0 until params.slaveCount) {
-        new AhbLite3SlaveAgent(dut.io.ahbSlaves(i), dut.clockDomain, dut.slaveStrings(i), params.slaveHreadyoutWhenIdle) {
-          var readCount = 0
-          override def onRead(address: BigInt) = {
-            readCount = (readCount % 16)+ 1
-            (readCount - 1/*ahb.HRDATA.randomizedBigInt()*/, false)
-          }
+        new AhbLite3SlaveAgent(dut.io.ahbSlaves(i), dut.clockDomain, dut.slaveStrings(i)) {
+          override def onRead(address: BigInt) = (ahb.HRDATA.randomizedBigInt(), false)
 
           override def onWrite(address: BigInt, value: BigInt) = false
         }
@@ -161,9 +156,6 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
       waitUntil(
         masterTransactions.min > 50 * params.slaveCount && slaveTransactions.min > 50 * params.slaveCount
       )
-      readData.map { d =>
-        d.zipWithIndex.map{case (value, idx) => assert(value == idx % 16, f"mismatch $value ${idx%16} ($idx)")}
-      }
       println(masterTransactions.mkString(" "), slaveTransactions.mkString(" "))
     }
   }
