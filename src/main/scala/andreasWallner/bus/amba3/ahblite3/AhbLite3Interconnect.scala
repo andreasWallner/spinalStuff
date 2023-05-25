@@ -8,25 +8,28 @@ import spinal.lib._
 import scala.language.postfixOps
 
 object SkidBuffer {
-  def apply[T <: Data](i: T, hold: Bool) = {
+  def apply[T <: Data](i: T, hold: Bool, init:T=null.asInstanceOf[T]) = {
     val buffer = new SkidBuffer(i)
     buffer.io.i := i
     buffer.io.hold := hold
+    buffer.io.init := init
     buffer.io.o
   }
-  def apply[T <: Data](payloadType: HardType[T]) = {
+  def apply[T <: Data](payloadType: HardType[T], init:T) = {
     new SkidBuffer(payloadType)
   }
 }
 
-class SkidBuffer[T <: Data](payloadType: HardType[T]) extends Component {
+class SkidBuffer[T <: Data](payloadType: HardType[T])
+    extends Component {
   val io = new Bundle {
     val i = in port payloadType()
     val o = out port payloadType()
     val hold = in port Bool()
+    val init = in port payloadType()
   }
 
-  val reg = RegNextWhen(io.i, !io.hold)
+  val reg = RegNextWhen(io.i, !io.hold, init=io.init)
   io.o := io.hold ? reg | io.i
 }
 
@@ -45,12 +48,12 @@ object AhbLite3Control {
 
   def idleControl(config: AhbLite3Config) = {
     val ctrl = new AhbLite3Control(config)
+    ctrl.HTRANS := 0
+    ctrl.HSIZE := 0
     ctrl.HADDR := 0
     ctrl.HWRITE := False
-    ctrl.HSIZE := 0
     ctrl.HBURST := 0
     ctrl.HPROT := 0
-    ctrl.HTRANS := 0
     ctrl.HMASTLOCK := False
     ctrl
   }
@@ -171,7 +174,7 @@ case class AhbLite3Interconnect(
   //     active somewhere, even while holding -> hold=0 even if otherwise 1
   val hold = Vec(Bool(), masterPorts)
   val bufferedCtrl = Vec.tabulate(masterPorts) { i =>
-    SkidBuffer(AhbLite3Control.apply(io.masters(i)), hold(i))
+    SkidBuffer(AhbLite3Control.apply(io.masters(i)), hold(i), init=AhbLite3Control.idleControl(ahbConfig))
   }
 
   val responseSel = Vec(Bits(slavePorts bits), masterPorts)
@@ -214,7 +217,7 @@ case class AhbLite3Interconnect(
   // slave side
   // TODO evaluate strapping HSEL to high, always sending IDLE and therefore be able to rely on HREADY...
   // track if the slave is currently in a dataphase (might not be due to HSEL)
-  val slaveActive = Vec(Reg(Bool()), slavePorts)
+  val slaveActive = Vec(Reg(Bool()) init False, slavePorts)
   val arbitratedReq = Vec(Bits(masterPorts bit), slavePorts)
   val muxedControl = Vec(AhbLite3Control(ahbConfig), slavePorts)
   val muxedHWDATA = Vec(Bits(ahbConfig.dataWidth bit), slavePorts)
@@ -227,7 +230,7 @@ case class AhbLite3Interconnect(
     // if the slave is inactive it's moving to a data phase if HSEL rises
     // if it's active then is moves to the next data phase when HREADYOUT is set
     slaveAdvancing(i) :=
-      (io.slaves(i).HSEL.rise() && !slaveActive(i)) ||
+      (!slaveActive(i) && io.slaves(i).HSEL.rise(initAt=False)) ||
       (slaveActive(i) && io.slaves(i).HREADYOUT)
 
     // TODO add option that sets defaults here for idle state -> less transitions
