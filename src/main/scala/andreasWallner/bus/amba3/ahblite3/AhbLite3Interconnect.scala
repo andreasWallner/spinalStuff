@@ -47,7 +47,7 @@ object AhbLite3Control {
   }
 
   def idleControl(config: AhbLite3Config) = {
-    val ctrl = new AhbLite3Control(config);
+    val ctrl = new AhbLite3Control(config)
     ctrl.HADDR := 0
     ctrl.HTRANS := 0
     ctrl.HPROT := 0
