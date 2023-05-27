@@ -155,6 +155,28 @@ class RegisterRecorder(
     factory.setOnSet(that, address, bitOffset)
   }
 
+  def clearOnSet[T <: Data](
+      that: T,
+      bitOffset: Int,
+      name: String,
+      doc: String = null,
+      values: List[datamodel.Value] = List()
+  ) = {
+    append(
+      Field(
+        name,
+        that,
+        Section(bitOffset + that.getBitsWidth - 1, bitOffset),
+        AccessType.WO,
+        0,
+        false,
+        Option(doc),
+        values
+      )
+    )
+    factory.clearOnSet(that, address, bitOffset)
+  }
+
   def readStreamNonBlocking[T <: Data](
       that: Stream[T],
       validBitOffset: Int,
