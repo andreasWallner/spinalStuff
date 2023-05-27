@@ -15,12 +15,13 @@ class SpiSlaveControllerTest extends SpinalFunSuite {
   for (cpol <- Seq(true, false); cpha <- Seq(true, false)) {
     val configStr = s" CPHA $cpha CPOL $cpol"
 
-    test(dut, "normal" + configStr, seed=1) { dut =>
+    test(dut, "normal" + configStr) { dut =>
       dut.io.config.cpha #= cpha
       dut.io.config.cpol #= cpol
+      dut.io.en #= true
 
-      val txScoreboard = LoggingScoreboardInOrder[Int](false, "tx", (i: Int) => f"$i%02x")
-      val rxScoreboard = LoggingScoreboardInOrder[Int](false, "rx", (i: Int) => f"$i%02x")
+      val txScoreboard = LoggingScoreboardInOrder[Int]("tx", (i: Int) => f"$i%02x")
+      val rxScoreboard = LoggingScoreboardInOrder[Int]("rx", (i: Int) => f"$i%02x")
       val driver = new SpiDriver(dut.io.spi, cpha, cpol, false, 10, 5, 5, dut.clockDomain)
       StreamDriver(dut.io.tx, dut.clockDomain) { p =>
         p.randomize(); true
@@ -62,9 +63,10 @@ class SpiSlaveControllerTest extends SpinalFunSuite {
       dut.io.config.cpha #= cpha
       dut.io.config.cpol #= cpol
       dut.io.tx.valid #= false
+      dut.io.en #= true
 
-      val txScoreboard = LoggingScoreboardInOrder[Int](false, "tx", (i: Int) => f"$i%02x")
-      val rxScoreboard = LoggingScoreboardInOrder[Int](false, "rx", (i: Int) => f"$i%02x")
+      val txScoreboard = LoggingScoreboardInOrder[Int]("tx", (i: Int) => f"$i%02x")
+      val rxScoreboard = LoggingScoreboardInOrder[Int]("rx", (i: Int) => f"$i%02x")
       val driver = new SpiDriver(dut.io.spi, cpha, cpol, false, 10, 5, 5, dut.clockDomain)
       FlowMonitor(dut.io.rx, dut.clockDomain) { p =>
         rxScoreboard.pushDut(p.toInt)
@@ -92,8 +94,8 @@ class SpiSlaveControllerTest extends SpinalFunSuite {
 
       for (_ <- 0 until pollBytes - 1) {
         txScoreboard.pushRef(0)
-        waitUntil(dut.io.state.busy.toBoolean)
-        waitUntil(!dut.io.state.busy.toBoolean)
+        waitUntil(dut.io.status.busy.toBoolean)
+        waitUntil(!dut.io.status.busy.toBoolean)
       }
       for( _ <- 0 until 5) {
         waitUntil(dut.io.spi.sclk.toBoolean)
