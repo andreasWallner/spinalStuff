@@ -128,13 +128,32 @@ case class AhbLite3Response(config: AhbLite3Config) extends Bundle {
   }
 }
 
-case class AhbLite3Interconnect(
-    masterPorts: Int = 2,
-    slavePorts: Int = 1,
+object AhbLite3Interconnect {
+  def apply(
+    masterPorts: Int,
+    slavePorts: Int,
     decodings: Seq[SizeMapping],
-    ahbConfig: AhbLite3Config = AhbLite3Config(addressWidth = 16, dataWidth = 4),
-    powerSave: Boolean = false
+    ahbConfig: AhbLite3Config = AhbLite3Config(addressWidth=16, dataWidth=4)) =
+      new AhbLite3Interconnect(decodings, Seq.fill(masterPorts)(Seq.tabulate(slavePorts){i => i}), ahbConfig)
+
+  def calcSlaveConnectivity(masterConnectivity: Seq[Seq[Int]]): Seq[Seq[Int]] = {
+    val slaveCount = masterConnectivity.flatMap(x=>x).max + 1
+    Seq.tabulate(slaveCount) { slaveIdx =>
+      masterConnectivity.zipWithIndex.collect {
+        case (conn, masterIndex) if conn.contains(slaveIdx) => masterIndex
+      }
+    }
+  }
+}
+
+class AhbLite3Interconnect(
+    decodings: Seq[SizeMapping],
+    masterConnectivity: Seq[Seq[Int]],
+    ahbConfig: AhbLite3Config
 ) extends Component {
+  val slavePorts = decodings.size
+  val masterPorts = masterConnectivity.size
+  val slaveConnectivity = AhbLite3Interconnect.calcSlaveConnectivity(masterConnectivity)
   val io = new Bundle {
     val masters = Vec(slave(AhbLite3Master(ahbConfig)), masterPorts)
     val slaves = Vec(master(AhbLite3(ahbConfig)), slavePorts)
@@ -154,14 +173,17 @@ case class AhbLite3Interconnect(
       selector.muxListDc(selectors)
   }
 
-  val masterReq = Vec(Bits(slavePorts bit), masterPorts)
+  val masterReq = Vec.tabulate(masterPorts){i => Bits(masterConnectivity(i).size bit)}
   val masterReqDel = masterReq.map(req => RegNext(req, init=B(0)))
   // who is currently in the dataphase?
-  val activeArbitration = Vec(Bits(masterPorts bit), slavePorts)
+  val activeArbitration = Vec.tabulate(slavePorts)(i => Bits(slaveConnectivity(i).size bit))
   val slaveAdvancing = Vec(Bool(), slavePorts)
   // transposed alias of activeArbitration, for easier indexing on master side
-  val masterActiveArbitration = Vec.tabulate(masterPorts) { i =>
-    Vec(activeArbitration.map(aa => aa(i))).asBits
+  val masterActiveArbitration = Vec.tabulate(masterPorts) { masterIndex =>
+    Vec(masterConnectivity(masterIndex).map{ slaveIndex =>
+      val arbitrationIndex = slaveConnectivity(slaveIndex).indexOf(masterIndex)
+      activeArbitration(slaveIndex)(arbitrationIndex)
+    }).asBits
   }
 
   // TODO add default slave
@@ -177,21 +199,21 @@ case class AhbLite3Interconnect(
     SkidBuffer(AhbLite3Control.apply(io.masters(i)), hold(i), init=AhbLite3Control.idleControl(ahbConfig))
   }
 
-  val responseSel = Vec(Bits(slavePorts bits), masterPorts)
+  val responseSel = cloneOf(masterReq)
   val muxedResponse = Vec(AhbLite3Response(ahbConfig), masterPorts)
   // as long
   val gatedResponse = Vec(AhbLite3Response(ahbConfig), masterPorts)
 
   // gate the request: we dont want slave B getting a masters address phase signals while
   // it's still being stalled by slave A and couldn't continue
-  val masterReqGated = Vec(Bits(slavePorts bit), masterPorts)
+  val masterReqGated = cloneOf(masterReq)
 
   for (i <- 0 until masterPorts) {
     responseSel(i) := activeArbitration.map(_(i)).asBits()
     // reverse needed bec. auf Vec vs Bits ordering
     muxedResponse(i) := priorityMux(
-      responseSel(i),
-      io.slaves.map(AhbLite3Response(_)).toSeq.reverse,
+      masterActiveArbitration(i),//responseSel(i),
+      masterConnectivity(i).map(i => AhbLite3Response(io.slaves(i))).toSeq.reverse,
       defaultValue = AhbLite3Response.okayResponse(ahbConfig)
     )
     // TODO check if don't care here leads to useful hardware, otherwise connect HRDATA through
@@ -205,10 +227,10 @@ case class AhbLite3Interconnect(
     // don't request a slave until the last cycle of the data phase
     // with the previous slave - the second slave might be faster and
     // the master would not yet have data to provide
-    masterReqGated(i) := masterReq(i) & B(slavePorts bits, default -> muxedResponse(i).HREADY)
+    masterReqGated(i) := masterReq(i) & B(masterConnectivity(i).size bits, default -> muxedResponse(i).HREADY)
 
     gatedResponse(i).drive(io.masters(i))
-    masterReq(i) := Vec(decodings.map {
+    masterReq(i) := Vec(masterConnectivity(i).map(slaveIdx => decodings(slaveIdx)).map {
       _.hit(bufferedCtrl(i).HADDR) & (bufferedCtrl(i).HTRANS =/= 0)
     }).asBits
     hold(i) := (masterReqDel(i) & ~masterActiveArbitration(i)).orR
@@ -218,14 +240,17 @@ case class AhbLite3Interconnect(
   // TODO evaluate strapping HSEL to high, always sending IDLE and therefore be able to rely on HREADY...
   // track if the slave is currently in a dataphase (might not be due to HSEL)
   val slaveActive = Vec(Reg(Bool()) init False, slavePorts)
-  val arbitratedReq = Vec(Bits(masterPorts bit), slavePorts)
+  val arbitratedReq = cloneOf(activeArbitration)
   val muxedControl = Vec(AhbLite3Control(ahbConfig), slavePorts)
   val muxedHWDATA = Vec(Bits(ahbConfig.dataWidth bit), slavePorts)
   for (i <- 0 until slavePorts) {
     // track the state of the slave the same way the slave does it itself
     slaveActive(i).clearWhen(io.slaves(i).HREADYOUT).setWhen(io.slaves(i).HSEL && io.slaves(i).HREADY).init(False)
 
-    arbitratedReq(i) := OHMasking.first(masterReqGated.map { _(i) }.asBits())
+    arbitratedReq(i) := OHMasking.first(Vec(slaveConnectivity(i).map{masterIdx =>
+      val reqIdx = masterConnectivity(masterIdx).indexOf(i)
+      masterReqGated(masterIdx)(reqIdx)
+    }).asBits)
     activeArbitration(i) := RegNextWhen(arbitratedReq(i), slaveAdvancing(i), B(0))
     // if the slave is inactive it's moving to a data phase if HSEL rises
     // if it's active then is moves to the next data phase when HREADYOUT is set
@@ -234,10 +259,8 @@ case class AhbLite3Interconnect(
       (slaveActive(i) && io.slaves(i).HREADYOUT)
 
     // TODO add option that sets defaults here for idle state -> less transitions
-    val arbitratedReqDef = !(arbitratedReq(i).orR) ## arbitratedReq(i)
-    val activeArbitrationDef = !(activeArbitration(i).orR) ## activeArbitration(i)
-    muxedControl(i) := MuxOH(arbitratedReqDef, bufferedCtrl.map(_.withoutOffset(decodings(i))).toSeq.appended(AhbLite3Control.idleControl(ahbConfig)))
-    muxedHWDATA(i) := MuxOH(activeArbitrationDef, io.masters.map { _.HWDATA }.appended(B(0, ahbConfig.dataWidth bit)))
+    muxedControl(i) := MuxOH(arbitratedReq(i), slaveConnectivity(i).map{masterIdx => bufferedCtrl(masterIdx).withoutOffset(decodings(i))})
+    muxedHWDATA(i) := MuxOH(activeArbitration(i), slaveConnectivity(i).map{masterIdx => io.masters(masterIdx).HWDATA })
 
     muxedControl(i).drive(io.slaves(i))
     io.slaves(i).HSEL := arbitratedReq(i).orR && (io.slaves(i).HTRANS =/= 0)
