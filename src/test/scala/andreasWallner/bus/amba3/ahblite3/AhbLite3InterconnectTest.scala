@@ -119,14 +119,14 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
           override def onRead(address: BigInt, value: BigInt): Unit = {
             //simLog(f">>$idx R $address%04x = $value%02x")
             val slave = dut.slaveIndex(address)
-            scoreboards(slave).pushRef((address - dut.mappings(slave).base, "R", value))
+            scoreboards(slave).pushRef((address, "R", value))
             masterTransactions(i) = masterTransactions(i) + 1
           }
 
           override def onWrite(address: BigInt, value: BigInt): Unit = {
             //simLog(f">>$idx W $address%04x = $value%02x")
             val slave = dut.slaveIndex(address)
-            scoreboards(slave).pushRef((address - dut.mappings(slave).base, "W", value))
+            scoreboards(slave).pushRef((address, "W", value))
             masterTransactions(i) = masterTransactions(i) + 1
           }
         }
@@ -146,13 +146,13 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
 
         new AhbLite3SlaveMonitor(dut.io.ahbSlaves(i), dut.clockDomain) {
           override def onRead(address: BigInt, value: BigInt): Unit = {
-            scoreboards(i).pushDut((address, "R", value))
+            scoreboards(i).pushDut((dut.mappings(i).base + address, "R", value))
             readData(i).append(value.toInt)
             slaveTransactions(i) = slaveTransactions(i) + 1
           }
 
           override def onWrite(address: BigInt, value: BigInt): Unit = {
-            scoreboards(i).pushDut((address, "W", value))
+            scoreboards(i).pushDut((dut.mappings(i).base + address, "W", value))
             slaveTransactions(i) = slaveTransactions(i) + 1
           }
         }

@@ -42,6 +42,18 @@ object AhbLite3Control {
     ctrl.HMASTLOCK := master.HMASTLOCK
     ctrl
   }
+
+  def idleControl(config: AhbLite3Config) = {
+    val ctrl = new AhbLite3Control(config)
+    ctrl.HADDR := 0
+    ctrl.HWRITE := False
+    ctrl.HSIZE := 0
+    ctrl.HBURST := 0
+    ctrl.HPROT := 0
+    ctrl.HTRANS := 0
+    ctrl.HMASTLOCK := False
+    ctrl
+  }
 }
 case class AhbLite3Control(config: AhbLite3Config) extends Bundle {
   val HADDR = UInt(config.addressWidth bits)
@@ -117,7 +129,8 @@ case class AhbLite3Interconnect(
     masterPorts: Int = 2,
     slavePorts: Int = 1,
     decodings: Seq[SizeMapping],
-    ahbConfig: AhbLite3Config = AhbLite3Config(addressWidth = 16, dataWidth = 4)
+    ahbConfig: AhbLite3Config = AhbLite3Config(addressWidth = 16, dataWidth = 4),
+    powerSave: Boolean = false
 ) extends Component {
   val io = new Bundle {
     val masters = Vec(slave(AhbLite3Master(ahbConfig)), masterPorts)
@@ -218,8 +231,10 @@ case class AhbLite3Interconnect(
       (slaveActive(i) && io.slaves(i).HREADYOUT)
 
     // TODO add option that sets defaults here for idle state -> less transitions
-    muxedControl(i) := MuxOH(arbitratedReq(i), bufferedCtrl.map(_.withoutOffset(decodings(i))))
-    muxedHWDATA(i) := MuxOH(activeArbitration(i), io.masters.map { _.HWDATA })
+    val arbitratedReqDef = !(arbitratedReq(i).orR) ## arbitratedReq(i)
+    val activeArbitrationDef = !(activeArbitration(i).orR) ## activeArbitration(i)
+    muxedControl(i) := MuxOH(arbitratedReqDef, bufferedCtrl.map(_.withoutOffset(decodings(i))).toSeq.appended(AhbLite3Control.idleControl(ahbConfig)))
+    muxedHWDATA(i) := MuxOH(activeArbitrationDef, io.masters.map { _.HWDATA }.appended(B(0, ahbConfig.dataWidth bit)))
 
     muxedControl(i).drive(io.slaves(i))
     io.slaves(i).HSEL := arbitratedReq(i).orR && (io.slaves(i).HTRANS =/= 0)
