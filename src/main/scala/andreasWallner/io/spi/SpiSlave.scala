@@ -60,14 +60,14 @@ case class SpiSlaveController(wordWidth: BitCount) extends Component {
   sync.miso.write := shiftReg(0)
   io.tx.ready := False
   // use current mosi, updated register would a cycle be too late
-  io.rx.payload := sync.mosi ## shiftReg(7 downto 1)
+  io.rx.payload := (sync.mosi ## shiftReg(7 downto 1)).reversed
   io.rx.valid := False
 
   // remember if there was data available when starting the byte
   // to only ack if there was data originally and not loose a byte
   val didLoad = Reg(Bool()).init(False)
   when(load && io.en && io.status.selected) {
-    shiftReg(7 downto 0) := io.tx.valid ? io.tx.payload | B(0)
+    shiftReg(7 downto 0) := io.tx.valid ? io.tx.payload.reversed | B(0)
     didLoad := io.tx.valid
     io.status.busy := True
     bitCnt := wordWidth.value - 1
@@ -86,8 +86,12 @@ case class SpiSlaveController(wordWidth: BitCount) extends Component {
       io.rx.valid := True
     }
   }
+  when(!io.status.selected) {
+    io.status.busy := False
+  }
 }
 
+// TODO check if there is a cycle where txne is low and busy is low between txing bytes
 case class SpiSlavePeripheral[T <: Data with IMasterSlave](
     busType: HardType[T],
     metaFactory: T => BusSlaveFactory
