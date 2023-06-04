@@ -16,7 +16,7 @@ object InOutWrapper {
     }
     o := io
   }
-  def Xilinx7Driver(i: Bool, o: Bool, io: Bool, we: Bool, name: String): Unit = {
+  def XilinxSeries7IOBuf(i: Bool, o: Bool, io: Bool, we: Bool, name: String): Unit = {
     val buffer = IOBUF()
     buffer.T := !we
     buffer.I := i
@@ -25,7 +25,7 @@ object InOutWrapper {
     buffer.setName("IOBUF_" + name)
   }
 
-  def apply[T <: Component](c: T, makeDriver: (Bool, Bool, Bool, Bool, String) => Unit = Xilinx7Driver): T = {
+  def apply[T <: Component](c: T, makeDriver: (Bool, Bool, Bool, Bool, String) => Unit = InferredDriver): T = {
     Engine.get.onCompletion += (() => {
       val dataParents = mutable.LinkedHashMap[Data, Int]()
       @tailrec
