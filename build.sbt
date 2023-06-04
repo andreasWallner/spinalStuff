@@ -14,3 +14,4 @@ libraryDependencies ++= Seq(
 )
 
 fork := true
+testForkedParallel in Test := true
