@@ -101,6 +101,7 @@ case class SpiSlavePeripheral[T <: Data with IMasterSlave](
     val bus = slave(busType())
   }
   val flush = False
+  val noRx = Reg(Bool()) init False
   val rxFifo = StreamFifo(Bits(8 bit), 16)
   val txFifo = StreamFifo(Bits(8 bit), 16)
   val core = SpiSlaveController(8 bit)
@@ -109,29 +110,30 @@ case class SpiSlavePeripheral[T <: Data with IMasterSlave](
   txFifo.io.flush := flush
   rxFifo.io.flush := flush
   val rxFifoIsOverflow = Bool()
-  core.io.rx.toStream(rxFifoIsOverflow) >> rxFifo.io.push
+  val rxFifoOverflowFlag = Reg(Bool()) init False // set below so that set has priority
+  core.io.rx.throwWhen(noRx).toStream(rxFifoIsOverflow) >> rxFifo.io.push
 
   val factory = new BusSlaveFactoryRecorder(metaFactory(io.bus))
 
   val status = factory.register("status")
-  val rxFifoOverflowFlag = Reg(Bool()) init False
   status.read(core.io.status.busy, 0, "busy", "A byte is being transmitted")
   status.read(core.io.status.selected, 1, "selected", "CS is asserted")
-  status.read(rxFifo.io.occupancy =/= 0, 2, "rxne", "RX FIFO is not empty")
+  status.read(rxFifo.io.occupancy === 0, 2, "rxe", "RX FIFO is empty")
   status.read(rxFifo.io.availability =/= 0, 3, "rxnf", "RX FIFO is not full")
-  status.driveAndRead(rxFifoOverflowFlag, 4, "rxovfl", "RX FIFO overflowed")
-  status.read(txFifo.io.availability =/= 0, 5, "txnf", "TX FIFO is not full")
-  status.read(rxFifo.io.occupancy =/= 0, 6, "txne", "TX FIFO is not empty")
+  status.read(rxFifoOverflowFlag, 4, "rxovfl", "RX FIFO overflowed")
+  status.read(txFifo.io.availability === 0, 5, "txf", "TX FIFO is full")
+  status.read(txFifo.io.occupancy =/= 0, 6, "txne", "TX FIFO is not empty")
   status.read(rxFifo.io.occupancy, 16, "rx_fill", "# of bytes in RX FIFO")
   status.read(txFifo.io.availability, 24, "tx_fill", "# of unused bytes in TX FIFO")
+  status.clearOnSet(rxFifoOverflowFlag, 30, "clear_rxovfl", "clear RX overflow flag")
+  status.setOnSet(flush, 31, "flush", "discard FIFO contents")
   rxFifoOverflowFlag.setWhen(rxFifoIsOverflow)
 
   val ctrl = factory.register("ctrl")
   ctrl.driveAndRead(core.io.en, 0, "en").init(False)
   ctrl.driveAndRead(core.io.config.cpha, 1, "cpha").init(False)
   ctrl.driveAndRead(core.io.config.cpol, 2, "cpol").init(False)
-  ctrl.setOnSet(flush, 31, "flush", "discard FIFO contents")
-  ctrl.clearOnSet(rxFifoOverflowFlag, 30, "clear_rxovfl", "clear RX overflow flag")
+  ctrl.readAndWrite(noRx, 3, "no_rx")
 
   val tx = factory.register("tx")
   val txFlow = tx.createAndDriveFlow(Bits(8 bit), 0, "data", "write to TX FIFO")

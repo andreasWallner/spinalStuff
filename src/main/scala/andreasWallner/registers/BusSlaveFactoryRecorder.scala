@@ -22,6 +22,28 @@ class RegisterRecorder(
     }
   }
 
+  def readAndWrite[T <: Data](
+      that: T,
+      bitOffset: Int,
+      name: String,
+      doc: String = null,
+      values: List[datamodel.Value] = List()
+  ): Unit = {
+    append(
+      Field(
+        name,
+        that,
+        Section(bitOffset + that.getBitsWidth - 1, bitOffset),
+        AccessType.RW,
+        0,
+        readError = false,
+        Option(doc),
+        values
+      )
+    )
+    factory.readAndWrite(that, address, bitOffset, name)
+  }
+
   def read[T <: Data](
       that: T,
       bitOffset: Int,
@@ -36,7 +58,7 @@ class RegisterRecorder(
         Section(bitOffset + that.getBitsWidth - 1, bitOffset),
         AccessType.RO,
         0,
-        false,
+        readError = false,
         Option(doc),
         values
       )
