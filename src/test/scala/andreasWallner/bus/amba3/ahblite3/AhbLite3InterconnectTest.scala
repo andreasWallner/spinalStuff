@@ -95,6 +95,7 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
     TestParams(3, 5, Seq.fill(3)(Seq(0, 1, 2, 3, 4)), Seq.tabulate(5) { i =>
       SizeMapping(0x1000 * i, 0x1000)
     })
+    
   )
   for (params <- toTest) {
     test(dutFactory(params), "randomized " + params.name) { dut =>
@@ -102,7 +103,7 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
       val masterTransactions = mutable.ArrayBuffer.fill(params.masterCount)(0)
       val slaveTransactions = mutable.ArrayBuffer.fill(params.slaveCount)(0)
       val scoreboards = IndexedSeq.tabulate(params.slaveCount) { i =>
-        LoggingScoreboardInOrder[(BigInt, String, BigInt)](
+        LoggingScoreboardInOrder[(BigInt, String, BigInt)](false,
           s"sb$i",
           (x: (BigInt, String, BigInt)) => f"${x._2}: 0x${x._1}%04x = 0x${x._3}%02x"
         )
