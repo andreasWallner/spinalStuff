@@ -10,16 +10,90 @@ import spinal.lib.bus.amba3.ahblite.{AhbLite3, AhbLite3Config, AhbLite3Master}
 import spinal.lib.bus.misc.SizeMapping
 import spinal.lib._
 
+import scala.collection.immutable.Seq
 import scala.collection.mutable
 import scala.language.postfixOps
 
-case class AhbInterconnectTester(
+trait TestParams {
+  def name: String
+  val masterCount: Int
+  def slaveCount: Int
+  def mappings: Seq[SizeMapping]
+  val slaveHreadyoutWhenIdle: Option[Boolean]
+}
+
+case class FullyConn(
     masterCount: Int,
     slaveCount: Int,
-    mappedSlaves: Seq[Seq[Int]],
-    mappings: Seq[SizeMapping]
+    inMappings: Seq[SizeMapping] = null,
+    slaveHreadyoutWhenIdle: Option[Boolean] = None
+) extends TestParams {
+  def mappings: Seq[SizeMapping] = inMappings match {
+    case null =>
+      Seq.tabulate(slaveCount) { i =>
+        SizeMapping(0x1000 * i, 0x1000)
+      }
+    case _ => inMappings
+  }
+  def name = {
+    val hreadyoutIdleString = slaveHreadyoutWhenIdle match {
+      case None        => "random"
+      case Some(true)  => "high"
+      case Some(false) => "low"
+    }
+    f"${masterCount}M${slaveCount}S_full_${mappings.hashCode()}%x_$hreadyoutIdleString"
+  }
+}
+
+case class Sparse(
+    connectivity: Seq[Seq[Int]],
+    inMappings: Seq[SizeMapping] = null,
+    slaveHreadyoutWhenIdle: Option[Boolean] = None
+) extends TestParams {
+  def name = {
+    val connStr = connectivity.zipWithIndex
+      .map { case (slaves, master) => f"""${master}_${slaves.mkString("")}""" }
+      .mkString("_")
+    val hreadyoutIdleString = slaveHreadyoutWhenIdle match {
+      case None        => "random"
+      case Some(true)  => "high"
+      case Some(false) => "low"
+    }
+    f"${masterCount}M${slaveCount}S_sparse_${connStr}_${mappings.hashCode()}%x_$hreadyoutIdleString"
+  }
+  def mappings = inMappings match {
+    case null =>
+      Seq.tabulate(slaveCount) { i =>
+        SizeMapping(0x1000 * i, 0x1000)
+      }
+    case _ => inMappings
+  }
+  def slaveConnectivity = AhbLite3Interconnect.calcSlaveConnectivity(connectivity)
+  val masterCount = connectivity.size
+  val slaveCount = slaveConnectivity.size
+}
+
+object AhbInterconnectTester {
+  def apply(tp: TestParams) = tp match {
+    case fc: FullyConn =>
+      new AhbInterconnectTester(
+        fc.mappings,
+        Seq.fill(fc.masterCount)(Seq.tabulate(fc.slaveCount)(i => i))
+      )
+    case sc: Sparse =>
+      new AhbInterconnectTester(sc.mappings, sc.connectivity)
+  }
+}
+
+class AhbInterconnectTester(
+    decodings: Seq[SizeMapping],
+    masterConnectivity: Seq[Seq[Int]]
 ) extends Component {
   val ahbConfig = AhbLite3Config(addressWidth = 16, dataWidth = 4)
+
+  val slaveConnectivity = AhbLite3Interconnect.calcSlaveConnectivity(masterConnectivity)
+  val masterCount = masterConnectivity.size
+  val slaveCount = slaveConnectivity.size
   val masterStrings = Seq.tabulate(masterCount) { i =>
     SimString(s"master_$i").materialize()
   }
@@ -31,71 +105,39 @@ case class AhbInterconnectTester(
     val ahbMasters = Vec(slave(AhbLite3Master(ahbConfig)), masterCount)
     val ahbSlaves = Vec(master(AhbLite3(ahbConfig)), slaveCount)
   }
-  val matrix = AhbLite3Interconnect(masterCount, slaveCount, mappings)
+  val matrix = AhbLite3Interconnect(decodings, masterConnectivity, ahbConfig)
   matrix.io.masters.zip(io.ahbMasters).foreach { case (x, y) => x <> y }
   matrix.io.slaves.zip(io.ahbSlaves).foreach { case (x, y)   => x <> y }
 
   def validAddress(master: Int) = {
-    val slave = mappedSlaves(master).randomPick()
-    mappings(slave).randomPick()
+    val slave = masterConnectivity(master).randomPick()
+    decodings(slave).randomPick()
   }
   def slaveIndex(address: BigInt) =
-    mappings.zipWithIndex.find { case (mapping, _) => mapping.hit(address) } match {
+    decodings.zipWithIndex.find { case (mapping, _) => mapping.hit(address) } match {
       case Some((_, idx)) => idx
       case _              => throw new Exception(f"No slave found for address $address%04x")
     }
 }
 
 class AhbLite3InterconnectTest extends SpinalFunSuite {
-  case class TestParams(
-      masterCount: Int,
-      slaveCount: Int,
-      connectivity: Seq[Seq[Int]],
-      mappings: Seq[SizeMapping],
-      slaveHreadyoutWhenIdle: Option[Boolean] = None
-  ) {
-    def name = {
-      val connStr = connectivity.zipWithIndex
-        .map { case (slaves, master) => f"""${master}_${slaves.mkString("")}""" }
-        .mkString("_")
-      val hreadyoutIdleString = slaveHreadyoutWhenIdle match {
-        case None => "random"
-        case Some(true) => "high"
-        case Some(false) => "low"
-      }
-      f"${masterCount}M${slaveCount}S_${connStr}_${mappings.hashCode()}%x_$hreadyoutIdleString"
-    }
-  }
-
   lazy val dutFactory: TestParams => SimCompiled[AhbInterconnectTester] = memoize { params =>
     namedSimConfig.compile(
-      AhbInterconnectTester(
-        params.masterCount,
-        params.slaveCount,
-        params.connectivity,
-        params.mappings
-      ).setDefinitionName("AhbInterconnectTester_" + params.name).setName("AhbInterconnectTester")
+      AhbInterconnectTester(params)
+        .setDefinitionName("AhbInterconnectTester_" + params.name)
+        .setName("AhbInterconnectTester")
     )
   }
 
   val toTest = Seq(
-    TestParams(2, 1, Seq(Seq(0), Seq(0)), Seq(SizeMapping(0x1000, 0x1000))),
-    TestParams(1, 3, Seq(Seq(0, 1, 2)), Seq.tabulate(3) { i =>
-      SizeMapping(0x1000 * i, 0x1000)
-    }),
-    TestParams(2, 2, Seq.fill(2)(Seq(0, 1)), Seq.tabulate(2) { i =>
-      SizeMapping(0x1000 * i, 0x1000)
-    }),
-    TestParams(2, 2, Seq.fill(2)(Seq(0, 1)), Seq.tabulate(2) { i =>
-      SizeMapping(0x1000 * i, 0x1000)
-    }, Some(true)),
-    TestParams(2, 2, Seq.fill(2)(Seq(0, 1)), Seq.tabulate(2) { i =>
-      SizeMapping(0x1000 * i, 0x1000)
-    }, Some(false)),
-    TestParams(3, 5, Seq.fill(3)(Seq(0, 1, 2, 3, 4)), Seq.tabulate(5) { i =>
-      SizeMapping(0x1000 * i, 0x1000)
-    })
-    
+    FullyConn(2, 1),
+    FullyConn(1, 3),
+    FullyConn(2, 2),
+    FullyConn(2, 2, slaveHreadyoutWhenIdle = Some(true)),
+    FullyConn(2, 2, slaveHreadyoutWhenIdle = Some(false)),
+    FullyConn(3, 5),
+    Sparse(Seq(Seq(0, 1), Seq(1, 2), Seq(3))),
+    Sparse(Seq(Seq(0), Seq(1), Seq(2)))
   )
   for (params <- toTest) {
     test(dutFactory(params), "randomized " + params.name) { dut =>
@@ -103,7 +145,8 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
       val masterTransactions = mutable.ArrayBuffer.fill(params.masterCount)(0)
       val slaveTransactions = mutable.ArrayBuffer.fill(params.slaveCount)(0)
       val scoreboards = IndexedSeq.tabulate(params.slaveCount) { i =>
-        LoggingScoreboardInOrder[(BigInt, String, BigInt)](false,
+        LoggingScoreboardInOrder[(BigInt, String, BigInt)](
+          false,
           s"sb$i",
           (x: (BigInt, String, BigInt)) => f"${x._2}: 0x${x._1}%04x = 0x${x._3}%02x"
         )
@@ -134,7 +177,12 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
       }
 
       for (i <- 0 until params.slaveCount) {
-        new AhbLite3SlaveAgent(dut.io.ahbSlaves(i), dut.clockDomain, dut.slaveStrings(i)) {
+        new AhbLite3SlaveAgent(
+          dut.io.ahbSlaves(i),
+          dut.clockDomain,
+          dut.slaveStrings(i),
+          params.slaveHreadyoutWhenIdle
+        ) {
           override def onRead(address: BigInt) = (ahb.HRDATA.randomizedBigInt(), false)
 
           override def onWrite(address: BigInt, value: BigInt) = false
@@ -142,13 +190,12 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
 
         new AhbLite3SlaveMonitor(dut.io.ahbSlaves(i), dut.clockDomain) {
           override def onRead(address: BigInt, value: BigInt): Unit = {
-            scoreboards(i).pushDut((dut.mappings(i).base + address, "R", value))
-            readData(i).append(value.toInt)
+            scoreboards(i).pushDut((params.mappings(i).base + address, "R", value))
             slaveTransactions(i) = slaveTransactions(i) + 1
           }
 
           override def onWrite(address: BigInt, value: BigInt): Unit = {
-            scoreboards(i).pushDut((dut.mappings(i).base + address, "W", value))
+            scoreboards(i).pushDut((params.mappings(i).base + address, "W", value))
             slaveTransactions(i) = slaveTransactions(i) + 1
           }
         }
