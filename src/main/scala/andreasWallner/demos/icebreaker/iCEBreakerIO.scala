@@ -1,12 +1,13 @@
 package andreasWallner.demos.icebreaker
 
 import andreasWallner.demos.RgbLed
+import andreasWallner.io.ftdi.AsyncFifo
 import spinal.core._
 import spinal.lib._
 import spinal.lib.com.uart.Uart
 import spinal.lib.io.TriState
-import scala.reflect.io.File
 
+import scala.reflect.io.File
 import scala.language.postfixOps
 
 abstract class PMOD12[T <: PMOD12[_]]() extends Bundle with IMasterSlave {
@@ -26,10 +27,83 @@ abstract class PMOD12[T <: PMOD12[_]]() extends Bundle with IMasterSlave {
   def raw() = pins
 }
 
+abstract class PMOD6[T <: PMOD6[_]]() extends Bundle with IMasterSlave {
+  protected val pins = Vec(TriState(Bool()), 4)
+
+  def setPrefix(prefix: String): T = {
+    for ((pin, idx) <- pins.zipWithIndex) {
+      pin.setName(f"$prefix${idx + 1}")
+    }
+    this.asInstanceOf[T]
+  }
+
+  override def asMaster(): Unit = pins.foreach(pin => pin.setAsMaster())
+  def raw() = pins
+}
+
+case class SplitPmod12[T1 <: PMOD6[_], T2 <: PMOD6[_]](Upper: HardType[T1], Lower: HardType[T2])
+    extends PMOD12[SplitPmod12[T1, T2]] {
+  val upper = Upper()
+  val lower = Lower()
+  def conn(m: TriState[Bool], s: TriState[Bool]) = {
+    m.write := s.write
+    m.writeEnable := s.writeEnable
+    s.read := m.read
+  }
+  // TODO we can't use <> here
+  for (i <- 0 until 3)
+    conn(pins(i), upper.raw()(i))
+  for (i <- 0 until 3)
+    conn(pins(i+4), lower.raw()(i))
+
+  override def asMaster(): Unit = {
+    master(upper, lower)
+  }
+}
+
 case class GPIOPmod12() extends PMOD12[GPIOPmod12] {
   val gpio = pins
   pins.foreach(pin => pin.writeEnable.default(False))
   pins.foreach(pin => pin.write.default(False))
+}
+
+case class GPIOPmod6() extends PMOD6[GPIOPmod6] {
+  val gpio = pins
+  pins.foreach(pin => pin.writeEnable.default(False))
+  pins.foreach(pin => pin.write.default(False))
+}
+
+case class UARTPmod6(withFlowControl: Boolean=false) extends PMOD6[GPIOPmod6] {
+  val uart = new Uart(ctsGen = withFlowControl, rtsGen = withFlowControl)
+  val gpio1 = if (withFlowControl) None else Some(TriState(Bool()))
+  val gpio4 = if (withFlowControl) None else Some(TriState(Bool()))
+
+  pins(0).write := uart.txd
+  pins(0).writeEnable := True
+  uart.rxd := pins(1).read
+  pins(1).writeEnable := False
+  pins(1).write.assignDontCare()
+
+  if(withFlowControl) {
+    uart.cts := pins(2).read
+    pins(2).writeEnable := True
+    pins(2).write.assignDontCare()
+
+    pins(3).write := uart.rts
+    pins(3).writeEnable := True
+  } else {
+    def conn(m: TriState[Bool], s: TriState[Bool]) = {
+      m.write := s.write
+      m.writeEnable := s.writeEnable
+      s.read := m.read
+    }
+    conn(gpio1.get, pins(2))
+    conn(gpio4.get, pins(3))
+    gpio1.get.write.default(False)
+    gpio1.get.write.assignDontCare()
+    gpio4.get.write.default(False)
+    gpio4.get.write.assignDontCare()
+  }
 }
 
 case class iCEBreakerSnapOff() extends PMOD12[iCEBreakerSnapOff] {
@@ -39,7 +113,7 @@ case class iCEBreakerSnapOff() extends PMOD12[iCEBreakerSnapOff] {
   val sw2 = pins(6).read
   val sw3 = pins(3).read
   val sw4 = pins(7).read
-  for(i <- switchIdx) {
+  for (i <- switchIdx) {
     pins(i).write.default(False)
     pins(i).writeEnable.default(False)
   }
@@ -70,13 +144,13 @@ class iCEBreakerIO[P1A <: PMOD12[_], P1B <: PMOD12[_], P2 <: PMOD12[_]](
 ) extends Bundle {
   val pmod1a: P1A = master port Pmod1a()
   val pmod1b: P1B = master port Pmod1b()
-  val pmod2: Option[P2] = Option(!useFifo generate master port Pmod2())
+  val pmod2: Option[P2] = Option(!useFifo generate { master port Pmod2() })
   pmod1a.setPrefix("P1A")
   pmod1b.setPrefix("P1B")
   pmod2.map(_.setPrefix("P2_"))
 
-  val greenLed = out port Bool().setName("LEDG_N").default(True)
-  val redLed = out port Bool().setName("LEDR_N").default(True)
+  val greenLed = !useFifo generate (out port Bool().setName("LEDG_N").default(True))
+  val redLed = !useFifo generate (out port Bool().setName("LEDR_N").default(True))
   val userButton = in port Bool().setName("BTN_N")
   val rgbLed = out port RgbLed()
   rgbLed.r.setName("LED_RED_N").default(True)
@@ -84,14 +158,10 @@ class iCEBreakerIO[P1A <: PMOD12[_], P1B <: PMOD12[_], P2 <: PMOD12[_]](
   rgbLed.b.setName("LED_BLU_N").default(True)
 
   val uart = !useFifo generate (master port Uart(ctsGen = false, rtsGen = false))
-  uart.txd.default(True).setName("TX")
-  uart.rxd.setName("RX")
-
-  val fifo = useFifo generate new Bundle {
-    val data = master port TriState(Bits(8 bit))
-    val rxf_n = in port Bool()
-    val rxe_n = in port Bool()
-    val rd_n = out port Bool()
-    val wr_n = out port Bool()
+  if (!useFifo) {
+    uart.txd.default(True).setName("TX")
+    uart.rxd.setName("RX")
   }
+
+  val fifo = useFifo generate (master port AsyncFifo())
 }

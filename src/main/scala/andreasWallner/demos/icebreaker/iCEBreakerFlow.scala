@@ -9,9 +9,13 @@ import spinal.lib.io.InOutWrapper
 import scala.language.postfixOps
 import scala.tools.nsc.io.File
 
-class iCEBreakerFlow[T <: Component](c: => T, workspace: String = "demo", forceDownload: Boolean=false) extends App {
+class iCEBreakerFlow[T <: Component](
+    c: => T,
+    workspace: String = "demo",
+    forceDownload: Boolean = false
+) extends App {
   val report = SpinalConfig(
-    targetDirectory=workspace,
+    targetDirectory = workspace,
     defaultConfigForClockDomains = ClockDomainConfig(resetKind = BOOT),
     defaultClockDomainFrequency = FixedFrequency(12 MHz),
     device = Device.LATTICE
@@ -23,9 +27,11 @@ class iCEBreakerFlow[T <: Component](c: => T, workspace: String = "demo", forceD
     "up5k",
     "sg48",
     frequencyTarget = Some(report.toplevel.getFastestClock()),
-    pcfFile = Some(File(".").toCanonical + "/extras/iCEBreaker.pcf")
+    pcfFile = Some(File(".").toCanonical + "/extras/iCEBreaker.pcf"),
+
   )
-  println(synth.getFMax())
+  val fmaxDec = synth.fmax().decompose
+  println(f"${fmaxDec._1}%.1f ${fmaxDec._2}")
   println(synth.getArea())
 
   import scala.sys.process._

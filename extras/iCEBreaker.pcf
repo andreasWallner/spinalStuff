@@ -53,3 +53,17 @@ set_io P2_7       26
 set_io P2_8       23
 set_io P2_9       20
 set_io P2_10      18
+
+# FIFO
+set_io io_fifo_d[7] 25
+set_io io_fifo_d[6] 23
+set_io io_fifo_d[5] 21
+set_io io_fifo_d[4] 20
+set_io io_fifo_d[3] 19
+set_io io_fifo_d[2] 18
+set_io io_fifo_d[1] 9
+set_io io_fifo_d[0] 6
+set_io io_fifo_rxf_n 26
+set_io io_fifo_txe_n 27
+set_io io_fifo_rd_n 11
+set_io io_fifo_wr_n 37
