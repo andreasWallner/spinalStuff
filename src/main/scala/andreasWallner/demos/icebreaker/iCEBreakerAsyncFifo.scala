@@ -14,6 +14,7 @@ import spinal.lib.bus.amba3.apb.Apb3Config
 
 import scala.language.postfixOps
 
+object iCEBreakerAsyncFifo extends iCEBreakerFlow(new iCEBreakerAsyncFifo(), forceDownload = true)
 class iCEBreakerAsyncFifo() extends Component {
   val io = new iCEBreakerIO(
     GPIOPmod12(),
@@ -66,5 +67,44 @@ class iCEBreakerAsyncFifo() extends Component {
   //io.greenLed := module.io.pwm(1)
 }
 
-object iCEBreakerAsyncFifo extends iCEBreakerFlow(new iCEBreakerAsyncFifo(), forceDownload = true)
+object iCEBreakerAsyncFifoTx extends iCEBreakerFlow(new iCEBreakerAsyncFifoTx(), forceDownload = true)
+class iCEBreakerAsyncFifoTx() extends Component {
+  val io = new iCEBreakerIO(
+    GPIOPmod12(),
+    GPIOPmod12(),
+    GPIOPmod12(),
+    useFifo = true
+  )
+  //val xorshift = Xorshift(XorShiftConfig(16, has))
+  val af = AsyncFifoController(io.fifo, AsyncFifoController.Timings.FT232H)
+  //af.io.tx.translateFrom(xorshift.io.data){ case (y, x) => y := x.resized}
+  //af.io.rx.ready := True
+  val cnt = Reg(UInt(8 bit)) init 0
+  af.io.tx.payload := cnt.asBits
+  af.io.tx.valid := True
+  when(af.io.tx.fire) { cnt := cnt + 1 }
+  af.io.rx.ready := False
+
+  val overflow = Bool()
+  val toTrace = overflow ## af.io.s ## io.fifo.rd_n ## io.fifo.rxf_n ## io.fifo.wr_n ## io.fifo.txe_n ## af.io.rx.ready ## af.io.rx.valid ## af.io.tx.ready ## af.io.tx.valid ## io.fifo.d.writeEnable ## io.fifo.d.read.orR
+  val syncedTrace = BufferCC(toTrace)
+  io.pmod1b.gpio.foreach(_.writeEnable := True)
+  io.pmod1b.gpio(0).write := io.fifo.rd_n
+  io.pmod1b.gpio(1).write := io.fifo.rxf_n
+  io.pmod1b.gpio(2).write := io.fifo.wr_n
+  io.pmod1b.gpio(3).write := io.fifo.txe_n
+  io.pmod1b.gpio(4).write := BufferCC(io.fifo.rxf_n)
+  io.pmod1b.gpio(5).write := BufferCC(io.fifo.txe_n)
+  io.pmod1b.gpio(6).write := af.io.s(0)
+  io.pmod1b.gpio(7).write := af.io.s(1)
+
+  val compressor = RLECompressor(AnalyzerGenerics(dataWidth = toTrace.getWidth, internalWidth = 14))
+  compressor.io.data := syncedTrace
+  compressor.io.run := Delay(True, 10, init = False)
+  val buffered = compressor.io.compressed.toStream(overflow, 2048, 2040)
+  val uart = UartTransmitter(1000000)
+  buffered.fragmentTransaction(7).translateInto(uart.io.data)((o, i) => o := i.last ## i.fragment)
+  io.pmod1a.gpio(1).writeEnable := True
+  io.pmod1a.gpio(1).write := uart.io.tx
+}
 

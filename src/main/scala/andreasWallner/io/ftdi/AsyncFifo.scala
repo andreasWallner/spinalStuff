@@ -95,6 +95,7 @@ case class AsyncFifoController(timings: AsyncFifoTimings) extends Component {
   io.rx.payload.setAsReg()
 
   // track cycles until we can trust TXE#/RXF# again
+  // TODO describe why we don't need to wait here, not even for the sync delay (point to 200 xs number)
   val txPrecharge = timings.wr_pause.map(t => Timeout(toCycles(t)))
   //txPrecharge.init(True) // TODO
   val rxPrecharge = timings.rd_pause.map(t => Timeout(toCycles(t)))
