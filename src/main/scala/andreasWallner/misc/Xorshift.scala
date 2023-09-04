@@ -3,6 +3,8 @@ package andreasWallner.misc
 import spinal.core._
 import spinal.lib._
 
+import scala.language.postfixOps
+
 case class XorShiftConfig(
     width: Int,
     hasRun: Boolean = false,
@@ -18,11 +20,11 @@ case class Xorshift(config: XorShiftConfig = XorShiftConfig(16))
     val data = master Stream Bits(config.width bit)
   }
 
-  assert(List(16, 32, 64).contains(config.width))
   val shifts = config.width match {
     case 16 => List(7, 9, 8)
     case 32 => List(13, 17, 5)
     case 64 => List(13, 7, 17)
+    case _ => throw new Exception("invalid width for Xorshift, only 16, 32, 64 are supported")
   }
 
   val state = Reg(Bits(config.width bit)) init 1
@@ -30,6 +32,7 @@ case class Xorshift(config: XorShiftConfig = XorShiftConfig(16))
   io.data.valid := (if (config.hasRun) io.run else True) && (if (config.hasSetSeed)
                                                                !io.setSeed
                                                              else True)
+  //noinspection ZeroIndexToHead
   val temp1 = state ^ (state |<< shifts(0))
   val temp2 = temp1 ^ (temp1 |>> shifts(1))
   val temp3 = temp2 ^ (temp2 |<< shifts(2))
