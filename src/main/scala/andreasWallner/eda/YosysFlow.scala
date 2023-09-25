@@ -1,8 +1,3 @@
-/**
-* Original copyright by Andreas Wallner
-* https://github.com/andreasWallner/spinalStuff/blob/master/src/main/scala/andreasWallner/eda/YosysFlow.scala
-*/
-
 package edatools
 
 import spinal.core.{HertzNumber, SpinalError, SpinalInfo, TimeNumber}
