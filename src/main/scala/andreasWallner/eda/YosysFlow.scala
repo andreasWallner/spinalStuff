@@ -99,7 +99,9 @@ object YosysFlow {
 
     val frequencyMHz = frequencyTarget.map(x => (x / 1e6).toDouble)
     val readRtl =
-      rtl.getRtlPaths().map(file => s"${Paths.get(file).toAbsolutePath}")
+      rtl.getRtlPaths()
+        .map(file => s"${Paths.get(file).toAbsolutePath}")
+        .filter(_.toString.split("\\.").last == "v") // filter any but .v files for now, .bin isnt parsed in yosys
     val dspArg = if (useDsp) " -dsp " else ""
     doCmd(
       Seq(
@@ -129,10 +131,10 @@ object YosysFlow {
         s"${rtl.getName()}_report.json"
       )
         ++ frequencyTarget
-          .map(x => Seq("--freq", "%f".format(x.toDouble / 1e6)))
+          .map(x => Seq("--freq", "%f".formatLocal(java.util.Locale.US, x.toDouble / 1e6)))
           .getOrElse(Seq())
         ++ pcfFile
-          .map(x => Seq("--pcf", x))
+          .map(x => Seq("--pcf", x)) 
           .getOrElse(Seq())
         ++ (if (pcfFile.isEmpty || allowUnconstrained)
               Seq("--pcf-allow-unconstrained")
@@ -144,8 +146,8 @@ object YosysFlow {
     if (frequencyTarget.isDefined) {
       doCmd(
         Seq(icestormPath + "icetime", "-d", device)
-          ++ pcfFile.map(x => Seq("-p", x)).getOrElse(Seq())
-          ++ Seq("-c", s"${frequencyMHz.get}MHz")
+          ++ pcfFile.map(x => Seq("-p", x)).getOrElse(Seq()) // NOTE: https://github.com/YosysHQ/icestorm/issues/207, pcf file is more constrained for icetime than for nextpnr
+          ++ Seq("-c", s"${frequencyMHz.get}MHz") 
           ++ Seq("-mtr", s"${rtl.getName()}.rpt", s"${rtl.getName()}.asc"),
         workspacePath,
         verbose
