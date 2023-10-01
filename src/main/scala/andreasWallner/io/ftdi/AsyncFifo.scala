@@ -52,10 +52,10 @@ object AsyncFifoController {
     controller
   }
 
-  def toCycles(tn: TimeNumber, correction: Int = 0) =
-    ((tn * ClockDomain.current.frequency.getValue)
+  def toCycles(tn: TimeNumber, correction: Int = 0, min: Int = 0) =
+    ((((tn * ClockDomain.current.frequency.getValue)
       .setScale(0, BigDecimal.RoundingMode.CEILING)
-      .toBigInt - correction) max 0
+      .toBigInt - correction) max 0) max min).toInt
 
   object Timings {
     // taken from FT232H spec, #199, v2.0
@@ -96,10 +96,11 @@ case class AsyncFifoController(timings: AsyncFifoTimings) extends Component {
 
   // track cycles until we can trust TXE#/RXF# again
   // TODO describe why we don't need to wait here, not even for the sync delay (point to 200 xs number)
-  val txPrecharge = timings.wr_pause.map(t => Timeout(toCycles(t)))
-  //txPrecharge.init(True) // TODO
-  val rxPrecharge = timings.rd_pause.map(t => Timeout(toCycles(t)))
-  //rxPrecharge.init(True)
+  //
+  val txPrechargeOrSyncDel = Timeout(timings.wr_pause.map(t => toCycles(t, min=3)).getOrElse(toCycles(14 ns) + 3))
+  //txPrecharge.init(True)
+  val rxPrecharge = timings.rd_pause.map(t => Timeout(toCycles(t, min=3)))
+  //rxPrecharge.map(_.init(True))
   io.s := 0
   //noinspection ForwardReference
   val fsm = new StateMachine {
@@ -107,8 +108,8 @@ case class AsyncFifoController(timings: AsyncFifoTimings) extends Component {
       whenIsActive {
         io.s := 1
         io.fifo.d.writeEnable := False
-        when(txnf && io.tx.valid && txPrecharge.map(_.implicitValue).getOrElse(True)) {
-          goto(tx)
+        when(txnf && io.tx.valid && txPrechargeOrSyncDel) {
+          goto(tx_setup)
         }
         when(rxne && !io.rx.valid && rxPrecharge.map(_.implicitValue).getOrElse(True)) { // or io.rx.ready
           goto(rx)
@@ -116,21 +117,27 @@ case class AsyncFifoController(timings: AsyncFifoTimings) extends Component {
       }
     }
 
-    val tx: StateDelay = new StateDelay(toCycles(timings.wr_pulse)) {
+    val tx_setup: StateDelay = new StateDelay(toCycles(timings.data_to_wr_setup)) {
       onEntry {
         io.fifo.d.write := io.tx.payload
-        // writeEnable is disabled in idle state to make sure that we adhere to hold
         // TODO detail if necessary, remove parameter
         io.fifo.d.writeEnable := True
-        io.fifo.wr_n := False
       }
       whenCompleted {
-        txPrecharge.foreach(_.clear())
         io.tx.ready := True
+        io.fifo.wr_n := False
+        if(timings.wr_pause.isEmpty)
+          txPrechargeOrSyncDel.clear()
+        goto(tx_active)
+      }
+      whenIsActive { io.s := 2 }
+    }
+    val tx_active: StateDelay = new StateDelay(toCycles(timings.wr_pulse)) {
+      // writeEnable is disabled in idle state to make sure that we adhere to hold
+      whenCompleted {
         io.fifo.wr_n := True
         goto(idle)
       }
-      whenIsActive { io.s := 2 }
     }
 
     val rx_time = toCycles(timings.rd_pulse) max (if (timings.require_rd_delay)
