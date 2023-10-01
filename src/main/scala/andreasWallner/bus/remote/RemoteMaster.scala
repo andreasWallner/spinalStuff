@@ -22,7 +22,7 @@ case class ApbMasterGenerics(apbConfig: Apb3Config, irqBits: BitCount = 0 bit) {
   private def bytes(i: Int): Int = divCeil(i, 8)
   private val plainAddressBytes = bytes(apbConfig.addressWidth)
 
-  val actionBits = Action.NOOP.getBitsWidth
+  val actionBits = Action.defaultEncoding.getWidth(Action)
   val addressBitsInAction = {
     val candidate = apbConfig.addressWidth - (plainAddressBytes - 1) * 8
     if (candidate > (8 - actionBits)) 0 else candidate
@@ -82,7 +82,7 @@ case class ApbMaster(g: ApbMasterGenerics) extends Module {
               io.apb.PADDR(paddrSlice) := io.cmd.payload.takeLow(g.addressBitsInAction).asUInt
             }
 
-            if(g.addressBytes > 0) {
+            if (g.addressBytes > 0) {
               goto(rxAddress)
             } else {
               when(convAction === Action.READ) {
@@ -91,7 +91,7 @@ case class ApbMaster(g: ApbMasterGenerics) extends Module {
                 goto(rxData)
               }
             }
-          } elsewhen(convAction === Action.RESET) {
+          } elsewhen (convAction === Action.RESET) {
             goto(doReset)
           }
         }
@@ -99,13 +99,13 @@ case class ApbMaster(g: ApbMasterGenerics) extends Module {
     }
 
     val addressByte = Reg(UInt(log2Up(g.addressBytes) + 1 bit))
-    val rxAddress: State = if(g.addressBytes > 0) new State() {
-      onEntry { addressByte := 0}
+    val rxAddress: State = if (g.addressBytes > 0) new State() {
+      onEntry { addressByte := 0 }
       whenIsActive {
         when(io.cmd.valid) {
           switch(addressByte) {
-            for(i <- g.addressBytes - 1 downto 0) yield is(i) {
-              io.apb.PADDR(i*8 + 7 downto i * 8).assignFromBits(io.cmd.payload)
+            for (i <- g.addressBytes - 1 downto 0) yield is(i) {
+              io.apb.PADDR(i * 8 + 7 downto i * 8).assignFromBits(io.cmd.payload)
             }
           }
         }
@@ -119,15 +119,16 @@ case class ApbMaster(g: ApbMasterGenerics) extends Module {
           }
         }
       }
-    } else null
+    }
+    else null
 
     val dataByte = Reg(UInt(log2Up(g.dataBytes) bit))
     val rxData: State = new State() {
-      onEntry{dataByte := 0}
-      whenIsActive{
+      onEntry { dataByte := 0 }
+      whenIsActive {
         when(io.cmd.valid) {
           switch(dataByte) {
-            for(i <- g.dataBytes - 1 downto 0) yield is(i) { pwdataBytes(i) := io.cmd.payload }
+            for (i <- g.dataBytes - 1 downto 0) yield is(i) { pwdataBytes(i) := io.cmd.payload }
           }
           dataByte := dataByte + 1
           when(dataByte === g.dataBytes - 1) {
@@ -140,7 +141,7 @@ case class ApbMaster(g: ApbMasterGenerics) extends Module {
     val sendBytes = Reg(UInt(3 bit))
     val sendBuffer = Reg(Bits(g.apbConfig.dataWidth bit))
     val doRead: State = new State() {
-      whenIsActive{
+      whenIsActive {
         // PENABLE is registered, driving off of PSEL makes it go high one cycle later
         io.apb.PSEL(0) := True
         io.apb.PENABLE := io.apb.PSEL(0)
@@ -165,7 +166,7 @@ case class ApbMaster(g: ApbMasterGenerics) extends Module {
           goto(txResponse)
         }
       }
-      onExit{io.apb.PENABLE := False}
+      onExit { io.apb.PENABLE := False }
     }
 
     val doReset: State = new State() {
@@ -183,7 +184,8 @@ case class ApbMaster(g: ApbMasterGenerics) extends Module {
       whenIsActive {
         io.resp.valid := True
         io.resp.payload := sentBytes.muxListDc(
-          List(0 -> action ## B"000000") ++ (for(i <- 0 until g.responseBytes) yield i+1 -> sendBufferBytes(i))
+          List(0 -> action.asBits.resizeLeft(8)) ++ (for (i <- 0 until g.responseBytes)
+            yield i + 1 -> sendBufferBytes(i))
         )
         when(io.resp.fire) {
           sentBytes := sentBytes + 1
