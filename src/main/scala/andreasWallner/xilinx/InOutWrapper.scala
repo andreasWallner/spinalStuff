@@ -2,7 +2,6 @@ package andreasWallner.xilinx
 
 import spinal.core._
 import spinal.core.fiber.Engine
-import spinal.lib.blackbox.xilinx.s7.IOBUF
 import spinal.lib.io._
 
 import scala.annotation.tailrec
@@ -17,12 +16,22 @@ object InOutWrapper {
     o := io
   }
   def XilinxSeries7IOBuf(i: Bool, o: Bool, io: Bool, we: Bool, name: String): Unit = {
+    import spinal.lib.blackbox.xilinx.s7.IOBUF
     val buffer = IOBUF()
     buffer.T := !we
     buffer.I := i
     o := buffer.O
     io := buffer.IO
     buffer.setName("IOBUF_" + name)
+  }
+  def LatticeIce40SB_IO(i: Bool, o: Bool, io: Bool, we: Bool, name: String): Unit = {
+    import spinal.lib.blackbox.lattice.ice40.SB_IO
+    val buffer = SB_IO("101001")
+    buffer.OUTPUT_ENABLE := we
+    buffer.D_OUT_0 := i
+    o := buffer.D_IN_0
+    io := buffer.PACKAGE_PIN
+    buffer.setName("SB_IO_" + name)
   }
 
   def apply[T <: Component](c: T, makeDriver: (Bool, Bool, Bool, Bool, String) => Unit = InferredDriver): T = {
@@ -35,6 +44,11 @@ object InOutWrapper {
           add(that.parent)
         }
       }
+
+      def propagateTags(tristate: Bundle, pin: Data): Unit = {
+        tristate.getTags().filter(_.ioTag).foreach(t => pin.addTag(t))
+      }
+
       for (io <- c.getAllIo) {
         add(io)
       }
@@ -50,7 +64,7 @@ object InOutWrapper {
         val o = Bits(width bit)
         val io = inout(Analog(Bits(width bit))).setWeakName(name)
         (0 until width) foreach { idx => makeDriver(i(idx), o(idx), io(idx), we(idx), name + "_" + idx) }
-        (i, o, we)
+        (i, o, we, io)
       }
 
       c.rework {
@@ -60,38 +74,42 @@ object InOutWrapper {
               (bundle.write.flatten zip bundle.read.flatten).foreach {
                 case (dw: Data, dr: Data) =>
                   val name = flattenedName(bundle, dw, "_write")
-                  val (i, o, we) = makeBuffers(widthOf(dw), name)
+                  val (i, o, we, newIo) = makeBuffers(widthOf(dw), name)
                   we.setAllTo(bundle.writeEnable)
                   i := dw.asBits
                   dr.assignFromBits(o)
+                  propagateTags(bundle, newIo)
               }
               bundle.setAsDirectionLess().unsetName().allowDirectionLessIo()
             case bundle: TriStateOutput[_] if bundle.isOutput =>
               bundle.write.flatten.foreach {
                 dw: Data =>
                   val name = flattenedName(bundle, dw, "_write")
-                  val (i, _, we) = makeBuffers(widthOf(dw), name)
+                  val (i, _, we, newIo) = makeBuffers(widthOf(dw), name)
                   we.setAllTo(bundle.writeEnable)
                   i := dw.asBits
+                  propagateTags(bundle, newIo)
               }
               bundle.setAsDirectionLess().unsetName().allowDirectionLessIo()
             case bundle: ReadableOpenDrain[_] if bundle.isMasterInterface =>
               (bundle.write.flatten zip bundle.read.flatten).foreach {
                 case (dw: Data, dr: Data) =>
                   val name = flattenedName(bundle, dw, "_write")
-                  val (i, o, we) = makeBuffers(widthOf(dw), name)
+                  val (i, o, we, newIo) = makeBuffers(widthOf(dw), name)
                   we := ~dw.asBits
                   i.clearAll()
                   dr.assignFromBits(o)
+                  propagateTags(bundle, newIo)
               }
               bundle.setAsDirectionLess().unsetName().allowDirectionLessIo()
             case bundle: TriStateArray if bundle.writeEnable.isOutput =>
               val name = bundle.getName()
-              val (i, o, we) = makeBuffers(bundle.width, name)
+              val (i, o, we, newIo) = makeBuffers(bundle.width, name)
               we := bundle.writeEnable
               i := bundle.write
               bundle.read := o
               bundle.setAsDirectionLess().unsetName().allowDirectionLessIo()
+              propagateTags(bundle, newIo)
             case _ =>
           }
         }
