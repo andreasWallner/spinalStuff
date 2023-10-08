@@ -9,12 +9,13 @@ import spinal.lib.bus.amba4.axi.{Axi4Config, Axi4WriteOnly}
 import scala.collection.mutable
 import scala.collection.Seq
 import scala.language.postfixOps
+import andreasWallner.rtlutils._
 
 case class AnalyzerGenerics(
-                             dataWidth: Int,
-                             internalWidth: Int,
-                             externalTriggerCnt: Int = 0
-                           ) {
+    dataWidth: Int,
+    internalWidth: Int,
+    externalTriggerCnt: Int = 0
+) {
   assert(
     dataWidth < internalWidth,
     "dataWidth must be smaller than internalWidth"
@@ -94,6 +95,105 @@ case class RLECompressor(g: AnalyzerGenerics) extends Component {
   } otherwise {
     counter := 0
   }
+}
+
+@deprecated("untested")
+case class LEB128Counter(width: Int, chunkBits: Int = 8) extends Bundle {
+  val validBits = (width + chunkBits - 1) / chunkBits
+  val counterBits = width - validBits
+
+  val io = new Bundle {
+    val encoded = out port Bits(width bit)
+    val count = out port UInt(counterBits bit).setAsReg().init(0)
+
+    val en = in port Bool()
+    val reset = in port Bool()
+  }
+
+  val counterChunks = io.count.subdivideIn(chunkBits - 1 bit)
+  val willOverflowPre = counterChunks.map(c => c.andR)
+  val willOverflow = willOverflowPre.asBits().orCum
+  val valid = Reg(Bits(validBits bit)) init 0
+
+  when(io.en) {
+    io.count := io.count + 1 // TODO fix overflow, keep it to try the formal proof
+    valid := valid | willOverflow
+  }
+
+  when(io.reset) {
+    io.count := 0
+    valid := 0
+  }
+
+  io.encoded := Cat(counterChunks.indices.map(i => Cat(counterChunks(i), valid(i))))
+}
+
+case class LEB128CompressorGenerics(
+    dataWidth: Int,
+    internalWidth: Int,
+    externalTriggerCnt: Int = 0
+) {
+  val chunkSize = 8
+  val chunkCnt = (internalWidth + chunkSize - 1) / chunkSize
+  val flagBitCnt = chunkCnt
+  val counterWidth = internalWidth - flagBitCnt - dataWidth
+  assert(counterWidth > 0, "impossible configuration, no space left for counter")
+
+  def counterBoundaries = {
+    var nextChunk = chunkSize - 1 - (dataWidth + chunkSize - 2) / (chunkSize - 1)
+    var i = 0
+    List(0).iterator ++
+      Iterator
+        .continually {
+          i = i + nextChunk
+          nextChunk = chunkSize - 1
+          i min (counterWidth - 1)
+        }
+        .takeWhile(_ => i < internalWidth)
+  }
+}
+
+case class LEB128CompressedData(width: Int) extends Bundle {
+  val compressed = Bits(width bit)
+  def valid = ???
+}
+
+case class LEB128Compressor(g: LEB128CompressorGenerics) extends Component {
+  val io = new Bundle {
+    val data = in Bits (g.dataWidth bits)
+    val compressed = master(Flow(LEB128CompressedData(g.internalWidth)))
+    val run = in Bool ()
+  }
+
+  val dataChange = io.data =/= RegNext(io.data)
+
+  val counter = Reg(UInt(g.counterWidth bit))
+  println(g.chunkCnt, g.flagBitCnt, g.counterWidth)
+  println(g.counterBoundaries.mkString("  "))
+  val counterFlagBits = Reg(Bits(g.counterBoundaries.length - 1 bit)) // MSB flag bit is always 0
+  val extractedFlagBits = Vec(g.counterBoundaries.drop(1).map(i => counter(i))).asBits
+  val nextCounterFlagBits = counterFlagBits | extractedFlagBits
+
+  val maxCount = counter === counter.maxValue
+  when(io.run && !dataChange && !maxCount) {
+    counter := counter + 1
+    counterFlagBits := nextCounterFlagBits
+  } otherwise {
+    counter := 0
+    counterFlagBits := 0
+  }
+
+  val dataFlagBits = Bits(g.flagBitCnt - widthOf(counterFlagBits) bit).setAll()
+
+  val flagBits = nextCounterFlagBits ## dataFlagBits
+  val outputData = counter ## io.data
+
+  io.compressed.valid := dataChange || maxCount
+  io.compressed.payload.compressed := Cat(
+    outputData.subdivideIn(g.chunkSize bit, strict=false).zip((False ## flagBits).subdivideIn(1 bit)).map {
+      case (d, f) => f ## d
+    }
+  )
 }
 
 object MemoryFormatter {
@@ -289,8 +389,8 @@ case class Analyzer(g: AnalyzerGenerics) extends Component {
 
   val fifo = new StreamFifo(Bits(g.internalWidth bit), 64)
   val fifoOverflow = Bool()
-  fifo.io.push.translateFrom(compressor.io.compressed.toStream(fifoOverflow))(
-    (o, i) => o := i.isData ## i.dataOrTime.resize(g.compressedDataWidth)
+  fifo.io.push.translateFrom(compressor.io.compressed.toStream(fifoOverflow))((o, i) =>
+    o := i.isData ## i.dataOrTime.resize(g.compressedDataWidth)
   )
   val dma = Axi3Dma(dmaAxiConfig)
   dma.io.run := io.status.running
