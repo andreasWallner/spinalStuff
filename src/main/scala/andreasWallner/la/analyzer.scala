@@ -140,7 +140,9 @@ case class LEB128CompressorGenerics(
   assert(counterWidth > 0, "impossible configuration, no space left for counter")
 
   def counterBoundaries = {
-    var nextChunk = chunkSize - 1 - (dataWidth + chunkSize - 2) / (chunkSize - 1)
+    val dataRemainder = dataWidth % (chunkSize - 1)
+    println("dataRemainder", dataRemainder)
+    var nextChunk = chunkSize - 1 - dataRemainder
     var i = 0
     List(0).iterator ++
       Iterator
@@ -167,10 +169,10 @@ case class LEB128Compressor(g: LEB128CompressorGenerics) extends Component {
 
   val dataChange = io.data =/= RegNext(io.data)
 
-  val counter = Reg(UInt(g.counterWidth bit))
+  val counter = Reg(UInt(g.counterWidth bit)) init 0
   println(g.chunkCnt, g.flagBitCnt, g.counterWidth)
   println(g.counterBoundaries.mkString("  "))
-  val counterFlagBits = Reg(Bits(g.counterBoundaries.length - 1 bit)) // MSB flag bit is always 0
+  val counterFlagBits = Reg(Bits(g.counterBoundaries.length - 1 bit)) init 0 // MSB flag bit is always 0
   val extractedFlagBits = Vec(g.counterBoundaries.drop(1).map(i => counter(i))).asBits
   val nextCounterFlagBits = counterFlagBits | extractedFlagBits
 
@@ -190,7 +192,7 @@ case class LEB128Compressor(g: LEB128CompressorGenerics) extends Component {
 
   io.compressed.valid := dataChange || maxCount
   io.compressed.payload.compressed := Cat(
-    outputData.subdivideIn(g.chunkSize bit, strict=false).zip((False ## flagBits).subdivideIn(1 bit)).map {
+    outputData.subdivideIn(g.chunkSize-1 bit, strict=false).zip((False ## flagBits).subdivideIn(1 bit)).map {
       case (d, f) => f ## d
     }
   )
