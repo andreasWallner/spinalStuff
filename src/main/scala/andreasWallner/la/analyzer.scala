@@ -151,7 +151,7 @@ case class LEB128CompressorGenerics(
           nextChunk = chunkSize - 1
           i min (counterWidth - 1)
         }
-        .takeWhile(_ => i < internalWidth)
+        .takeWhile(_ => i < counterWidth)
   }
 }
 
@@ -185,14 +185,16 @@ case class LEB128Compressor(g: LEB128CompressorGenerics) extends Component {
     counterFlagBits := 0
   }
 
-  val dataFlagBits = Bits(g.flagBitCnt - widthOf(counterFlagBits) bit).setAll()
+  //val dataFlagBits = B(g.flagBitCnt - widthOf(counterFlagBits) bit, default -> true)
+  val dataFlagBits = io.data.subdivideIn(g.chunkSize - 1 bit, strict=false).map(chunk => chunk.orR).asBits()
+  val cumulativeFlags = ((nextCounterFlagBits(0) ## dataFlagBits).reversed.orCum.reversed)(0 until g.chunkSize - 1)
 
-  val flagBits = nextCounterFlagBits ## dataFlagBits
+  val flagBits = False ## nextCounterFlagBits ## cumulativeFlags
   val outputData = counter ## io.data
 
   io.compressed.valid := dataChange || maxCount
   io.compressed.payload.compressed := Cat(
-    outputData.subdivideIn(g.chunkSize-1 bit, strict=false).zip((False ## flagBits).subdivideIn(1 bit)).map {
+    outputData.subdivideIn(g.chunkSize-1 bit, strict=false).zip((flagBits).subdivideIn(1 bit)).map {
       case (d, f) => f ## d
     }
   )

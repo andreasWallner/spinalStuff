@@ -34,9 +34,6 @@ class Leb128CompressorTest extends SpinalFunSuite {
             .setDefinitionName(f"LEB128Compressor_${dw}_$iw")
         )
     }
-  /*val dut = namedSimConfig.compile(
-    LEB128Compressor(LEB128CompressorGenerics(dataWidth = 3, internalWidth = 16))
-  )*/
 
   test(dutFactory(3, 16), "test") { dut =>
     val scoreboard = LoggingScoreboardInOrder[(BigInt, BigInt)]()
