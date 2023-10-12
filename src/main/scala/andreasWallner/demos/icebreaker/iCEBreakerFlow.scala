@@ -1,6 +1,6 @@
 package andreasWallner.demos.icebreaker
 
-import andreasWallner.demos.icebreaker.Dot.report
+//import andreasWallner.demos.icebreaker.Dot.report
 import andreasWallner.eda.YosysFlow
 import andreasWallner.eda.YosysFlow.dotDiagram
 import andreasWallner.rtlutils._
@@ -25,9 +25,9 @@ class iCEBreakerFlow[T <: Component](
     defaultClockDomainFrequency = FixedFrequency(12 MHz),
     device = Device.LATTICE
   ).generateVerilog { InOutWrapper(c, InOutWrapper.LatticeIce40SB_IO) }
-  if (generateDot) {
+  /*if (generateDot) {
     dotDiagram(workspace, Rtl(report))
-  }
+  }*/
   val synth = YosysFlow(
     workspace,
     Rtl(report),

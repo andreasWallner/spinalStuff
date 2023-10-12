@@ -112,7 +112,7 @@ case class LEB128Counter(width: Int, chunkBits: Int = 8) extends Bundle {
 
   val counterChunks = io.count.subdivideIn(chunkBits - 1 bit)
   val willOverflowPre = counterChunks.map(c => c.andR)
-  val willOverflow = willOverflowPre.asBits().orCum
+  val willOverflow = willOverflowPre.asBits()//.orCum
   val valid = Reg(Bits(validBits bit)) init 0
 
   when(io.en) {
@@ -187,7 +187,7 @@ case class LEB128Compressor(g: LEB128CompressorGenerics) extends Component {
 
   //val dataFlagBits = B(g.flagBitCnt - widthOf(counterFlagBits) bit, default -> true)
   val dataFlagBits = io.data.subdivideIn(g.chunkSize - 1 bit, strict=false).map(chunk => chunk.orR).asBits()
-  val cumulativeFlags = ((nextCounterFlagBits(0) ## dataFlagBits).reversed.orCum.reversed)(0 until g.chunkSize - 1)
+  val cumulativeFlags = ((nextCounterFlagBits(0) ## dataFlagBits).reversed/*.orCum*/.reversed)(0 until g.chunkSize - 1)
 
   val flagBits = False ## nextCounterFlagBits ## cumulativeFlags
   val outputData = counter ## io.data
