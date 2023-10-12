@@ -1,7 +1,7 @@
 package andreasWallner.demos.icebreaker
 
-import andreasWallner.demos.RgbLed
 import andreasWallner.io.ftdi.AsyncFifo
+import andreasWallner.io.RgbLed
 import spinal.core._
 import spinal.lib._
 import spinal.lib.com.uart.Uart

@@ -1,6 +1,6 @@
 package andreasWallner.iceblink
 
-import andreasWallner.demos.RgbLed
+import andreasWallner.io.RgbLed
 import andreasWallner.la.{AnalyzerGenerics, RLECompressor}
 import andreasWallner.eda.YosysFlow
 import andreasWallner.io.spi.Spi
