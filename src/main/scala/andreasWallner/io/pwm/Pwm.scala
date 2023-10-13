@@ -12,9 +12,14 @@ import scala.collection.immutable
 import scala.language.postfixOps
 
 object Pwm {
+  object OutputMode extends SpinalEnum {
+    val SET_RESET, RESET_SET = newElement()
+  }
+
   case class CoreParameters(
       counterWidth: Int = 32,
-      channelCnt: Int = 1
+      channelCnt: Int = 1,
+      modes: Seq[OutputMode.E] = List(OutputMode.SET_RESET)
   )
 
   case class PeripheralParameters(
@@ -114,6 +119,8 @@ object Pwm {
   }
 
   case class Core(parameters: Pwm.CoreParameters) extends Component {
+    require(parameters.modes.length == 1, "PWM must currently be configured for a single mode")
+
     val io = new Bundle {
       val max_count = in port UInt(parameters.counterWidth bits)
       val levels = in port Vec(UInt(parameters.counterWidth bits), parameters.channelCnt)
@@ -133,8 +140,15 @@ object Pwm {
       }
     }
 
-    for ((pwm, level) <- io.pwm.zip(io.levels))
-      pwm := (counter.value < level) && io.run
+    for ((pwm, level) <- io.pwm.zip(io.levels)) {
+      if (parameters.modes(0) == OutputMode.SET_RESET) {
+        pwm init False
+        pwm.setWhen(counter.value === 0).clearWhen(counter.value === level || !io.run)
+      } else {
+        pwm init True
+        pwm.clearWhen(counter.value === 0).setWhen(counter.value === level || !io.run)
+      }
+    }
   }
 }
 
