@@ -5,8 +5,11 @@ import andreasWallner.sim._
 import andreasWallner.{LoggingScoreboardInOrder, SpinalFunSuite}
 import spinal.core.sim._
 import spinal.lib.sim._
+import spinal.sim.SimManagerContext
 
 class Leb128CompressorTest extends SpinalFunSuite {
+  // TODO remove once simRandom is released
+  val simRandom = scala.util.Random
   def decompress_split(b: BigInt, dataSize: Int): (BigInt, BigInt) = {
     var compressed = b
     var result = compressed & 0x7f
