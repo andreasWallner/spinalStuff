@@ -112,7 +112,7 @@ case class LEB128Counter(width: Int, chunkBits: Int = 8) extends Bundle {
 
   val counterChunks = io.count.subdivideIn(chunkBits - 1 bit)
   val willOverflowPre = counterChunks.map(c => c.andR)
-  val willOverflow = willOverflowPre.asBits()//.orCum
+  val willOverflow = willOverflowPre.asBits().orCum
   val valid = Reg(Bits(validBits bit)) init 0
 
   when(io.en) {
@@ -131,17 +131,22 @@ case class LEB128Counter(width: Int, chunkBits: Int = 8) extends Bundle {
 case class LEB128CompressorGenerics(
     dataWidth: Int,
     internalWidth: Int,
-    externalTriggerCnt: Int = 0
+    compressCanonically: Boolean = true
 ) {
   val chunkSize = 8
   val chunkCnt = (internalWidth + chunkSize - 1) / chunkSize
+
+  /** number of chunks that contain data (last may overlap with counter) */
+  val dataChunkCnt = (dataWidth + chunkSize - 2) / (chunkSize - 1)
   val flagBitCnt = chunkCnt
   val counterWidth = internalWidth - flagBitCnt - dataWidth
   assert(counterWidth > 0, "impossible configuration, no space left for counter")
 
+  val dataStrictlyDivides = (dataWidth % (chunkSize - 1)) == 0
+
+  /** counter indices for all bits that become LSBs inside a chunk (including 0) */
   def counterBoundaries = {
     val dataRemainder = dataWidth % (chunkSize - 1)
-    println("dataRemainder", dataRemainder)
     var nextChunk = chunkSize - 1 - dataRemainder
     var i = 0
     List(0).iterator ++
@@ -157,46 +162,83 @@ case class LEB128CompressorGenerics(
 
 case class LEB128CompressedData(width: Int) extends Bundle {
   val compressed = Bits(width bit)
-  def valid = ???
+
+  def chunks = compressed.subdivideIn(8 bit, strict=false)
+  def validChunks = 7.until(width, 8).map(compressed(_)).asBits()
 }
 
+/**
+ * Compress data with variable length encoding
+ *
+ * While `run` is turned on, the compressor will output counter ## data, compressed
+ * using "LEB128" (MSB of byte indicates if a higher valued byte is present).
+ * Data is output when being turned on, data changes or the counter would overflow.
+ *
+ * When being serialized the data should be sent LSByte first for standard decoding.
+ */
 case class LEB128Compressor(g: LEB128CompressorGenerics) extends Component {
   val io = new Bundle {
+    val run = in Bool ()
     val data = in Bits (g.dataWidth bits)
     val compressed = master(Flow(LEB128CompressedData(g.internalWidth)))
-    val run = in Bool ()
   }
 
   val dataChange = io.data =/= RegNext(io.data)
+  val counter = Reg(UInt(g.counterWidth bit))
+  counter init counter.maxValue
 
-  val counter = Reg(UInt(g.counterWidth bit)) init 0
-  println(g.chunkCnt, g.flagBitCnt, g.counterWidth)
-  println(g.counterBoundaries.mkString("  "))
-  val counterFlagBits = Reg(Bits(g.counterBoundaries.length - 1 bit)) init 0 // MSB flag bit is always 0
-  val extractedFlagBits = Vec(g.counterBoundaries.drop(1).map(i => counter(i))).asBits
-  val nextCounterFlagBits = counterFlagBits | extractedFlagBits
+  // extract LSBs of each counter chunk, accumulate them to not have to orR counter bits of chunks
+  val extractedChunkLSBits = Vec(g.counterBoundaries.map(i => counter(i))).asBits
+  val counterFlagBits = Reg(Bits(g.counterBoundaries.length bit)) init (True #* g.counterBoundaries.length)
+  val nextCounterFlagBits = counterFlagBits | extractedChunkLSBits
 
   val maxCount = counter === counter.maxValue
-  when(io.run && !dataChange && !maxCount) {
-    counter := counter + 1
-    counterFlagBits := nextCounterFlagBits
-  } otherwise {
+  when(!io.run) {
+    counter := counter.maxValue
+    counterFlagBits := True #* widthOf(counterFlagBits)
+  } elsewhen(io.run && dataChange || maxCount) {
     counter := 0
     counterFlagBits := 0
+  } otherwise {
+    counter := counter + 1
+    counterFlagBits := nextCounterFlagBits
   }
 
-  //val dataFlagBits = B(g.flagBitCnt - widthOf(counterFlagBits) bit, default -> true)
-  val dataFlagBits = io.data.subdivideIn(g.chunkSize - 1 bit, strict=false).map(chunk => chunk.orR).asBits()
-  val cumulativeFlags = ((nextCounterFlagBits(0) ## dataFlagBits).reversed/*.orCum*/.reversed)(0 until g.chunkSize - 1)
+  // or'd data chunks (except lowest since we never need that flag bit is it's always present)
+  // or just fixed ones to make the HW smaller/faster but compression worse
+  val dataFlagBits = if (g.compressCanonically) {
+    io.data
+      .subdivideIn(g.chunkSize - 1 bit, strict = false)
+      .drop(1)
+      .map(chunk => chunk.orR)
+      .asBits()
+  } else {
+    True #* (g.dataChunkCnt - 1)
+  }
+  // propagate higher flags to lower ones
+  // include least significant counter bit, if that is set then we must also
+  // set all flags for data bits
+  val cumulativeDataFlags =
+    (nextCounterFlagBits(0) ## dataFlagBits).reversed.orCum.reversed.dropHigh(1)
+  // TODO check performance difference when pipelining this
 
-  val flagBits = False ## nextCounterFlagBits ## cumulativeFlags
+  // if the data can be strictly divided then the MSB of cumulativeFlags is the flag
+  // for a chunk, if not then we need to combine the data MSB flag with the counter LSB flag
+  // - which we just did above, so we can drop the LSB counter when combining
+  val usedCounterFlagBits =
+    if (g.dataStrictlyDivides) nextCounterFlagBits else nextCounterFlagBits.dropLow(1)
+
+  val flagBits = False ## usedCounterFlagBits ## cumulativeDataFlags
   val outputData = counter ## io.data
 
-  io.compressed.valid := dataChange || maxCount
+  io.compressed.valid := (dataChange || maxCount) && io.run
   io.compressed.payload.compressed := Cat(
-    outputData.subdivideIn(g.chunkSize-1 bit, strict=false).zip((flagBits).subdivideIn(1 bit)).map {
-      case (d, f) => f ## d
-    }
+    outputData
+      .subdivideIn(g.chunkSize - 1 bit, strict = false)
+      .zip(flagBits.subdivideIn(1 bit))
+      .map {
+        case (d, f) => f ## d
+      }
   )
 }
 
