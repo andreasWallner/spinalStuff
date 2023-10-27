@@ -66,6 +66,7 @@ package object rtlutils {
     }
   }
 
+  //noinspection AccessorLikeMethodIsEmptyParen
   implicit class ComponentPimper(c: Component) {
     def getAllClockDomains(): Set[ClockDomain] = {
       val clockDomains = mutable.LinkedHashSet[ClockDomain]()
@@ -111,6 +112,44 @@ package object rtlutils {
         }
       }
       c
+    }
+  }
+
+  implicit class DataPimperCumulative(d: Data) {
+    /**
+     * Build vector with bits cumulatively or'd
+     *
+     * result(0) becomes input(0),
+     * result(2) becomes input(0 until 2).orR, etc.
+     *
+     * @return Bits(widthOf(input))
+     */
+    def orCum: Bits = {
+      val cumulative = Bits(widthOf(d) bit)
+
+      for (i <- 0 until widthOf(d)) {
+        cumulative(i) := d.asBits(0 to i).orR
+      }
+
+      cumulative
+    }
+
+    /**
+     * Build vector with bits cumulatively and'd
+     *
+     * result(0) becomes input(0),
+     * result(2) becomes input(0 until 2).andR, etc.
+     *
+     * @return Bits(widthOf(input))
+     */
+    def andCum: Bits = {
+      val cumulative = Bits(widthOf(d) bit)
+
+      for (i <- 0 until widthOf(d)) {
+        cumulative(i) := d.asBits(0 to i).andR
+      }
+
+      cumulative
     }
   }
 }
