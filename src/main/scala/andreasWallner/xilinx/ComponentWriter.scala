@@ -71,26 +71,26 @@ object VivadoIpify {
   ): mutable.StringBuilder = {
     builder ++= "  <spirit:busInterfaces>\n"
 
-    forMasterSlaveInterfaces(that) { (ms, idx) =>
+    forMasterSlaveInterfaces(that) { ms =>
       XilinxSupportFactory.makeSupport(ms) match {
-        case Some(support) => genBusInterface(support, idx); true
+        case Some(support) => genBusInterface(support, ms.getName()); true
         case None          => false
       }
     }
 
-    def genBusInterface(support: BusSupport, idx: Int): Unit = {
+    def genBusInterface(support: BusSupport, name: String): Unit = {
       import Helpers._
       import support.{abstractionType, busType}
 
-      val name = support.name(idx)
+      val fullName = support.fullName(name)
 
       builder ++= "    <spirit:busInterface>\n"
       builder ++= s"""
-                     |      <spirit:name>$name</spirit:name>
+                     |      <spirit:name>$fullName</spirit:name>
                      |      <spirit:busType spirit:vendor="${busType.vendor}" spirit:library="${busType.library}" spirit:name="${busType.name}" spirit:version="${busType.version}"/>
                      |      <spirit:abstractionType spirit:vendor="${abstractionType.vendor}" spirit:library="${abstractionType.library}" spirit:name="${abstractionType.name}" spirit:version="${abstractionType.version}"/>
                      |      <spirit:slave>
-                     |        <spirit:memoryMapRef spirit:memoryMapRef="$name"/>
+                     |        <spirit:memoryMapRef spirit:memoryMapRef="$fullName"/>
                      |      </spirit:slave>
                      |      <spirit:portMaps>""".stripMargin
 

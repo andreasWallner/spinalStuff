@@ -24,11 +24,11 @@ object XilinxSupportFactory {
 }
 
 trait BusSupport {
-  def name(idx: Integer): String
+  def fullName(name: String): String
 
-  def rename(idx: Integer): Unit
+  def rename(name: String): Unit
 
-  def addAttributes(idx: Integer): Unit
+  def addAttributes(name: String): Unit
 
   def portMaps(): List[PortMap]
 
@@ -36,30 +36,30 @@ trait BusSupport {
 
   def abstractionType: SpiritAbstractionType
 
-  def clockInterfaceNames(idx: Integer): Option[String]
+  def clockInterfaceNames(name: String): Option[String]
 }
 
 // see Vivado 2022.1 install directory, data/ip/xilinx/processing_system7_v5_5/component.xml
 // search for DMA0_REQ
 case class DmaReqSupport(req: ZynqDma.Request) extends BusSupport {
-  override def name(idx: Integer) = f"DMA${idx}_REQ"
+  override def fullName(name: String) = f"DMA${name}_REQ"
 
-  override def rename(idx: Integer): Unit = {
-    val prefix = f"DMA${idx}_"
+  override def rename(name: String): Unit = {
+    val prefix = f"DMA${name}_"
     req.drready.setName(prefix + "DRREADY")
     req.drlast.setName(prefix + "DRLAST")
     req.drvalid.setName(prefix + "DRVALID")
     req.drtype.setName(prefix + "DRTYPE")
   }
 
-  override def addAttributes(idx: Integer): Unit = {
+  override def addAttributes(name: String): Unit = {
     def attr = "X_INTERFACE_INFO"
-    def info = f"xilinx.com:interface:axis_rtl:1.0 ${name(idx)} "
+    def info = f"xilinx.com:interface:axis_rtl:1.0 ${fullName(name)} "
     for (mapping <- portMaps())
       mapping.physicalPort.addAttribute(attr, info + mapping.logicalPort)
     req.drready.addAttribute(
       "X_INTERFACE_PARAMETER",
-      f"""XIL_INTERFACENAME ${name(idx)}, HAS_TLAST TRUE, HAS_TKEEP FALSE, HAS_TSTRB FALSE, HAS_TREADY TRUE, TUSER_WIDTH 2, TID_WIDTH 0, TDEST_WIDTH 0, TDATA_NUM_BYTES 0"""
+      f"""XIL_INTERFACENAME ${fullName(name)}, HAS_TLAST TRUE, HAS_TKEEP FALSE, HAS_TSTRB FALSE, HAS_TREADY TRUE, TUSER_WIDTH 2, TID_WIDTH 0, TDEST_WIDTH 0, TDATA_NUM_BYTES 0"""
     )
   }
 
@@ -78,27 +78,27 @@ case class DmaReqSupport(req: ZynqDma.Request) extends BusSupport {
   override def abstractionType =
     SpiritAbstractionType("xilinx.com", "interface", "axis", "1.0")
 
-  override def clockInterfaceNames(idx: Integer) =
-    Some(f"${name(idx)}:${req.drready.getName()}")
+  override def clockInterfaceNames(name: String) =
+    Some(f"${fullName(name)}:${req.drready.getName()}")
 }
 case class DmaAckSupport(ack: ZynqDma.Ack) extends BusSupport {
-  override def name(idx: Integer) = f"DMA${idx}_ACK"
+  override def fullName(name: String) = f"DMA${name}_ACK"
 
-  override def rename(idx: Integer): Unit = {
-    val prefix = f"DMA${idx}_"
+  override def rename(name: String): Unit = {
+    val prefix = f"DMA${name}_"
     ack.daready.setName(prefix + "DAREADY")
     ack.davalid.setName(prefix + "DAVALID")
     ack.datype.setName(prefix + "DATYPE")
   }
 
-  override def addAttributes(idx: Integer): Unit = {
+  override def addAttributes(name: String): Unit = {
     def attr = "X_INTERFACE_INFO"
-    def info = f"xilinx.com:interface:axis_rtl:1.0 ${name(idx)} "
+    def info = f"xilinx.com:interface:axis_rtl:1.0 ${fullName(name)} "
     for (mapping <- portMaps())
       mapping.physicalPort.addAttribute(attr, info + mapping.logicalPort)
     ack.daready.addAttribute(
       "X_INTERFACE_PARAMETER",
-      f"""XIL_INTERFACENAME ${name(idx)}, HAS_TLAST FALSE, HAS_TKEEP FALSE, HAS_TSTRB FALSE, HAS_TREADY TRUE, TUSER_WIDTH 2, TID_WIDTH 0, TDEST_WIDTH 0, TDATA_NUM_BYTES 0"""
+      f"""XIL_INTERFACENAME ${fullName(name)}, HAS_TLAST FALSE, HAS_TKEEP FALSE, HAS_TSTRB FALSE, HAS_TREADY TRUE, TUSER_WIDTH 2, TID_WIDTH 0, TDEST_WIDTH 0, TDATA_NUM_BYTES 0"""
     )
   }
 
@@ -116,8 +116,8 @@ case class DmaAckSupport(ack: ZynqDma.Ack) extends BusSupport {
   override def abstractionType =
     SpiritAbstractionType("xilinx.com", "interface", "axis", "1.0")
 
-  override def clockInterfaceNames(idx: Integer) =
-    Some(f"${name(idx)}:${ack.daready.getName()}")
+  override def clockInterfaceNames(name: String) =
+    Some(f"${fullName(name)}:${ack.daready.getName()}")
 }
 
 /**
@@ -127,14 +127,12 @@ case class DmaAckSupport(ack: ZynqDma.Ack) extends BusSupport {
   * See https://docs.xilinx.com/v/u/en-US/ug1037-vivado-axi-reference-guide
   */
 case class AxiLite4Support(axilite: AxiLite4) extends BusSupport {
-  def name(idx: Integer): String = {
-    val dirPrefix = if (axilite.isMasterInterface) "M" else "S"
-    val idxPrefix = f"$idx%02d"
-    dirPrefix + idxPrefix + "_AXI"
-  }
+  val dirPrefix = if (axilite.isMasterInterface) "M" else "S"
 
-  def rename(idx: Integer): Unit = {
-    val prefix = name(idx) + "_"
+  override def fullName(name: String): String = dirPrefix + "_" + name + "_AXI"
+
+  override def rename(name: String): Unit = {
+    val prefix = fullName(name) + "_"
 
     renameAx(axilite.aw, prefix, "w")
     renameW(axilite.w, prefix)
@@ -170,7 +168,7 @@ case class AxiLite4Support(axilite: AxiLite4) extends BusSupport {
     r.ready.setName(prefix + f"rready")
   }
 
-  def portMaps(): List[PortMap] = {
+  override def portMaps(): List[PortMap] = {
     import axilite._
     List(
       PortMap("AWADDR", aw.addr),
@@ -195,25 +193,25 @@ case class AxiLite4Support(axilite: AxiLite4) extends BusSupport {
     )
   }
 
-  def busType: SpiritBusType =
+  override def busType: SpiritBusType =
     SpiritBusType("xilinx.com", "interface", "aximm", "1.0")
 
-  def abstractionType: SpiritAbstractionType =
+  override def abstractionType: SpiritAbstractionType =
     SpiritAbstractionType("xilinx.com", "interface", "aximm_rtl", "1.0")
 
-  override def addAttributes(idx: Integer): Unit = {
+  override def addAttributes(name: String): Unit = {
     def attr = "X_INTERFACE_INFO"
-    def info = "xilinx.com:interface:aximm:1.0 " + name(idx) + " "
+    def info = "xilinx.com:interface:aximm:1.0 " + fullName(name) + " "
     for (mapping <- portMaps())
       mapping.physicalPort.addAttribute(attr, info + mapping.logicalPort)
     axilite.r.ready.addAttribute(
       "X_INTERFACE_PARAMETER",
-      f"XIL_INTERFACENAME ${name(idx)}, DATA_WIDTH ${axilite.config.dataWidth}, PROTOCOL AXI4LITE, ADDRESS_WIDTH ${axilite.config.addressWidth}"
+      f"XIL_INTERFACENAME ${fullName(name)}, DATA_WIDTH ${axilite.config.dataWidth}, PROTOCOL AXI4LITE, ADDRESS_WIDTH ${axilite.config.addressWidth}"
     )
   }
 
-  override def clockInterfaceNames(idx: Integer) =
-    Some(f"${name(idx)}:${axilite.r.ready.getName()}")
+  override def clockInterfaceNames(name: String) =
+    Some(f"${fullName(name)}:${axilite.r.ready.getName()}")
 }
 
 // See Vivado 2022.1 install directory: data/ip/xilinx/axi_apb_bridge_v3_0/component.xml
@@ -221,13 +219,10 @@ case class AxiLite4Support(axilite: AxiLite4) extends BusSupport {
 case class Apb3Support(apb3: Apb3) extends BusSupport {
   def dirPrefix = if (apb3.isMasterInterface) "M" else "S"
 
-  def name(idx: Integer): String = {
-    val idxPrefix = f"$idx%02d_APB"
-    dirPrefix + idxPrefix + "_"
-  }
+  override def fullName(name: String): String = "APB_" + dirPrefix + "_" + name
 
-  def rename(idx: Integer): Unit = {
-    val prefix = name(idx)
+  def rename(name: String): Unit = {
+    val prefix = fullName(name) + "_"
 
     apb3.PADDR.setName(prefix + "PADDR")
     apb3.PENABLE.setName(prefix + "PENABLE")
@@ -239,10 +234,9 @@ case class Apb3Support(apb3: Apb3) extends BusSupport {
     apb3.PWRITE.setName(prefix + "PWRITE")
   }
 
-  def addAttributes(idx: Integer): Unit = {
-    def name = f"APB_${dirPrefix}${idx}"
+  def addAttributes(name: String): Unit = {
     def attr = "X_INTERFACE_INFO"
-    def info = "xilinx.com:interface:apb:1.0 " + name + " "
+    def info = "xilinx.com:interface:apb:1.0 " + fullName(name) + " "
     for (mapping <- portMaps())
       mapping.physicalPort.addAttribute(attr, info + mapping.logicalPort)
     // TODO bus definition
@@ -264,19 +258,16 @@ case class Apb3Support(apb3: Apb3) extends BusSupport {
   override def abstractionType =
     SpiritAbstractionType("xilinx.com", "interface", "apb_rtl", "1.0")
 
-  override def clockInterfaceNames(idx: Integer) =
-    Some(f"${name(idx)}:${apb3.PREADY.getName()}")
+  override def clockInterfaceNames(name: String) =
+    Some(f"${fullName(name)}:${apb3.PREADY.getName()}")
 }
 
 case class Axi4Support(axi4: Axi4) extends BusSupport {
-  def name(idx: Integer): String = {
-    val dirPrefix = if (axi4.isMasterInterface) "M" else "S"
-    val idxPrefix = f"_AXI_$idx%02d"
-    dirPrefix + idxPrefix + "_"
-  }
+  val dirPrefix = if(axi4.isMasterInterface) "M" else "S"
+  def fullName(name: String): String = dirPrefix + "_AXI_" + name
 
-  def rename(idx: Integer): Unit = {
-    val prefix = name(idx)
+  def rename(name: String): Unit = {
+    val prefix = fullName(name) + "_"
 
     renameAx(axi4.aw, prefix, "W", axi4.config, axi4.config.awUserWidth)
     renameW(axi4.w, prefix, axi4.config)
@@ -394,42 +385,35 @@ case class Axi4Support(axi4: Axi4) extends BusSupport {
   override def abstractionType: SpiritAbstractionType =
     SpiritAbstractionType("xilinx.com", "interface", "aximm_rtl", "1.0")
 
-  override def addAttributes(idx: Integer): Unit = {
+  override def addAttributes(name: String): Unit = {
     def attr = "X_INTERFACE_INFO"
-    def info = "xilinx.com:interface:aximm_rtl:1.0 " + name(idx) + " "
+    def info = "xilinx.com:interface:aximm_rtl:1.0 " + fullName(name) + " "
     for (mapping <- portMaps() if mapping.physicalPort != null)
       mapping.physicalPort.addAttribute(attr, info + mapping.logicalPort)
     axi4.r.ready.addAttribute(
       "X_INTERFACE_PARAMETER",
-      f"XIL_INTERFACENAME ${name(idx)}, DATA_WIDTH ${axi4.config.dataWidth}, PROTOCOL AXI, ADDRESS_WIDTH ${axi4.config.addressWidth}"
+      f"XIL_INTERFACENAME ${fullName(name)}, DATA_WIDTH ${axi4.config.dataWidth}, PROTOCOL AXI, ADDRESS_WIDTH ${axi4.config.addressWidth}"
     )
   }
 
-  override def clockInterfaceNames(idx: Integer) =
-    Some(f"${name(idx)}:${axi4.r.ready.getName()}")
+  override def clockInterfaceNames(name: String) =
+    Some(f"${fullName(name)}:${axi4.r.ready.getName()}")
 }
 
 object forMasterSlaveInterfaces {
-  var slaveIdx = 0
-  var masterIdx = 0
-
-  def apply(that: Component)(f: (IMasterSlave, Int) => Boolean): Unit =
+  def apply(that: Component)(f: (Data with IMasterSlave) => Boolean): Unit =
     traverse(that)(f)
 
-  def traverse(that: Component)(f: (IMasterSlave, Int) => Boolean): Unit =
+  def traverse(that: Component)(f: (Data with IMasterSlave) => Boolean): Unit =
     that.getGroupedIO(true) foreach (process(_)(f))
 
-  def traverse(b: Bundle)(f: (IMasterSlave, Int) => Boolean): Unit =
+  def traverse(b: Bundle)(f: (Data with IMasterSlave) => Boolean): Unit =
     b.elements foreach { case (_, d) => process(d)(f) }
 
-  def process(d: Data)(f: (IMasterSlave, Int) => Boolean): Unit = {
+  def process(d: Data)(f: (Data with IMasterSlave) => Boolean): Unit = {
     d match {
-      case ms: IMasterSlave =>
-        val idx = if (ms.isMasterInterface) masterIdx else slaveIdx
-        val done = f(ms, idx)
-
-        if (done) {
-          if (ms.isMasterInterface) masterIdx else slaveIdx = idx + 1
+      case ms: Data with IMasterSlave =>
+        if(f(ms)) {
           return
         }
       case _ =>
@@ -445,12 +429,13 @@ object XilinxNamer {
   def apply[T <: Component](comp: T): T = {
     def doIt: Unit = {
       val interfaceList = mutable.ArrayBuffer[String]()
-      forMasterSlaveInterfaces(comp) { (intf: IMasterSlave, idx: Int) =>
+      forMasterSlaveInterfaces(comp) { (intf: Data with IMasterSlave) =>
         XilinxSupportFactory.makeSupport(intf) match {
           case Some(support) =>
-            support.rename(idx)
-            support.addAttributes(idx)
-            support.clockInterfaceNames(idx).map(name => interfaceList += name)
+            val name = intf.getName().stripPrefix("io_")
+            support.rename(name)
+            support.addAttributes(name)
+            support.clockInterfaceNames(name).map(name => interfaceList += name)
             true
           case _ => false
         }
@@ -468,7 +453,7 @@ object XilinxNamer {
 
   def name_clockDomain(cd: ClockDomain): Unit = {
     cd.readClockWire.setName(
-      "ACLK"
+      "aclk"
         + (cd.frequency match {
           case f: FixedFrequency =>
             Helper.engineeringNotation(f.getValue.toBigDecimal, "Hz")
@@ -477,15 +462,15 @@ object XilinxNamer {
     )
     if (cd.hasResetSignal) {
       cd.readResetWire.setName(
-        (if (cd.config.resetKind == ASYNC) "A" else "")
-          + "RESET"
-          + (if (cd.config.resetActiveLevel == HIGH) "" else "N")
+        (if (cd.config.resetKind == ASYNC) "a" else "")
+          + "reset"
+          + (if (cd.config.resetActiveLevel == HIGH) "" else "n")
       )
     }
 
     if (cd.hasClockEnableSignal) {
       cd.readClockEnableWire.setName(
-        "CE" + (if (cd.config.resetActiveLevel == HIGH) "" else "N")
+        "ce" + (if (cd.config.resetActiveLevel == HIGH) "" else "n")
       )
     }
   }
