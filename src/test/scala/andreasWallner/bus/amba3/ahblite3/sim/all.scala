@@ -5,22 +5,25 @@ import spinal.core._
 import spinal.core.sim._
 import spinal.lib.bus.amba3.ahblite.{AhbLite3, AhbLite3Master}
 
-import scala.util.Random
-
 case class AhbLite3ControlSignals(
-                                   address: BigInt,
-                                   write: Boolean,
-                                   size: Int,
-                                   prot: Int,
-                                   trans: Int
-                                 ) {
+    address: BigInt,
+    write: Boolean,
+    size: Int,
+    prot: Int,
+    trans: Int
+) {
   override def toString = {
     val action = if (write) "W" else "R"
     f"($address%04x $action)"
   }
 }
 
-abstract case class AhbLite3SlaveAgent(ahb: AhbLite3, cd: ClockDomain, ss: SimString, hreadyoutWhenIdle:Option[Boolean]=None) {
+abstract case class AhbLite3SlaveAgent(
+    ahb: AhbLite3,
+    cd: ClockDomain,
+    ss: SimString,
+    hreadyoutWhenIdle: Option[Boolean] = None
+) {
   var delay = 0
   var addressPhase: Option[AhbLite3ControlSignals] = None
   def inDataPhase = addressPhase.isDefined
@@ -43,7 +46,8 @@ abstract case class AhbLite3SlaveAgent(ahb: AhbLite3, cd: ClockDomain, ss: SimSt
       )
       delay = if (addressPhase.get.trans == 0) 0 else nextDelay()
     }
-    ss #= s"$delay $inDataPhase $addressPhase"
+    if(ss != null)
+      ss #= s"$delay $inDataPhase $addressPhase"
     if (inDataPhase) {
       // HRESP might be left high from last random cycle before
       ahb.HRESP #= false
@@ -75,63 +79,34 @@ abstract case class AhbLite3SlaveAgent(ahb: AhbLite3, cd: ClockDomain, ss: SimSt
     } else {
       ahb.HRDATA.randomize()
       ahb.HRESP.randomize()
-      ahb.HREADYOUT #= hreadyoutWhenIdle.getOrElse(Random.nextBoolean())
+      ahb.HREADYOUT #= hreadyoutWhenIdle.getOrElse(simRandom.nextBoolean())
     }
     // TODO verify that HWRITE stays constant during data phase
     // TODO can HREADYOUT be low before a transfer starts?? model does not do that currently
     delay = 0.max(delay - 1)
   }
-  def nextDelay(): Int = Random.nextInt(3)
+  def nextDelay(): Int = simRandom.nextInt(3)
   def onRead(address: BigInt): (BigInt, Boolean)
   def onWrite(address: BigInt, value: BigInt): Boolean
 }
 
-abstract case class AhbLite3SlaveMonitor(ahb: AhbLite3, cd: ClockDomain) {
-  var addressPhase: Option[AhbLite3ControlSignals] = None
-  cd.onSamplings {
-    if (addressPhase.isDefined && ahb.HREADY.toBoolean && addressPhase.get.trans != 0) {
-      val ap = addressPhase.get
-      if (ap.write) {
-        onWrite(ap.address, ahb.HWDATA.toBigInt)
-      } else {
-        onRead(ap.address, ahb.HRDATA.toBigInt)
-      }
-      addressPhase = None
-    }
-
-    if (ahb.HSEL.toBoolean && ahb.HREADY.toBoolean) {
-      assert(ahb.HTRANS.toInt == 2, "IDLE transfers are not allowed in this testcase (temp)")
-      addressPhase = Some(
-        AhbLite3ControlSignals(
-          ahb.HADDR.toBigInt,
-          ahb.HWRITE.toBoolean,
-          ahb.HSIZE.toInt,
-          ahb.HPROT.toInt,
-          ahb.HTRANS.toInt
-        )
-      )
-    }
-  }
-
-  def onRead(address: BigInt, value: BigInt): Unit
-  def onWrite(address: BigInt, value: BigInt): Unit
-}
-
 // TODO handle early error response
-// TODO add parameter to simulate interconnect (which may change control during "address phase"
+// TODO add parameter to simulate interconnect (which may change control during "address phase")
 abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss: SimString) {
   def setupNextTransfer(): Option[BigInt]
-  def nextDelay(): Int = Random.nextInt(3)
+  def nextDelay(): Int = simRandom.nextInt(3)
 
   ahb.HTRANS #= 0 // IDLE
   ahb.HBURST #= 0
+
+  val IDLE = 0
+  val NONSEQ = 2
+
   var delay = nextDelay()
   var nextHWDATA: Option[BigInt] = None
   var inAddressPhase = false
   var inDataPhase = false
   cd.onSamplings {
-    //delay = 0.max(delay - 1)
-
     if (inDataPhase && ahb.HREADY.toBoolean)
       inDataPhase = false
 
@@ -143,7 +118,7 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
       // - 4.1 slave samples address & control when HSEL && HREADY -> interconnect may change prio during wait
       // - 4.1.1 mandates a default slave if the memory space is not completely filled
       //         -> that must generate the mandated zero-delay ACK response
-      ahb.HTRANS #= 0 // IDLE
+      ahb.HTRANS #= IDLE
       if (nextHWDATA.isDefined)
         ahb.HWDATA #= nextHWDATA.get
       nextHWDATA = None
@@ -152,14 +127,13 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
       inDataPhase = true
     }
 
-    ss #= s"$delay $inAddressPhase $inDataPhase"
+    if(ss != null)
+      ss #= s"$delay $inAddressPhase $inDataPhase"
     if (delay == 0 && !inAddressPhase) {
-      ahb.HTRANS #= 2 // NONSEQ
+      ahb.HTRANS #= NONSEQ
       ahb.HBURST #= 0
       ahb.HMASTLOCK #= false
-      //ahb.HSIZE #= 2
       nextHWDATA = setupNextTransfer()
-      //ahb.HWRITE #= nextHWRITE.isDefined
       delay = nextDelay()
       inAddressPhase = true
     } else if (!inAddressPhase) {
@@ -178,6 +152,36 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
       ahb.HWRITE.randomize()
     }
   }
+}
+
+abstract case class AhbLite3SlaveMonitor(ahb: AhbLite3, cd: ClockDomain) {
+  var addressPhase: Option[AhbLite3ControlSignals] = None
+  cd.onSamplings {
+    if (addressPhase.isDefined && ahb.HREADY.toBoolean && addressPhase.get.trans != 0) {
+      val ap = addressPhase.get
+      if (ap.write) {
+        onWrite(ap.address, ahb.HWDATA.toBigInt)
+      } else {
+        onRead(ap.address, ahb.HRDATA.toBigInt)
+      }
+      addressPhase = None
+    }
+
+    if (ahb.HSEL.toBoolean && ahb.HREADY.toBoolean) {
+      addressPhase = Some(
+        AhbLite3ControlSignals(
+          ahb.HADDR.toBigInt,
+          ahb.HWRITE.toBoolean,
+          ahb.HSIZE.toInt,
+          ahb.HPROT.toInt,
+          ahb.HTRANS.toInt
+        )
+      )
+    }
+  }
+
+  def onRead(address: BigInt, value: BigInt): Unit
+  def onWrite(address: BigInt, value: BigInt): Unit
 }
 
 abstract case class AhbLite3MasterMonitor(ahb: AhbLite3Master, cd: ClockDomain, idx: Int) {
@@ -199,7 +203,7 @@ abstract case class AhbLite3MasterMonitor(ahb: AhbLite3Master, cd: ClockDomain, 
     }
 
     if (addressPhase.isEmpty) {
-      assert(Seq(0,2).contains(ahb.HTRANS.toInt), "only NONSEQ is currently supported")
+      assert(Seq(0, 2).contains(ahb.HTRANS.toInt), "only NONSEQ is currently supported")
       addressPhase = Some(
         AhbLite3ControlSignals(
           ahb.HADDR.toBigInt,
@@ -216,4 +220,3 @@ abstract case class AhbLite3MasterMonitor(ahb: AhbLite3Master, cd: ClockDomain, 
   def onRead(address: BigInt, value: BigInt): Unit
   def onWrite(address: BigInt, value: BigInt): Unit
 }
-
