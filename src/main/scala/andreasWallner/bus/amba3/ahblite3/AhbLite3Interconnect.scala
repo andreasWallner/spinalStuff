@@ -22,6 +22,13 @@ object SkidBuffer {
   }
 }
 
+/** A buffer that is either transparent (comb. pass-through) or holds the previous input value
+ *
+ * If io.hold === False, io.o tracks io.i w/o delay
+ * If io.hold === True, io.o will stay at the last value io.i has while io.hold === False
+ *
+ * Or: a register & a mux
+ * */
 class SkidBuffer[T <: Data](payloadType: HardType[T], init: => T) extends Component {
   val io = new Bundle {
     val i = in port payloadType()
@@ -221,8 +228,8 @@ class AhbLite3Interconnect(
   // as long
   val gatedResponse = Vec(AhbLite3Response(ahbConfig), masterPorts)
 
-  // gate the request: we dont want slave B getting a masters address phase signals while
-  // it's still being stalled by slave A and couldn't continue
+  // gate the request: we don't want slave B getting a masters address phase signals while
+  // it's still being stalled by slave A and is maybe not able continue with B
   val masterReqGated = cloneOf(masterReq)
 
   for (i <- 0 until masterPorts) {

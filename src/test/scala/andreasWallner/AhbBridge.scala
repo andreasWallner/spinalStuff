@@ -42,7 +42,6 @@ class Tester extends Component {
     .build()
 }
 
-@Ignore
 class AhbBridgeTest extends SpinalFunSuite {
   val masterStrings = (0 until 3).map { i =>
     SimString(s"master_$i")
