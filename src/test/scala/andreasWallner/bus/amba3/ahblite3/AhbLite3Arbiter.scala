@@ -91,20 +91,35 @@ case class AhbLite3Arbiter(
         )
       }
 
-      val dataPhaseActive = Reg(Bool()).clearWhen(io.output.HREADYOUT).setWhen(io.output.HSEL && io.output.HREADY).init(False)
+      val dataPhaseActive = Reg(Bool())
+        .clearWhen(io.output.HREADYOUT)
+        .setWhen(io.output.HSEL && io.output.HREADY)
+        .init(False)
       slaveAdvancing :=
-        ((!dataPhaseActive && io.output.HSEL.rise(initAt=False)) ||
-        (dataPhaseActive && io.output.HREADYOUT)) && !locked
+        ((!dataPhaseActive && io.output.HSEL.rise(initAt = False)) ||
+          (dataPhaseActive && io.output.HREADYOUT))// && !locked
 
       val maskProposal = Bits(inputsCount bits)
-      val maskArbitrated = RegNextWhen(maskProposal, slaveAdvancing, init=B(0))
+      val maskArbitrated = RegNextWhen(maskProposal, slaveAdvancing, init = B(0))
       val maskLocked = locked.mux(maskArbitrated, maskProposal)
 
+      val lastArea = new Area {
+        val beatCounter = Reg(UInt(4 bits)) init (0)
+        val isLast = Vec(U"0000", U"0011", U"0111", U"1111")(U(io.output.HBURST >> 1)) === beatCounter || (io.output.HREADY && io.output.ERROR)
+
+        when(io.output.HSEL && io.output.HREADY && io.output.HTRANS(1)) {
+          beatCounter := beatCounter + 1
+          when(isLast) {
+            beatCounter := 0
+          }
+        }
+      }
+
       when(io.output.HSEL) { //valid
-        locked := True
+        locked := io.output.HBURST =/= 0 || io.output.HMASTLOCK
 
         when(io.output.HREADY) { //fire
-          when(io.output.last && !io.output.HMASTLOCK) { //End of burst and no lock
+          when(lastArea.isLast && !io.output.HMASTLOCK) { //End of burst and no lock
             locked := False
           }
         }
@@ -144,7 +159,11 @@ case class AhbLite3Arbiter(
       val dataIndex = RegNextWhen(requestIndex, slaveAdvancing)
       io.output.HWDATA := io.inputs(dataIndex).HWDATA
 
-      for (((buffered, input, requestRouted), idx) <- (bufferedCtrl, io.inputs, maskArbitrated.asBools).zipped.zipWithIndex) {
+      for (((buffered, input, requestRouted), idx) <- (
+             bufferedCtrl,
+             io.inputs,
+             maskArbitrated.asBools
+           ).zipped.zipWithIndex) {
         val trans_d = RegNextWhen(buffered.HTRANS, slaveAdvancing) init 0
         val sel_d = RegNext(buffered.HSEL, slaveAdvancing) init True
         val stall = hold(idx) & !maskArbitrated(idx)
