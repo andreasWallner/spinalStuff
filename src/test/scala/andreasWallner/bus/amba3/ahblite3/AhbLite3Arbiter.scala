@@ -61,6 +61,10 @@ object AhbLite3Control {
 /**
   * AHB Lite arbiter
   *
+  * Design details:
+  * - arbiter doesn't not modify any transfers, burst locks slave to master
+  * - locked transfer locks for one cycle too long, to reuse hardware present from burst
+  *
   * @param ahbLite3Config : Ahb bus configuration
   * @param inputsCount    : Number of inputs for the arbiter
   */
@@ -97,17 +101,14 @@ case class AhbLite3Arbiter(
         .init(False)
       slaveAdvancing :=
         ((!dataPhaseActive && io.output.HSEL.rise(initAt = False)) ||
-          (dataPhaseActive && io.output.HREADYOUT))// && !locked
-
-      val maskProposal = Bits(inputsCount bits)
-      val maskArbitrated = RegNextWhen(maskProposal, slaveAdvancing, init = B(0))
-      val maskLocked = locked.mux(maskArbitrated, maskProposal)
+          (dataPhaseActive && io.output.HREADYOUT)) // && !locked
 
       val lastArea = new Area {
         val beatCounter = Reg(UInt(4 bits)) init (0)
-        val isLast = Vec(U"0000", U"0011", U"0111", U"1111")(U(io.output.HBURST >> 1)) === beatCounter || (io.output.HREADY && io.output.ERROR)
+        val lastBeat = Vec(U(0), U(3), U(8), U(16))(U(io.output.HBURST >> 1))
+        val isLast = (lastBeat === beatCounter && !io.output.HBURST(0)) || io.output.ERROR
 
-        when(io.output.HSEL && io.output.HREADY && io.output.HTRANS(1)) {
+        when(slaveAdvancing) {
           beatCounter := beatCounter + 1
           when(isLast) {
             beatCounter := 0
@@ -115,34 +116,40 @@ case class AhbLite3Arbiter(
         }
       }
 
-      when(io.output.HSEL) { //valid
-        locked := io.output.HBURST =/= 0 || io.output.HMASTLOCK
+      val maskProposal = Bits(inputsCount bits) // which master will be next
+      val maskArbitrated =
+        RegNextWhen(maskProposal, slaveAdvancing && (!locked | lastArea.isLast), init = B(0)) // which master is driving the dataphase
 
-        when(io.output.HREADY) { //fire
-          when(lastArea.isLast && !io.output.HMASTLOCK) { //End of burst and no lock
-            locked := False
-          }
-        }
-      }
+      locked
+        .setWhen(
+          slaveAdvancing && io.output.HTRANS =/= 0 && (io.output.HBURST =/= 0 || io.output.HMASTLOCK)
+        )
+        .clearWhen(!io.output.HMASTLOCK)
 
       val requests = bufferedCtrl.map(i => i.HSEL && i.HTRANS =/= 0).asBits // which master requests, masterReq
       // next master being selected
-      maskProposal := (if (roundRobinArbiter)
-                         OHMasking.roundRobin(
-                           requests,
-                           maskArbitrated(maskArbitrated.high - 1 downto 0) ## maskArbitrated.msb
-                         )
-                       else
-                         OHMasking.first(requests))
+      when(locked) {
+        maskProposal := maskArbitrated
+      } otherwise {
+        maskProposal :=
+          (if (roundRobinArbiter)
+             OHMasking.roundRobin(
+               requests,
+               maskArbitrated(maskArbitrated.high - 1 downto 0) ## maskArbitrated.msb
+             )
+           else
+             OHMasking.first(requests))
+      }
       val requestsDel = RegNext(requests) init 0
 
+      // hold if request will not be next
       hold.zipWithIndex.foreach { case (b, idx) => b := requestsDel(idx) && ~maskArbitrated(idx) }
 
-      val requestIndex = OHToUInt(maskLocked)
+      val requestIndex = OHToUInt(maskProposal)
       val xsel = bufferedCtrl.map(_.HSEL).asBits()
-      val xarb = maskLocked
+      val xarb = maskProposal
       val selAndArb = xsel & xarb
-      io.output.HSEL := bufferedCtrl(requestIndex).HSEL
+      io.output.HSEL := bufferedCtrl(requestIndex).HSEL // TODO don't select if there is no transfer and no lock!
       io.output.HADDR := bufferedCtrl(requestIndex).HADDR
       io.output.HWRITE := bufferedCtrl(requestIndex).HWRITE
       io.output.HSIZE := bufferedCtrl(requestIndex).HSIZE
