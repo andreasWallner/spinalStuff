@@ -33,14 +33,49 @@ class AhbLite3ArbiterTest extends SpinalFunSuite {
     }
     c
   }
-  test(dut, "blub", seed=1) { dut =>
-    SimTimeout(10000)
+  test(dut, "blub") { dut =>
+    //SimTimeout(10000)
     val scoreboard = LoggingScoreboardInOrder[(BigInt, String, BigInt)]()
     val masterCounts = mutable.Seq.fill(2)(0)
     for (i <- 0 until 2) {
       new AhbLite3MasterAgent(dut.io.inputs(i), dut.clockDomain, dut.masterStrings(i)) {
+        var burstSize = 0
+        var remainingBurst = 0
+        var burstType = 0
         override def setupNextTransfer() = {
-          ahb.HADDR.randomize()
+          if (remainingBurst == 0) {
+            val burst = simRandom.nextFloat() > 0.5
+            val lock = !burst & simRandom.nextFloat() > 0.5
+
+            if(burst) {
+              burstType = simRandom.between(1, 8)
+              burstSize = burstType >> 1 match {
+                case 0 => simRandom.between(1, 16)
+                case 1 => 4
+                case 2 => 8
+                case 3 => 16
+              }
+              remainingBurst = burstSize - 1
+              ahb.HBURST #= burstType
+            }
+
+            val maxAddr = ahb.HADDR.maxValue - (if(burst) (burstSize * 4) else 0)
+            val addr = simRandom.between(0, (maxAddr+1).toInt)
+            ahb.HADDR #= addr
+            ahb.HMASTLOCK #= lock
+
+          } else {
+            remainingBurst = remainingBurst - 1
+            val wrap = (burstType & 1) == 0
+            val transferSize = 4
+            val boundary = burstSize * transferSize
+            ahb.HADDR #= (if(!wrap) {
+              ahb.HADDR.toBigInt + transferSize
+            } else {
+              ahb.HADDR.toBigInt + transferSize // TODO wrap!
+            })
+            ahb.HBURST #= burstType
+          }
           Some(ahb.HWDATA.randomizedBigInt())
         }
       }
@@ -76,7 +111,7 @@ class AhbLite3ArbiterTest extends SpinalFunSuite {
     }
 
     dut.clockDomain.forkStimulus(10)
-    dut.clockDomain.waitSamplingWhere(masterCounts.head > 50 && masterCounts(1) > 50)
+    dut.clockDomain.waitSamplingWhere(masterCounts.head > 500 && masterCounts(1) > 500)
     assert(scoreboard.matches > 100)
   }
 }

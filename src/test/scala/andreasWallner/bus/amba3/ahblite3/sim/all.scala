@@ -5,6 +5,13 @@ import spinal.core._
 import spinal.core.sim._
 import spinal.lib.bus.amba3.ahblite.{AhbLite3, AhbLite3Master}
 
+object HTRANS {
+  val IDLE = 0
+  val BUSY = 1
+  val NONSEQ = 2
+  val SEQ = 3
+}
+
 case class AhbLite3ControlSignals(
     address: BigInt,
     write: Boolean,
@@ -34,7 +41,6 @@ abstract case class AhbLite3SlaveAgent(
   cd.onSamplings {
     if (ahb.HSEL.toBoolean && ahb.HREADY.toBoolean) {
       assert(!inDataPhase, "HSEL & HREADY are high even though the slave is still stalling the bus")
-      assert(Seq(0, 2).contains(ahb.HTRANS.toInt), "agent only supports IDLE/NONSEQ transfers ATM")
       addressPhase = Some(
         AhbLite3ControlSignals(
           ahb.HADDR.toBigInt,
@@ -53,12 +59,13 @@ abstract case class AhbLite3SlaveAgent(
       ahb.HRESP #= false
 
       // 3.2 "slave must provide zero wait OKAY response to IDLE transfer"
-      if (addressPhase.get.trans == 0) {
+      // 3.2 "slave must provide zero wait OKAY response to BUSY transfer"
+      if (Seq(HTRANS.IDLE, HTRANS.BUSY).contains(addressPhase.get.trans)) {
         ahb.HRESP #= false
         ahb.HREADYOUT #= true
         ahb.HRDATA.randomize()
         addressPhase = None
-      } else if (addressPhase.get.trans == 2 && delay == 0) {
+      } else if (Seq(HTRANS.SEQ, HTRANS.NONSEQ).contains(addressPhase.get.trans) && delay == 0) {
         // we enter this code at the start of the cycle that has HREADY=1
         val ap = addressPhase.get
         if (ap.write) {
@@ -96,11 +103,8 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
   def setupNextTransfer(): Option[BigInt]
   def nextDelay(): Int = simRandom.nextInt(3)
 
-  ahb.HTRANS #= 0 // IDLE
+  ahb.HTRANS #= HTRANS.IDLE
   ahb.HBURST #= 0
-
-  val IDLE = 0
-  val NONSEQ = 2
 
   var delay = nextDelay()
   var nextHWDATA: Option[BigInt] = None
@@ -118,7 +122,7 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
       // - 4.1 slave samples address & control when HSEL && HREADY -> interconnect may change prio during wait
       // - 4.1.1 mandates a default slave if the memory space is not completely filled
       //         -> that must generate the mandated zero-delay ACK response
-      ahb.HTRANS #= IDLE
+      ahb.HTRANS #= (if(ahb.HBURST.toInt == 0) HTRANS.IDLE else HTRANS.BUSY)
       if (nextHWDATA.isDefined)
         ahb.HWDATA #= nextHWDATA.get
       nextHWDATA = None
@@ -130,7 +134,7 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
     if(ss != null)
       ss #= s"$delay $inAddressPhase $inDataPhase"
     if (delay == 0 && !inAddressPhase) {
-      ahb.HTRANS #= NONSEQ
+      ahb.HTRANS #= HTRANS.NONSEQ
       ahb.HBURST #= 0
       ahb.HMASTLOCK #= false
       nextHWDATA = setupNextTransfer()
@@ -142,8 +146,8 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
       ahb.HWRITE.randomize()
       ahb.HADDR.randomize()
       ahb.HSIZE.randomize()
-      ahb.HBURST.randomize()
-      ahb.HMASTLOCK.randomize()
+      // ahb.HBURST.randomize() TODO reenable? we can't just randomize once we are in a burst
+      // ahb.HMASTLOCK.randomize() TODO reenable? we can't just randomize once HMASTLOCK is enable?
       ahb.HPROT.randomize()
       delay = 0.max(delay - 1)
     }
@@ -187,8 +191,9 @@ abstract case class AhbLite3SlaveMonitor(ahb: AhbLite3, cd: ClockDomain) {
 abstract case class AhbLite3MasterMonitor(ahb: AhbLite3Master, cd: ClockDomain, idx: Int) {
   var addressPhase: Option[AhbLite3ControlSignals] = None
   cd.onSamplings {
-    if (addressPhase.isDefined && addressPhase.get.trans == 0) {
+    if (addressPhase.isDefined && Seq(HTRANS.IDLE, HTRANS.BUSY).contains(addressPhase.get.trans)) {
       // 3.2 "Slave must always provide a zero wait state OKAY response to IDLE ...
+      //     "Slave must always provide a zero wait state OKAY response to HTRANS ...
       assert(ahb.HREADY.toBoolean, "IDLE transfer must get zero-wait state response, HREADY late")
       assert(!ahb.HRESP.toBoolean, "IDLE transfer must get OKAY reponse, HRESP wrong")
       addressPhase = None
@@ -203,7 +208,6 @@ abstract case class AhbLite3MasterMonitor(ahb: AhbLite3Master, cd: ClockDomain, 
     }
 
     if (addressPhase.isEmpty) {
-      assert(Seq(0, 2).contains(ahb.HTRANS.toInt), "only NONSEQ is currently supported")
       addressPhase = Some(
         AhbLite3ControlSignals(
           ahb.HADDR.toBigInt,

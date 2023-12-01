@@ -124,7 +124,7 @@ case class AhbLite3Arbiter(
         .setWhen(
           slaveAdvancing && io.output.HTRANS =/= 0 && (io.output.HBURST =/= 0 || io.output.HMASTLOCK)
         )
-        .clearWhen(!io.output.HMASTLOCK)
+        .clearWhen((io.output.HBURST === 0 && !io.output.HMASTLOCK) || lastArea.isLast)
 
       val requests = bufferedCtrl.map(i => i.HSEL && i.HTRANS =/= 0).asBits // which master requests, masterReq
       // next master being selected
