@@ -199,6 +199,33 @@ class RegisterRecorder(
     factory.clearOnSet(that, address, bitOffset)
   }
 
+  def readStreamNonBlocking[T <: Data](that: Stream[T], name: String): Unit = readStreamNonBlocking(that, name, null, List())
+
+  def readStreamNonBlocking[T <: Data](
+      that: Stream[T],
+      name: String,
+      doc: String,
+      values: List[datamodel.Value]
+  ): Unit = {
+    append(
+      Field(
+        name,
+        that.payload,
+        Section(
+          0 + that.payload.getBitsWidth - 1,
+          0
+        ),
+        AccessType.RO,
+        0,
+        false,
+        Option(doc),
+        values
+      )
+    )
+
+    factory.readStreamNonBlocking(that, address)
+  }
+
   def readStreamNonBlocking[T <: Data](
       that: Stream[T],
       validBitOffset: Int,
@@ -305,7 +332,7 @@ class RegisterRecorder(
   }
 }
 
-class BusSlaveFactoryRecorder(factory: BusSlaveFactory) extends BusComponent {
+class BusSlaveFactoryRecorder(val factory: BusSlaveFactory) extends BusComponent {
   protected val registers = mutable.Map[BigInt, Register]()
 
   def register(
