@@ -134,7 +134,7 @@ case class UartApbBridge(g: UartApbBridgeGenerics) extends Module {
     }
     else null
 
-    val dataByte = Reg(UInt(log2Up(g.dataBytes) bit))
+    val dataByte = Reg(UInt(log2Up(g.dataBytes + 1) bit))
     val rxData: State = new State() {
       onEntry(dataByte := 0)
       whenIsActive {
