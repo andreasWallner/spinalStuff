@@ -2,7 +2,7 @@ package andreasWallner
 
 import andreasWallner.bus.amba3.ahblite3.AhbLite3Arbiter
 import andreasWallner.bus.amba3.ahblite3.sim._
-import andreasWallner.sim.SimString
+import andreasWallner.sim.{SimString, simLog}
 import spinal.core._
 import spinal.core.sim._
 import spinal.lib._
@@ -13,7 +13,7 @@ import scala.collection.mutable
 
 class AhbLite3ArbiterTest extends SpinalFunSuite {
   val config = AhbLite3Config(8, 16)
-  val dut = namedSimConfig.withVcdWave.compile {
+  val dut = namedSimConfig.compile {
     val c = new Component {
       val io = new Bundle {
         val inputs = Vec(slave port AhbLite3Master(config), 2)
@@ -42,6 +42,7 @@ class AhbLite3ArbiterTest extends SpinalFunSuite {
         var burstSize = 0
         var remainingBurst = 0
         var burstType = 0
+        var burstAddress = 0
         override def setupNextTransfer() = {
           if (remainingBurst == 0) {
             val burst = simRandom.nextFloat() > 0.5
@@ -59,24 +60,30 @@ class AhbLite3ArbiterTest extends SpinalFunSuite {
               ahb.HBURST #= burstType
             }
 
-            val maxAddr = ahb.HADDR.maxValue - (if(burst) (burstSize * 4) else 0)
-            val addr = simRandom.between(0, (maxAddr+1).toInt)
-            ahb.HADDR #= addr
+            // TODO align
+            val maxAddr = ahb.HADDR.maxValue - (if(burst) burstSize * 4 else 0)
+            burstAddress = simRandom.between(0, (maxAddr+1).toInt)
+            ahb.HADDR #= burstAddress
             ahb.HMASTLOCK #= lock
 
           } else {
+            ahb.HTRANS #= HTRANS.SEQ
             remainingBurst = remainingBurst - 1
             val wrap = (burstType & 1) == 0
             val transferSize = 4
-            val boundary = burstSize * transferSize
             ahb.HADDR #= (if(!wrap) {
-              ahb.HADDR.toBigInt + transferSize
+              burstAddress = burstAddress + transferSize
+              burstAddress
             } else {
-              ahb.HADDR.toBigInt + transferSize // TODO wrap!
+              val boundary = burstSize * transferSize
+              val fixed = burstAddress & ~(boundary - 1)
+              val newOffset = ((burstAddress - fixed) + transferSize) % boundary
+              burstAddress = fixed + newOffset
+              burstAddress
             })
             ahb.HBURST #= burstType
           }
-          Some(ahb.HWDATA.randomizedBigInt())
+          (Some(ahb.HWDATA.randomizedBigInt()), remainingBurst > 0)
         }
       }
       new AhbLite3MasterMonitor(dut.io.inputs(i), dut.clockDomain, i) {
@@ -90,6 +97,7 @@ class AhbLite3ArbiterTest extends SpinalFunSuite {
           masterCounts(i) = masterCounts(i) + 1
         }
       }
+      AhbLite3ProtocolChecker(dut.io.inputs(i), dut.clockDomain, f"M$i")
     }
 
     new AhbLite3SlaveAgent(
@@ -109,9 +117,10 @@ class AhbLite3ArbiterTest extends SpinalFunSuite {
       override def onWrite(address: BigInt, value: BigInt): Unit =
         scoreboard.pushDut((address, "W", value))
     }
+    AhbLite3ProtocolChecker(dut.io.output, dut.clockDomain, "S")
 
     dut.clockDomain.forkStimulus(10)
-    dut.clockDomain.waitSamplingWhere(masterCounts.head > 500 && masterCounts(1) > 500)
-    assert(scoreboard.matches > 100)
+    dut.clockDomain.waitSamplingWhere(masterCounts.forall(_ > 1000))
+    assert(scoreboard.matches > 2000)
   }
 }

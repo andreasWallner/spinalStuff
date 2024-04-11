@@ -99,17 +99,30 @@ case class AhbLite3Arbiter(
         .clearWhen(io.output.HREADYOUT)
         .setWhen(io.output.HSEL && io.output.HREADY)
         .init(False)
+      val realDataPhaseActive = Reg(Bool())
+        .clearWhen(io.output.HREADYOUT)
+        .setWhen(io.output.HSEL && io.output.HREADY && io.output.HTRANS(1))
+        .init(False)
       slaveAdvancing :=
         ((!dataPhaseActive && io.output.HSEL.rise(initAt = False)) ||
           (dataPhaseActive && io.output.HREADYOUT)) // && !locked
 
       val lastArea = new Area {
-        val beatCounter = Reg(UInt(4 bits)) init (0)
-        val lastBeat = Vec(U(0), U(3), U(8), U(16))(U(io.output.HBURST >> 1))
-        val isLast = (lastBeat === beatCounter && !io.output.HBURST(0)) || io.output.ERROR
+        val inUndefinedBurst = Reg(Bool()) init False
+        inUndefinedBurst
+          .clearWhen(slaveAdvancing && (io.output.HTRANS === 0 || io.output.HTRANS === 2))
+          .setWhen(slaveAdvancing && io.output.HTRANS === 2 && io.output.HBURST === 1)
+        val endOfUndefinedBurst = inUndefinedBurst && (io.output.HTRANS === 0 || io.output.HTRANS === 2)
 
-        when(slaveAdvancing) {
+        val beatCounter = Reg(UInt(4 bits)) init 0
+        val lastBeat = Vec(U(0), U(3), U(7), U(15))(U(io.output.HBURST >> 1))
+        val isLast = (lastBeat === beatCounter && io.output.HBURST =/= 1) || io.output.ERROR
+
+        when(slaveAdvancing && io.output.HBURST =/= 1 && io.output.HTRANS(1)) {
           beatCounter := beatCounter + 1
+          when(io.output.HTRANS === 2) {
+            beatCounter := 1
+          }
           when(isLast) {
             beatCounter := 0
           }
@@ -121,12 +134,13 @@ case class AhbLite3Arbiter(
         RegNextWhen(maskProposal, slaveAdvancing && (!locked | lastArea.isLast), init = B(0)) // which master is driving the dataphase
 
       locked
+        .clearWhen(lastArea.endOfUndefinedBurst)
         .setWhen(
           slaveAdvancing && io.output.HTRANS =/= 0 && (io.output.HBURST =/= 0 || io.output.HMASTLOCK)
         )
-        .clearWhen((io.output.HBURST === 0 && !io.output.HMASTLOCK) || lastArea.isLast)
+        .clearWhen((io.output.HBURST === 0 && !io.output.HMASTLOCK) || (lastArea.isLast && io.output.HTRANS(1) && io.output.HREADYOUT && !io.output.HMASTLOCK))
 
-      val requests = bufferedCtrl.map(i => i.HSEL && i.HTRANS =/= 0).asBits // which master requests, masterReq
+      val requests = bufferedCtrl.map(i => i.HSEL && i.HTRANS(1)).asBits // which master requests, masterReq
       // next master being selected
       when(locked) {
         maskProposal := maskArbitrated

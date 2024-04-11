@@ -146,7 +146,7 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
       val slaveTransactions = mutable.ArrayBuffer.fill(params.slaveCount)(0)
       val scoreboards = IndexedSeq.tabulate(params.slaveCount) { i =>
         LoggingScoreboardInOrder[(BigInt, String, BigInt)](
-          false,
+          enable = false,
           s"sb$i",
           (x: (BigInt, String, BigInt)) => f"${x._2}: 0x${x._1}%04x = 0x${x._3}%02x"
         )
@@ -156,7 +156,7 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
         new AhbLite3MasterAgent(dut.io.ahbMasters(i), dut.clockDomain, dut.masterStrings(i)) {
           override def setupNextTransfer() = {
             ahb.HADDR #= dut.validAddress(i)
-            Some(ahb.HWDATA.randomizedBigInt())
+            (Some(ahb.HWDATA.randomizedBigInt()), false)
           }
         }
         new AhbLite3MasterMonitor(dut.io.ahbMasters(i), dut.clockDomain, i) {
@@ -199,6 +199,7 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
             slaveTransactions(i) = slaveTransactions(i) + 1
           }
         }
+        AhbLite3ProtocolChecker(dut.io.ahbSlaves(i), dut.clockDomain, s"S$i")
       }
       dut.clockDomain.forkStimulus(10)
       waitUntil(

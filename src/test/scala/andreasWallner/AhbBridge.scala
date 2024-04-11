@@ -84,7 +84,7 @@ class AhbBridgeTest extends SpinalFunSuite {
       new AhbLite3MasterAgent(dut.io.ahbMasters(i), dut.clockDomain, masterStrings(i)) {
         override def setupNextTransfer() = {
           ahb.HADDR #= validAddress(mappedSlaves(i): _*)
-          Some(ahb.HWDATA.randomizedBigInt())
+          (Some(ahb.HWDATA.randomizedBigInt()), false)
         }
 
       }
@@ -172,7 +172,7 @@ class AhbBridgeTest2M1S extends SpinalFunSuite {
       new AhbLite3MasterAgent(dut.io.ahbMasters(i), dut.clockDomain, masterStrings(i)) {
         override def setupNextTransfer() = {
           ahb.HADDR #= validAddress(mappedSlaves(i): _*)
-          Some(ahb.HWDATA.randomizedBigInt())
+          (Some(ahb.HWDATA.randomizedBigInt()), false)
         }
       }
       new AhbLite3MasterMonitor(dut.io.ahbMasters(i), dut.clockDomain, i) {
