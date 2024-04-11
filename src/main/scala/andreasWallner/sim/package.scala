@@ -42,6 +42,24 @@ package object sim {
       )
     }
   }
+  object simLogId {
+    val colorMap = mutable.HashMap[String, String]()
+    val colors = Seq(Console.GREEN, Console.YELLOW, Console.MAGENTA, Console.CYAN)
+    def apply(id: String)(xs: Any*): Unit = {
+      val color = colorMap.get(id) match {
+        case Some(c) => c
+        case None =>
+          val c = colors(colorMap.size % colors.size)
+          colorMap.addOne((id, c))
+          c
+      }
+      println(
+        f"[${Console.BLUE}${simTime()}%9d${Console.RESET}]$color[$id] " + xs
+          .map(_.toString)
+          .mkString(" ") + Console.RESET
+      )
+    }
+  }
 
   /** calculate number of simulation cycles for given frequency */
   def simCycles(f: HertzNumber) =
