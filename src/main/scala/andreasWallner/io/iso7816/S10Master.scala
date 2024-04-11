@@ -67,6 +67,7 @@ case class S10Master(longCntWidth: Int, cntWidth: Int) extends Component {
 
     val timings = new Bundle {
       val por = in port UInt(longCntWidth bit)
+      val por_cnt = in port UInt(8 bit)
       val low_clk = in port UInt(cntWidth bit)
       val post_write_low_clk = in port UInt(cntWidth bit)
       val high_clk_en = in port UInt(cntWidth bit)
@@ -99,9 +100,11 @@ case class S10Master(longCntWidth: Int, cntWidth: Int) extends Component {
 
   //noinspection ForwardReference
   val fsm = new StateMachine {
+    val por_cnt = Reg(UInt(8 bit))
     val idle = new State with EntryPoint {
       whenIsActive {
         io.busy := io.cmd.valid
+        por_cnt := 0
         when(io.cmd.valid) {
           switch(io.cmd.payload) {
             is(Action.vcc_on) { goto(vcc_on) }
@@ -123,8 +126,19 @@ case class S10Master(longCntWidth: Int, cntWidth: Int) extends Component {
         io.vcc := True
       }
       whenCompleted {
-        io.cmd.ready := True
-        goto(idle)
+        goto(vcc_decide)
+      }
+    }
+
+    val vcc_decide: State = new State {
+      whenIsActive {
+        when(por_cnt =/= io.timings.por_cnt) {
+          por_cnt := por_cnt + 1
+          goto(vcc_on)
+        } otherwise {
+          io.cmd.ready := True
+          goto(idle)
+        }
       }
     }
 
@@ -343,6 +357,8 @@ case class S10MasterPeripheral[T <: Data with IMasterSlave](
   factory.register("resp").read(rspFifo.io.pop.payload, 0, "bits")
   factory.factory.onRead(18) { rspFifo.io.pop.ready := True }
 
+  tim.por_cnt := factory.register("tim15").createReadAndWrite(UInt(8 bit), 0, "por_cnt")
+
   val rspBuffer = Reg(Bits(8 bit)) init B"10000000"
   val nextBuffer = by1024.core.io.rsp.payload ## rspBuffer(7 downto 1)
   rspFifo.io.push.valid := False
@@ -355,7 +371,7 @@ case class S10MasterPeripheral[T <: Data with IMasterSlave](
       rspFifo.io.push.valid := True
       rspFifo.io.push.payload := rspBuffer
       rspBuffer := B"10000000"
-    } elsewhen(rspBuffer(0)) {
+    } elsewhen rspBuffer(0) {
       rspFifo.io.push.valid := True
       rspBuffer := B"10000000"
     }

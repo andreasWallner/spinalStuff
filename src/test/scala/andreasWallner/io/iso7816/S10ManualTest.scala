@@ -71,15 +71,16 @@ class S10PeripheralManualTest extends SpinalFunSuite {
   val apbConfig = Apb3Config(addressWidth = 5, dataWidth = 8, useSlaveError = false)
   val dut = namedSimConfig.withVcdWave.compile(S10MasterPeripheral[Apb3](2, Apb3(apbConfig), Apb3SlaveFactory(_)))
 
-  test(dut, "blub") { dut =>
+  test(dut, "sanity check") { dut =>
     val driver = Apb3Driver(dut.io.bus, dut.clockDomain)
     dut.clockDomain.forkStimulus(10)
+    dut.io.iso.data.read #= true
 
     fork {
       dut.clockDomain.waitSamplingWhere(dut.io.iso.rst.toBoolean)
       dut.clockDomain.waitSamplingWhere(!dut.io.iso.rst.toBoolean)
 
-      for(b <- Seq(true, false, false, true, true, true, false, true, false, true, true, false, true, false, false, true, true, true)) {
+      for(b <- Seq(false, false, false, false, true, true, true, true, true, true, true, false, true, true, true, false, true, false, true, false, true, false, true, false)) {
         dut.io.iso.data.read #= b
         dut.clockDomain.waitSamplingWhere(dut.io.iso.clk.toBoolean)
         dut.clockDomain.waitSamplingWhere(!dut.io.iso.clk.toBoolean)
@@ -101,10 +102,11 @@ class S10PeripheralManualTest extends SpinalFunSuite {
     driver.write(14, 4)   // write_lo
     driver.write(15, 3)   // write_cnt
     driver.write(16, 50)  // dummy write
+    driver.write(18, 50)   // por cnt
 
     driver.write(17, 0)
     driver.write(17, 1)
-    for(i <- 0 until 20)
+    for(i <- 0 until 3*8)
       driver.write(17, 7)
     driver.write(17, 3)
     driver.write(17, 3)
@@ -134,8 +136,8 @@ class S10PeripheralManualTest extends SpinalFunSuite {
     while ((driver.read(1) & 1) != 0) {}
     driver.write(0, 0x08)
 
-    println(driver.read(18))
-    println(driver.read(18))
-    println(driver.read(18))
+    assert(driver.read(18) == 0xf0)
+    assert(driver.read(18) == 0x77)
+    assert(driver.read(18) == 0x55)
   }
 }
