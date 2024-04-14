@@ -44,7 +44,7 @@ package object sim {
   }
   object simLogId {
     val colorMap = mutable.HashMap[String, String]()
-    val colors = Seq(Console.GREEN, Console.YELLOW, Console.MAGENTA, Console.CYAN)
+    val colors = Seq(Console.GREEN, Console.YELLOW, Console.MAGENTA, Console.CYAN, Console.RED, Console.BLUE)
     def apply(id: String)(xs: Any*): Unit = {
       val color = colorMap.get(id) match {
         case Some(c) => c
