@@ -81,7 +81,7 @@ class AhbBridgeTest extends SpinalFunSuite {
     val mappedSlaves = Seq(Seq(0, 1), Seq(1, 2, 3), Seq(0, 3))
 
     for (i <- 0 until 3) {
-      new AhbLite3MasterAgent(dut.io.ahbMasters(i), dut.clockDomain, masterStrings(i)) {
+      new AhbLite3MasterAgent(dut.io.ahbMasters(i), dut.clockDomain, Some(masterStrings(i))) {
         override def setupNextTransfer() = {
           ahb.HADDR #= validAddress(mappedSlaves(i): _*)
           (Some(ahb.HWDATA.randomizedBigInt()), false)
@@ -102,7 +102,7 @@ class AhbBridgeTest extends SpinalFunSuite {
     }
 
     for (i <- 0 until 4) {
-      new AhbLite3SlaveAgent(dut.io.ahbSlaves(i), dut.clockDomain, slaveStrings(i)) {
+      new AhbLite3SlaveAgent(dut.io.ahbSlaves(i), dut.clockDomain, Some(slaveStrings(i))) {
         override def onRead(address: BigInt) = (ahb.HRDATA.randomizedBigInt(), false)
 
         override def onWrite(address: BigInt, value: BigInt) = false
@@ -169,7 +169,7 @@ class AhbBridgeTest2M1S extends SpinalFunSuite {
     val mappedSlaves = Seq(Seq(0), Seq(0))
 
     for (i <- 0 until 2) {
-      new AhbLite3MasterAgent(dut.io.ahbMasters(i), dut.clockDomain, masterStrings(i)) {
+      new AhbLite3MasterAgent(dut.io.ahbMasters(i), dut.clockDomain, Some(masterStrings(i))) {
         override def setupNextTransfer() = {
           ahb.HADDR #= validAddress(mappedSlaves(i): _*)
           (Some(ahb.HWDATA.randomizedBigInt()), false)
@@ -177,19 +177,17 @@ class AhbBridgeTest2M1S extends SpinalFunSuite {
       }
       new AhbLite3MasterMonitor(dut.io.ahbMasters(i), dut.clockDomain, i) {
         override def onRead(address: BigInt, value: BigInt): Unit = {
-          //simLog(f">>$idx R $address%04x = $value%02x")
           scoreboards(slaveIndex(address)).pushRef((slaveIndex(address), address, "R", value))
         }
 
         override def onWrite(address: BigInt, value: BigInt): Unit = {
-          //simLog(f">>$idx W $address%04x = $value%02x")
           scoreboards(slaveIndex(address)).pushRef((slaveIndex(address), address, "W", value))
         }
       }
     }
 
     for (i <- 0 until 1) {
-      new AhbLite3SlaveAgent(dut.io.ahbSlaves(i), dut.clockDomain, slaveStrings(i)) {
+      new AhbLite3SlaveAgent(dut.io.ahbSlaves(i), dut.clockDomain, Some(slaveStrings(i))) {
         override def onRead(address: BigInt) = (ahb.HRDATA.randomizedBigInt(), false)
         override def onWrite(address: BigInt, value: BigInt) = false
       }

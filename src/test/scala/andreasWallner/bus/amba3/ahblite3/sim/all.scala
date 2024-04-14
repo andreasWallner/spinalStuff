@@ -85,7 +85,7 @@ object AhbLite3ControlSignals {
 abstract case class AhbLite3SlaveAgent(
     ahb: AhbLite3,
     cd: ClockDomain,
-    ss: SimString,
+    ss: Option[SimString] = None,
     hreadyoutWhenIdle: Option[Boolean] = None
 ) {
   var delay = 0
@@ -101,8 +101,9 @@ abstract case class AhbLite3SlaveAgent(
       addressPhase = Some(AhbLite3ControlSignals.fromBus(ahb))
       delay = if (addressPhase.get.trans == 0) 0 else nextDelay()
     }
-    if (ss != null)
-      ss #= s"$delay $inDataPhase $addressPhase"
+
+    ss.foreach { _ #= s"$delay $inDataPhase $addressPhase"}
+
     if (inDataPhase) {
       // HRESP might be left high from last random cycle before
       ahb.HRESP #= false
@@ -149,7 +150,7 @@ abstract case class AhbLite3SlaveAgent(
 
 // TODO handle early error response
 // TODO add parameter to simulate interconnect (which may change control during "address phase")
-abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss: SimString) {
+abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss: Option[SimString]=None) {
   def setupNextTransfer(): (Option[BigInt], Boolean)
   def nextDelay(): Int = simRandom.nextInt(3)
 
@@ -185,8 +186,7 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
       inDataPhase = true
     }
 
-    if (ss != null)
-      ss #= s"$delay $inAddressPhase $inDataPhase $inBurst"
+    ss.foreach { _ #= s"$delay $inAddressPhase $inDataPhase $inBurst" }
 
     if (delay == 0 && !inAddressPhase) {
       ahb.HTRANS #= HTRANS.NONSEQ
@@ -397,7 +397,7 @@ class AhbLite3ProtocolChecker(ahb: AhbWrapper, cd: ClockDomain, id: String) {
       if (currentAddress.isEmpty && ahb.HTRANS.toInt == HTRANS.SEQ) {
         currentAddress = Some(AhbLite3ControlSignals.fromBus(ahb))
         remainingAddresses = remainingAddresses - 1
-        simLogId(id)("!!address phase", remainingAddresses)
+        simLogId(id)("address phase", remainingAddresses)
       }
       if (remainingData == 0) {
         simLogId(id)(s"burst end")

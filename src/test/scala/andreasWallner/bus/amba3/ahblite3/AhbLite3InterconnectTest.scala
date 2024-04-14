@@ -153,7 +153,7 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
       }
 
       for (i <- 0 until params.masterCount) {
-        new AhbLite3MasterAgent(dut.io.ahbMasters(i), dut.clockDomain, dut.masterStrings(i)) {
+        new AhbLite3MasterAgent(dut.io.ahbMasters(i), dut.clockDomain, Some(dut.masterStrings(i))) {
           override def setupNextTransfer() = {
             ahb.HADDR #= dut.validAddress(i)
             (Some(ahb.HWDATA.randomizedBigInt()), false)
@@ -180,7 +180,7 @@ class AhbLite3InterconnectTest extends SpinalFunSuite {
         new AhbLite3SlaveAgent(
           dut.io.ahbSlaves(i),
           dut.clockDomain,
-          dut.slaveStrings(i),
+          Some(dut.slaveStrings(i)),
           params.slaveHreadyoutWhenIdle
         ) {
           override def onRead(address: BigInt) = (ahb.HRDATA.randomizedBigInt(), false)

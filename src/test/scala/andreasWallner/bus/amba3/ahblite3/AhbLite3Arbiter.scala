@@ -138,21 +138,45 @@ case class AhbLite3Arbiter(
         .setWhen(
           slaveAdvancing && io.output.HTRANS =/= 0 && (io.output.HBURST =/= 0 || io.output.HMASTLOCK)
         )
-        .clearWhen((io.output.HBURST === 0 && !io.output.HMASTLOCK) || (lastArea.isLast && io.output.HTRANS(1) && io.output.HREADYOUT && !io.output.HMASTLOCK))
+        .clearWhen(
+          (io.output.HBURST === 0 && !io.output.HMASTLOCK) || (lastArea.isLast && io.output
+            .HTRANS(1) && io.output.HREADYOUT && !io.output.HMASTLOCK)
+        )
 
       val requests = bufferedCtrl.map(i => i.HSEL && i.HTRANS(1)).asBits // which master requests, masterReq
       // next master being selected
+
+      def roundRobin[T <: Data](requests: T, ohPriority: T): T =
+        new Composite(requests, "roundRobin") {
+          val width = requests.getBitsWidth
+          val uRequests = requests.asBits.asUInt
+          val uGranted = ohPriority.asBits.asUInt
+
+          val doubleRequests = uRequests @@ uRequests
+          val sub = ~(doubleRequests - uGranted)
+          val doubleGrant = doubleRequests & sub
+          val masked = doubleGrant(width, width bits) | doubleGrant(0, width bits)
+
+          val ret = cloneOf(requests)
+          ret.assignFromBits(masked.asBits)
+        }.ret
+
+      val nextProposal = if (roundRobinArbiter) {
+        val nextPrio = maskArbitrated(maskArbitrated.high - 1 downto 0) ## maskArbitrated.msb
+        val arbiterPrio = RegNextWhen(nextPrio, nextPrio.orR && locked) init B(
+          maskArbitrated.getWidth bit,
+          maskArbitrated.high -> True,
+          default -> False
+        )
+        roundRobin(requests, arbiterPrio)
+      } else {
+        OHMasking.first(requests)
+      }
+
       when(locked) {
         maskProposal := maskArbitrated
       } otherwise {
-        maskProposal :=
-          (if (roundRobinArbiter)
-             OHMasking.roundRobin(
-               requests,
-               maskArbitrated(maskArbitrated.high - 1 downto 0) ## maskArbitrated.msb
-             )
-           else
-             OHMasking.first(requests))
+        maskProposal := nextProposal
       }
       val requestsDel = RegNext(requests) init 0
 
@@ -160,9 +184,6 @@ case class AhbLite3Arbiter(
       hold.zipWithIndex.foreach { case (b, idx) => b := requestsDel(idx) && ~maskArbitrated(idx) }
 
       val requestIndex = OHToUInt(maskProposal)
-      val xsel = bufferedCtrl.map(_.HSEL).asBits()
-      val xarb = maskProposal
-      val selAndArb = xsel & xarb
       io.output.HSEL := bufferedCtrl(requestIndex).HSEL // TODO don't select if there is no transfer and no lock!
       io.output.HADDR := bufferedCtrl(requestIndex).HADDR
       io.output.HWRITE := bufferedCtrl(requestIndex).HWRITE
@@ -180,19 +201,18 @@ case class AhbLite3Arbiter(
       val dataIndex = RegNextWhen(requestIndex, slaveAdvancing)
       io.output.HWDATA := io.inputs(dataIndex).HWDATA
 
-      for (((buffered, input, requestRouted), idx) <- (
-             bufferedCtrl,
-             io.inputs,
-             maskArbitrated.asBools
-           ).zipped.zipWithIndex) {
-        val trans_d = RegNextWhen(buffered.HTRANS, slaveAdvancing) init 0
-        val sel_d = RegNext(buffered.HSEL, slaveAdvancing) init True
-        val stall = hold(idx) & !maskArbitrated(idx)
-        val idle_resp = RegNext(buffered.HTRANS === 0 && buffered.HSEL && !hold(idx)) init True
-        idle_resp.setName("idle_resp" + input.getName())
-        input.HRDATA := io.output.HRDATA
-        input.HRESP := idle_resp ? False | io.output.HRESP
-        input.HREADYOUT := !stall && ((!requestRouted && !buffered.HSEL) || (requestRouted && io.output.HREADYOUT) || (trans_d === 0 && sel_d))
+      // generate IDLE responses and HREADYOUT while input does not drive
+      // a transaction
+      bufferedCtrl.lazyZip(io.inputs).lazyZip(maskArbitrated.asBools).zipWithIndex.foreach {
+        case ((buffered, input, requestRouted), idx) =>
+          val was_idle = RegNextWhen(buffered.HTRANS === 0, slaveAdvancing) init False
+          val last_hsel = RegNext(buffered.HSEL, slaveAdvancing) init True
+          val stall = hold(idx) & !maskArbitrated(idx)
+          val idle_resp = RegNext(buffered.HTRANS === 0 && buffered.HSEL && !hold(idx)) init True
+          idle_resp.setName("idle_resp" + input.getName())
+          input.HRDATA := io.output.HRDATA
+          input.HRESP := idle_resp ? False | io.output.HRESP
+          input.HREADYOUT := !stall && ((!requestRouted && !buffered.HSEL) || (requestRouted && io.output.HREADYOUT) || (was_idle && last_hsel))
       }
 
     }
