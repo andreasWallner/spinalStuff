@@ -4,9 +4,25 @@ import andreasWallner.sim.PimpedSpinalSimConfig
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.{BeforeAndAfterAllConfigMap, ConfigMap}
 import spinal.core.Component
-import spinal.core.sim.{SimCompiled, SimConfig}
+import spinal.core.sim.{SimCompiled, SpinalSimConfig}
 
 import scala.util.Random
+
+class NamedSimConfig(val className: String) extends SpinalSimConfig {
+  workspaceName(className)
+  sys.env.getOrElse("SPINALSIM_WAVE", "fst") match {
+    case "vcd" => this.withVcdWave
+    case "fst" => this.withFstWave
+    case "fsdb" => this.withFsdbWave
+    case "none" =>
+    case x => throw new Exception(s"invalid wave format $x")
+  }
+
+  def extendName(s: String) = {
+    workspaceName(_workspaceName + "." + s)
+    this
+  }
+}
 
 /**
   * A suite of tests running digital simulation
@@ -15,7 +31,7 @@ import scala.util.Random
   *
   * {{{
   * class SomeTests extends HwFunSuite {
-  * val dut = SimConfig.withFstWave.compile(SomeComponent())
+  * val dut = namedSimConfig.compile(SomeComponent())
   *
   * test(dut, "my test description") { dut =>
   * ...
@@ -34,11 +50,23 @@ import scala.util.Random
   * Use `namedSimConfig` as `SimConfig` to use the testsuite name as
   * the workspace name. This way multiple testsuites testing the same
   * DUT component will have consistent folder names.
+ *
+ * `extendName` can be used to put simulation into subfolder, which is
+ * intended for tests that parameterize (multiple) DUTs:
+ *
+ * {{{
+ * ...
+ * val dutName = "$some_$parameter"
+ * val dut = namedSimConfig.extendName(dutName).compile(SomeComponent(some, parameter))
+ *
+ * test(dut, s"parametric_test_$dutName") { dut =>
+ * ...
+ * }
+ * }}}
   */
 class SpinalFunSuite extends AnyFunSuite with BeforeAndAfterAllConfigMap {
   var _globalSeed: Option[Int] = None
-  // TODO how to deal with parameterized compiles?
-  val namedSimConfig = SimConfig.workspaceName(this.getClass.getName).withWaveOverride("fst")
+  def namedSimConfig = new NamedSimConfig(this.getClass.getName)
 
   override def beforeAll(configMap: ConfigMap): Unit = {
     _globalSeed = configMap
