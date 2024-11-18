@@ -79,3 +79,16 @@ case class FDCE() extends BlackBox {
 
   val Q = out Bool()
 }
+
+// see https://docs.amd.com/r/en-US/ug953-vivado-7series-libraries/DNA_PORT
+
+case class DNA_PORT(simDnaValue: Option[BigInt]) extends BlackBox {
+  simDnaValue.foreach(v => addGeneric("SIM_DNA_VALUE", v))
+  val DIN = in port Bool()
+  val READ = in port Bool()
+  val SHIFT = in port Bool()
+  val DOUT = out port Bool()
+  val CLK = in port Bool()
+
+  mapCurrentClockDomain(CLK)
+}
