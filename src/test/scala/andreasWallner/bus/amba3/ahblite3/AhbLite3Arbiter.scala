@@ -3,6 +3,9 @@ package andreasWallner.bus.amba3.ahblite3
 import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba3.ahblite.{AhbLite3, AhbLite3Config}
+import spinal.lib.bus.bram.BRAM
+
+import scala.language.postfixOps
 
 case class AhbLite3Control(config: AhbLite3Config) extends Bundle with IMasterSlave {
   val HADDR = UInt(config.addressWidth bits)
@@ -63,7 +66,6 @@ object AhbLite3Control {
   *
   * Design details:
   * - arbiter doesn't not modify any transfers, burst locks slave to master
-  * - locked transfer locks for one cycle too long, to reuse hardware present from burst
   *
   * @param ahbLite3Config : Ahb bus configuration
   * @param inputsCount    : Number of inputs for the arbiter
@@ -84,9 +86,8 @@ case class AhbLite3Arbiter(
   else
     new Area {
       val hold = Vec(Bool(), inputsCount)
-      val locked = RegInit(False)
-      val slaveAdvancing = Bool()
 
+      // skidbuffers (comb connection or last buffered value) for all requests
       val bufferedCtrl = Vec.tabulate(inputsCount) { i =>
         SkidBuffer(
           AhbLite3Control(io.inputs(i)),
@@ -99,15 +100,15 @@ case class AhbLite3Arbiter(
         .clearWhen(io.output.HREADYOUT)
         .setWhen(io.output.HSEL && io.output.HREADY)
         .init(False)
-      val realDataPhaseActive = Reg(Bool())
-        .clearWhen(io.output.HREADYOUT)
-        .setWhen(io.output.HSEL && io.output.HREADY && io.output.HTRANS(1))
-        .init(False)
-      slaveAdvancing :=
-        ((!dataPhaseActive && io.output.HSEL.rise(initAt = False)) ||
-          (dataPhaseActive && io.output.HREADYOUT)) // && !locked
+      // do not look at io.output.HREADY as slave does not need to drive it high
+      // if not selected
+      val slaveAdvancing =
+        (!dataPhaseActive && io.output.HSEL.rise(initAt = False)) ||
+          (dataPhaseActive && io.output.HREADYOUT)
 
-      val lastArea = new Area {
+      // if we keep track of a burst by looking at HTRANS & NONSEQ/SEQ then
+      // TODO option get rid of this, use HTRANS NONSEQ/SEQ difference to keep track of burst
+      val burst = new Area {
         val inUndefinedBurst = Reg(Bool()) init False
         inUndefinedBurst
           .clearWhen(slaveAdvancing && (io.output.HTRANS === 0 || io.output.HTRANS === 2))
@@ -116,10 +117,12 @@ case class AhbLite3Arbiter(
 
         val beatCounter = Reg(UInt(4 bits)) init 0
         val lastBeat = Vec(U(0), U(3), U(7), U(15))(U(io.output.HBURST >> 1))
+        // TODO why can't we use inUndefinedBurst here?
         val isLast = (lastBeat === beatCounter && io.output.HBURST =/= 1) || io.output.ERROR
 
         when(slaveAdvancing && io.output.HBURST =/= 1 && io.output.HTRANS(1)) {
           beatCounter := beatCounter + 1
+          // TODO get rid of this check
           when(io.output.HTRANS === 2) {
             beatCounter := 1
           }
@@ -129,46 +132,32 @@ case class AhbLite3Arbiter(
         }
       }
 
-      val maskProposal = Bits(inputsCount bits) // which master will be next
+      // lock to stay with one master
+      val locked = RegInit(False)
+      // proposal for the next master, and the master that is driving the current address phase
+      val maskProposal = Bits(inputsCount bits)
       val maskArbitrated =
-        RegNextWhen(maskProposal, slaveAdvancing && (!locked | lastArea.isLast), init = B(0)) // which master is driving the dataphase
+        RegNextWhen(maskProposal, slaveAdvancing && (!locked | burst.isLast), init = B(0))
 
       locked
-        .clearWhen(lastArea.endOfUndefinedBurst)
+        .clearWhen(burst.endOfUndefinedBurst)
         .setWhen(
-          slaveAdvancing && io.output.HTRANS =/= 0 && (io.output.HBURST =/= 0 || io.output.HMASTLOCK)
+          slaveAdvancing && io.output.HTRANS(1) && (io.output.HBURST =/= 0 || io.output.HMASTLOCK)
         )
-        .clearWhen(
-          (io.output.HBURST === 0 && !io.output.HMASTLOCK) || (lastArea.isLast && io.output
-            .HTRANS(1) && io.output.HREADYOUT && !io.output.HMASTLOCK)
-        )
+        .clearWhen(io.output.HREADYOUT && !io.output.HTRANS(0) && !io.output.HMASTLOCK)
 
-      val requests = bufferedCtrl.map(i => i.HSEL && i.HTRANS(1)).asBits // which master requests, masterReq
-      // next master being selected
-
-      def roundRobin[T <: Data](requests: T, ohPriority: T): T =
-        new Composite(requests, "roundRobin") {
-          val width = requests.getBitsWidth
-          val uRequests = requests.asBits.asUInt
-          val uGranted = ohPriority.asBits.asUInt
-
-          val doubleRequests = uRequests @@ uRequests
-          val sub = ~(doubleRequests - uGranted)
-          val doubleGrant = doubleRequests & sub
-          val masked = doubleGrant(width, width bits) | doubleGrant(0, width bits)
-
-          val ret = cloneOf(requests)
-          ret.assignFromBits(masked.asBits)
-        }.ret
+      // OH vector of which masters are requesting a transaction
+      // we don't need this to be 1 during a burst (because of lock), so only look at bit 1 to save on resources
+      val requests = bufferedCtrl.map(i => i.HSEL && i.HTRANS(1)).asBits
 
       val nextProposal = if (roundRobinArbiter) {
-        val nextPrio = maskArbitrated(maskArbitrated.high - 1 downto 0) ## maskArbitrated.msb
-        val arbiterPrio = RegNextWhen(nextPrio, nextPrio.orR && locked) init B(
+        val nextPrio = maskArbitrated.rotateLeft(1)
+        val arbiterPrio = RegNextWhen(nextPrio, nextPrio.orR && !locked) init B(
           maskArbitrated.getWidth bit,
           maskArbitrated.high -> True,
           default -> False
         )
-        roundRobin(requests, arbiterPrio)
+        OHMasking.roundRobin(requests, arbiterPrio)
       } else {
         OHMasking.first(requests)
       }
@@ -184,14 +173,8 @@ case class AhbLite3Arbiter(
       hold.zipWithIndex.foreach { case (b, idx) => b := requestsDel(idx) && ~maskArbitrated(idx) }
 
       val requestIndex = OHToUInt(maskProposal)
-      io.output.HSEL := bufferedCtrl(requestIndex).HSEL // TODO don't select if there is no transfer and no lock!
-      io.output.HADDR := bufferedCtrl(requestIndex).HADDR
-      io.output.HWRITE := bufferedCtrl(requestIndex).HWRITE
-      io.output.HSIZE := bufferedCtrl(requestIndex).HSIZE
-      io.output.HBURST := bufferedCtrl(requestIndex).HBURST
-      io.output.HPROT := bufferedCtrl(requestIndex).HPROT
-      io.output.HTRANS := io.output.HSEL ? bufferedCtrl(requestIndex).HTRANS | B"00"
-      io.output.HMASTLOCK := bufferedCtrl(requestIndex).HMASTLOCK
+      bufferedCtrl(requestIndex) >> io.output
+      io.output.HSEL.allowOverride() := True
 
       // Provide HREADY if the slave is not active, the specifiction does not require
       // specific behaviour in this case. If we don't do this a slave that generates a
@@ -201,17 +184,18 @@ case class AhbLite3Arbiter(
       val dataIndex = RegNextWhen(requestIndex, slaveAdvancing)
       io.output.HWDATA := io.inputs(dataIndex).HWDATA
 
-      // generate IDLE responses and HREADYOUT while input does not drive
-      // a transaction
+      // generate IDLE responses and HREADYOUT while input does not drive a transaction
       bufferedCtrl.lazyZip(io.inputs).lazyZip(maskArbitrated.asBools).zipWithIndex.foreach {
         case ((buffered, input, requestRouted), idx) =>
           val was_idle = RegNextWhen(buffered.HTRANS === 0, slaveAdvancing) init False
           val last_hsel = RegNext(buffered.HSEL, slaveAdvancing) init True
           val stall = hold(idx) & !maskArbitrated(idx)
+          // do not do the idle response, if the previous transfer is stuck in the data phase (hold)
           val idle_resp = RegNext(buffered.HTRANS === 0 && buffered.HSEL && !hold(idx)) init True
           idle_resp.setName("idle_resp" + input.getName())
           input.HRDATA := io.output.HRDATA
           input.HRESP := idle_resp ? False | io.output.HRESP
+          // TODO optimize this
           input.HREADYOUT := !stall && ((!requestRouted && !buffered.HSEL) || (requestRouted && io.output.HREADYOUT) || (was_idle && last_hsel))
       }
 

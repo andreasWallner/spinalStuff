@@ -99,7 +99,7 @@ abstract case class AhbLite3SlaveAgent(
     if (ahb.HSEL.toBoolean && ahb.HREADY.toBoolean) {
       assert(!inDataPhase, "HSEL & HREADY are high even though the slave is still stalling the bus")
       addressPhase = Some(AhbLite3ControlSignals.fromBus(ahb))
-      delay = if (addressPhase.get.trans == 0) 0 else nextDelay()
+      delay = if (addressPhase.get.trans == 0 | addressPhase.get.trans == 1) 0 else nextDelay()
     }
 
     ss.foreach { _ #= s"$delay $inDataPhase $addressPhase"}
@@ -110,7 +110,6 @@ abstract case class AhbLite3SlaveAgent(
 
       // 3.2 "slave must provide zero wait OKAY response to IDLE transfer"
       // 3.2 "slave must provide zero wait OKAY response to BUSY transfer"
-      simLog(s"AP = $addressPhase")
       if (Seq(HTRANS.IDLE, HTRANS.BUSY).contains(addressPhase.get.trans)) {
         ahb.HRESP #= false
         ahb.HREADYOUT #= true
@@ -192,7 +191,9 @@ abstract case class AhbLite3MasterAgent(ahb: AhbLite3Master, cd: ClockDomain, ss
       ahb.HTRANS #= HTRANS.NONSEQ
       ahb.HBURST #= 0
       ahb.HMASTLOCK #= false
+      ahb.HADDR #= simRandom.between(0, ahb.HADDR.maxValue.toInt) // TODO make this correct
       transferInfo = setupNextTransfer()
+      ahb.HWRITE #= transferInfo._1.isDefined
       if (transferInfo._2)
         inBurst = true
       delay = nextDelay()
@@ -361,7 +362,7 @@ class AhbLite3ProtocolChecker(ahb: AhbWrapper, cd: ClockDomain, id: String) {
         case (_, 0) => Seq(HTRANS.IDLE, HTRANS.NONSEQ)
         case (_, _) => Seq(HTRANS.SEQ, HTRANS.BUSY)
       }
-      simLogId(id)("checking for", allowedStates)
+      //simLogId(id)("checking for", allowedStates)
       assert(
         allowedStates.contains(ahb.HTRANS.toInt),
         s"""[${simTime()}] $id: invalid state during/after burst (${ahb.HTRANS.toInt} while ${allowedStates.mkString("/")} is allowed)"""
@@ -390,17 +391,16 @@ class AhbLite3ProtocolChecker(ahb: AhbWrapper, cd: ClockDomain, id: String) {
       if (currentAddress.isDefined && burst.get.burst != HBURST.INCR && ahb.HREADY.toBoolean) {
         remainingData = remainingData - 1
         currentAddress = None
-        simLogId(id)(s"burst beat", remainingData)
+        //simLogId(id)(s"burst beat", remainingData)
       }
-      if(id == "M0")
-        simLogId(id)(currentAddress, ahb.HTRANS.toInt, remainingAddresses)
+      //simLogId(id)(currentAddress, ahb.HTRANS.toInt, remainingAddresses)
       if (currentAddress.isEmpty && ahb.HTRANS.toInt == HTRANS.SEQ) {
         currentAddress = Some(AhbLite3ControlSignals.fromBus(ahb))
         remainingAddresses = remainingAddresses - 1
-        simLogId(id)("address phase", remainingAddresses)
+        //simLogId(id)("address phase", remainingAddresses)
       }
       if (remainingData == 0) {
-        simLogId(id)(s"burst end")
+        //simLogId(id)(s"burst end")
         burst = None
       }
     }
@@ -411,7 +411,7 @@ class AhbLite3ProtocolChecker(ahb: AhbWrapper, cd: ClockDomain, id: String) {
       currentAddress = burst
       remainingData = 1 << ((ahb.HBURST.toInt >> 1) + 1)
       remainingAddresses = remainingData - 1
-      simLogId(id)(s"start burst of $remainingData")
+      //simLogId(id)(s"start burst of $remainingData")
     }
 
     if (burst.isEmpty) {

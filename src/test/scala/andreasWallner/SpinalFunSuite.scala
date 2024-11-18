@@ -6,10 +6,18 @@ import org.scalatest.{BeforeAndAfterAllConfigMap, ConfigMap}
 import spinal.core.Component
 import spinal.core.sim.{SimCompiled, SpinalSimConfig}
 
+import scala.collection.mutable
 import scala.util.Random
 
 class NamedSimConfig(val className: String) extends SpinalSimConfig {
-  workspaceName(className)
+  private val ext = mutable.ArrayBuffer[String]()
+  private def update() = {
+    _workspaceName = className + "/" + ext.prepended("build").mkString("/")
+    _testPath = _workspacePath + "/" + className
+    //_waveFilePrefix = ext.mkString(".") + ".$TEST"
+  }
+  update()
+
   sys.env.getOrElse("SPINALSIM_WAVE", "fst") match {
     case "vcd" => this.withVcdWave
     case "fst" => this.withFstWave
@@ -19,7 +27,8 @@ class NamedSimConfig(val className: String) extends SpinalSimConfig {
   }
 
   def extendName(s: String) = {
-    workspaceName(_workspaceName + "." + s)
+    ext.append(s)
+    update()
     this
   }
 }
