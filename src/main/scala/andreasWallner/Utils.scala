@@ -163,6 +163,9 @@ object Utils {
         case ad: AnalogDriver =>
           new DumpAST(cleanIndent + "data  ").dump(ad.data)
           new DumpAST(cleanIndent + "enable").dump(ad.enable)
+        case braf: BitsRangedAccessFixed =>
+          println("  " + cleanIndent + s"  hi: ${braf.hi}, lo: ${braf.lo}")
+          new DumpAST(cleanIndent + "   ").dump(braf.source)
         case _ => e.foreachExpression(indented.dump)
       }
     }
