@@ -82,14 +82,18 @@ object AhbLite3ControlSignals {
   }
 }
 
-abstract case class AhbLite3SlaveAgent(
-    ahb: AhbLite3,
-    cd: ClockDomain,
-    ss: Option[SimString] = None,
-    hreadyoutWhenIdle: Option[Boolean] = None
+abstract class AhbLite3SlaveAgent(
+    val ahb: AhbLite3,
+    val cd: ClockDomain,
+    val ss: Option[SimString] = None,
+    val hreadyoutWhenIdle: Option[Boolean] = None
 ) {
   var delay = 0
+  // The signals from the address phase for the currently active data phase
   var addressPhase: Option[AhbLite3ControlSignals] = None
+  // The signals from the address phase for the transfer that just concluded
+  // Used for callback functions called when a transfer finished and values are known
+  var lastDataPhase: Option[AhbLite3ControlSignals] = None
   def inDataPhase = addressPhase.isDefined
 
   // 7.1.2 "during reset all slaves must ensure that HREADYOUT is high"
@@ -102,7 +106,18 @@ abstract case class AhbLite3SlaveAgent(
       delay = if (addressPhase.get.trans == 0 | addressPhase.get.trans == 1) 0 else nextDelay()
     }
 
-    ss.foreach { _ #= s"$delay $inDataPhase $addressPhase"}
+    ss.foreach { _ #= s"$delay AP: $addressPhase LDP: $lastDataPhase"}
+    simLog(s"$delay $inDataPhase AP: $addressPhase LDP: $lastDataPhase")
+
+    if (lastDataPhase.isDefined) {
+      val ldp = lastDataPhase.get
+      simLog(ldp)
+      if (ldp.write) {
+        written(ldp, ahb.HWDATA.toBigInt, ahb.HRESP.toBoolean)
+      } else {
+        read(ldp, ahb.HRDATA.toBigInt, ahb.HRESP.toBoolean)
+      }
+    }
 
     if (inDataPhase) {
       // HRESP might be left high from last random cycle before
@@ -118,6 +133,7 @@ abstract case class AhbLite3SlaveAgent(
       } else if (Seq(HTRANS.SEQ, HTRANS.NONSEQ).contains(addressPhase.get.trans) && delay == 0) {
         // we enter this code at the start of the cycle that has HREADY=1
         val ap = addressPhase.get
+        lastDataPhase = Some(ap)
         if (ap.write) {
           val resp = onWrite(ap.address, ahb.HWDATA.toBigInt)
           ahb.HRESP #= resp
@@ -142,9 +158,27 @@ abstract case class AhbLite3SlaveAgent(
     // TODO can HREADYOUT be low before a transfer starts?? model does not do that currently
     delay = 0.max(delay - 1)
   }
+
   def nextDelay(): Int = simRandom.nextInt(3)
+
+  // Called after response delay has expired, use it to provide HRDATA and HRESP
+  // This function may access the `addressPhase` member for information about the access.
+  // _Note:_ All data is known at this point (since HRDATA is returned).
+  //         For timing reasons any side effects should be modelled using `read`.
+  //         It is guaranteed to be called before the next call to `onRead`.
   def onRead(address: BigInt): (BigInt, Boolean)
+
+  // Called after response delay has expired, use it to set HRESP
+  // This function may access the `addressPhase` member for information about the access.
+  // _Note:_ you may not access HWDATA in this function as it is called
+  //         too early and HWDATA may not be set yet (if there is no delay)
+  //         Use `written` to model any side effects
   def onWrite(address: BigInt, value: BigInt): Boolean
+
+  // Called after read is finished, override to implement read side-effects
+  def read(info: AhbLite3ControlSignals, value: BigInt, resp: Boolean): Unit = {}
+  // Called after write is finished, override to implement write side-effects
+  def written(info: AhbLite3ControlSignals, value: BigInt, resp: Boolean): Unit = {}
 }
 
 // TODO handle early error response
