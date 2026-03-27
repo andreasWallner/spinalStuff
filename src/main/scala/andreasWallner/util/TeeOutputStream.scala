@@ -8,7 +8,8 @@ import java.io.{FilterOutputStream, OutputStream}
   * Heavily inspired by the Apache common-io TeeOutputStream (but w/o the customization ability of `ProxyOutputStream`)
   * https://github.com/apache/commons-io/blob/b51e41938ea794f67223c1414c9e6de8a04c17b5/src/main/java/org/apache/commons/io/output/TeeOutputStream.java
   */
-class TeeOutputStream(out: OutputStream, branch: OutputStream) extends FilterOutputStream(out) {
+class TeeOutputStream (out: OutputStream, branch: OutputStream) extends FilterOutputStream(out) {
+  assert(out != null && branch != null, "Both output stream must not be null")
   override def close(): Unit = {
     try {
       super.close()
@@ -20,6 +21,11 @@ class TeeOutputStream(out: OutputStream, branch: OutputStream) extends FilterOut
   override def flush(): Unit = {
     super.flush()
     branch.flush()
+  }
+
+  override def write(b: Int): Unit = {
+    super.write(b)
+    branch.write(b)
   }
 
   override def write(b: Array[Byte]): Unit = {

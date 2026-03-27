@@ -3,6 +3,7 @@ package andreasWallner.bus.amba3.ahblite3
 import andreasWallner.SpinalFunSuite
 import andreasWallner.bus.amba3.ahblite3.sim.{AhbLite3ControlSignals, AhbLite3SlaveAgent, HTRANS}
 import andreasWallner.sim.simLog
+import org.scalatest.matchers.should.Matchers.convertToAnyShouldWrapper
 import spinal.core.ClockDomain
 import spinal.lib.bus.amba3.ahblite.{AhbLite3, AhbLite3Master}
 import spinal.core._
@@ -87,12 +88,12 @@ class AhbLite3MemoryAgent(ahb: AhbLite3, cd: ClockDomain, maxAddress: Option[Big
       return
     }
 
-    val bytes = (1 << addressPhase.get.size)
+    val bytes = (1 << info.size)
     val dataIndexMask = (ahb.config.dataWidth / 8) - 1
     val offset = (info.address.toLong & dataIndexMask) * 8
 
     val unaligned = value.toLong >> offset
-    simLog(f"DW ${info.address}%08x, ${value}%08x, ${unaligned}%08x")
+    simLog(f"DW ${info.address}%08x, ${bytes} ${value}%08x, ${unaligned}%08x")
     memory.writeBigInt(info.address.toLong, unaligned, bytes)
   }
 
@@ -133,6 +134,13 @@ class AhbLite3MemoryAgent(ahb: AhbLite3, cd: ClockDomain, maxAddress: Option[Big
   }
 }
 
+case class MicroDmaTestParam(srcHSize: Int, dstHSize: Int, noDelay: Boolean, beats: Int = 0x10) {
+  val srcBytes = 1 << srcHSize
+  val dstBytes = 1 << dstHSize
+
+  val transferBytes = srcBytes.max(dstBytes) * beats
+}
+
 class MicroDmaTest extends SpinalFunSuite {
   val slaveConfig = spinal.lib.bus.amba3.ahblite.AhbLite3Config(16, 32)
   val masterConfig = spinal.lib.bus.amba3.ahblite.AhbLite3Config(32, 32)
@@ -154,20 +162,32 @@ class MicroDmaTest extends SpinalFunSuite {
   })
 
   test(dut, "WIP") { dut =>
+    val param = MicroDmaTestParam(1, 2, true)
     val driver = new AhbLite3ReadWriteDriver(dut.io.sub, dut.clockDomain)
     val mem = new AhbLite3MemoryAgent(dut.io.manager, dut.clockDomain) {
-      //override def nextDelay() = 0
+      override def nextDelay() = if (param.noDelay) 0 else simRandom.nextInt(3)
     }
-    mem.memrand(0x40, 20)
+    mem.memrand(0x40, param.transferBytes)
 
     dut.clockDomain.forkStimulus(10)
     dut.clockDomain.waitSampling(1)
 
-    for (idx <- 0x40 - 20 to 0x40) {
+    for (idx <- 0x40 to 0x40 + param.transferBytes) {
       mem.memory.write(idx, idx.toByte);
     }
 
-    mem.setup_descriptor(0x00, 20, 0x40 + 20, true, 1, 0, 0x80 + 20, true, 1, 0)
+    mem.setup_descriptor(
+      address = 0x00,
+      remaining = 20,
+      src_end = 0x40 + param.transferBytes,
+      src_inc = true,
+      param.srcHSize,
+      src_hprot = 0,
+      dst_end = 0x480 + param.transferBytes,
+      dst_inc = true,
+      param.dstHSize,
+      dst_hprot = 0
+    )
     driver.write(0x04, 0x00)
     driver.write(0x00, 0x3)
 
@@ -175,8 +195,12 @@ class MicroDmaTest extends SpinalFunSuite {
     dut.clockDomain.waitSamplingWhere(!dut.io.handshake(0).active.toBoolean)
     dut.clockDomain.waitSampling(100)
 
-    simLog(mem.memory.readArray(0x40 - 20, 20) mkString " ")
-    simLog(mem.memory.readArray(0x80 - 20, 20) mkString " ")
-    assert(mem.memory.readArray(0x40 - 20, 20) sameElements mem.memory.readArray(0x80 - 20, 20))
+    // TODO fix prepare and check sizes and take transfer size into account
+    simLog(mem.memory.readArray(0x40, param.transferBytes) mkString " ")
+    simLog(mem.memory.readArray(0x480, param.transferBytes) mkString " ")
+
+    mem.memory.readArray(0x40, param.transferBytes) shouldEqual mem.memory
+      .readArray(0x480, param.transferBytes)
+
   }
 }

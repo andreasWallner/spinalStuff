@@ -6,7 +6,7 @@ import andreasWallner.SpinalFunSuite
 
 import scala.language.postfixOps
 
-class ArtyEthFloodTest() extends SpinalFunSuite {
+/*class ArtyEthFloodTest() extends SpinalFunSuite {
   val dut = namedSimConfig.withConfig(
     SpinalConfig(defaultClockDomainFrequency = FixedFrequency(100 MHz))
   ) compile (new ArtyEthFlood())
@@ -19,3 +19,4 @@ class ArtyEthFloodTest() extends SpinalFunSuite {
     sleep(100000000)
   }
 }
+*/

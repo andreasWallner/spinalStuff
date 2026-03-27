@@ -46,6 +46,7 @@ case class ChannelData(addressWidth: BitCount) extends Bundle {
   val src = TransferSettings(addressWidth)
   val dst = TransferSettings(addressWidth)
   val continue = Bool()
+  val remaining = UInt(16 bit)
 
   def needsInfoFetch = src.remaining === 0 && active
 
@@ -62,7 +63,7 @@ case class TransferSettings(addressWidth: BitCount) extends Bundle {
   val size = Bits(3 bit)
   val hprot = Bits(4 bit)
   val end = UInt(addressWidth)
-  val remaining = Reg(UInt(16 bit))
+  val remaining = UInt(16 bit)
 
   def sizeBytes = {
     val result = UInt(8 bit) // TODO make output and following adders smaller
@@ -177,6 +178,7 @@ case class MicroDma(generics: MicroDmaGenerics) extends Component {
           channel.dst.size := port.HRDATA(26 downto 24)
           channel.src.hprot := port.HRDATA(23 downto 20)
           channel.dst.hprot := port.HRDATA(19 downto 16)
+          channel.remaining := port.HRDATA(15 downto 0).asUInt.resized
           channel.src.remaining := (port
             .HRDATA(15 downto 0)
             .asUInt << port.HRDATA(29 downto 27).asUInt).resized // TODO get rid of this
@@ -215,7 +217,10 @@ case class MicroDma(generics: MicroDmaGenerics) extends Component {
       when(port.HREADY) {
         transferActive := True
         when(reading) {
-          channel.src.remaining := channel.src.remaining - channel.dst.sizeBytes
+          when(bufferFill === 0) {
+            channel.remaining := channel.remaining - 1
+          }
+          channel.src.remaining := channel.src.remaining - channel.src.sizeBytes
           bufferFill := fillAdd
           reading := fillAdd =/= dstBytes
           writing := fillAdd === dstBytes
@@ -223,7 +228,7 @@ case class MicroDma(generics: MicroDmaGenerics) extends Component {
           channel.dst.remaining := channel.dst.remaining - channel.dst.sizeBytes
           bufferFill := fillSub
           writing := fillSub =/= 0
-          when(channel.src.remaining === 0) {
+          when(channel.remaining === 0) {
             regfile.channelEnable(idx) := False
             infoComplete := False
           } otherwise {
@@ -241,13 +246,13 @@ case class MicroDma(generics: MicroDmaGenerics) extends Component {
               is(1) { dataBuffer(7 downto 0) := dataSlices.data8 }
               is(2) { dataBuffer(15 downto 8) := dataSlices.data8 }
               is(3) { dataBuffer(23 downto 16) := dataSlices.data8 }
-              is(0) { dataBuffer(31 downto 24) := dataSlices.data8 }
+              is(4) { dataBuffer(31 downto 24) := dataSlices.data8 }
             }
           }
           is(2) {
             switch(bufferFill) {
               is(2) { dataBuffer(15 downto 0) := dataSlices.data16 }
-              is(0) { dataBuffer(31 downto 16) := dataSlices.data16 }
+              is(4) { dataBuffer(31 downto 16) := dataSlices.data16 }
             }
           }
           is(4) {
@@ -286,7 +291,7 @@ case class MicroDma(generics: MicroDmaGenerics) extends Component {
           is(1) { port.HWDATA(31 downto 16) := data16 }
         }
       }
-      is(3) {
+      is(4) {
         port.HWDATA := data32
       }
     }

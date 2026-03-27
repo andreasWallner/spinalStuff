@@ -1,6 +1,6 @@
 package andreasWallner
 
-import andreasWallner.sim.PimpedSpinalSimConfig
+import andreasWallner.util.TeeOutputStream
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.{BeforeAndAfterAllConfigMap, ConfigMap}
 import spinal.core.Component
@@ -19,11 +19,11 @@ class NamedSimConfig(val className: String) extends SpinalSimConfig {
   update()
 
   sys.env.getOrElse("SPINALSIM_WAVE", "fst") match {
-    case "vcd" => this.withVcdWave
-    case "fst" => this.withFstWave
+    case "vcd"  => this.withVcdWave
+    case "fst"  => this.withFstWave
     case "fsdb" => this.withFsdbWave
     case "none" =>
-    case x => throw new Exception(s"invalid wave format $x")
+    case x      => throw new Exception(s"invalid wave format $x")
   }
 
   def extendName(s: String) = {
@@ -59,19 +59,19 @@ class NamedSimConfig(val className: String) extends SpinalSimConfig {
   * Use `namedSimConfig` as `SimConfig` to use the testsuite name as
   * the workspace name. This way multiple testsuites testing the same
   * DUT component will have consistent folder names.
- *
- * `extendName` can be used to put simulation into subfolder, which is
- * intended for tests that parameterize (multiple) DUTs:
- *
- * {{{
- * ...
- * val dutName = "$some_$parameter"
- * val dut = namedSimConfig.extendName(dutName).compile(SomeComponent(some, parameter))
- *
- * test(dut, s"parametric_test_$dutName") { dut =>
- * ...
- * }
- * }}}
+  *
+  * `extendName` can be used to put simulation into subfolder, which is
+  * intended for tests that parameterize (multiple) DUTs:
+  *
+  * {{{
+  * ...
+  * val dutName = "$some_$parameter"
+  * val dut = namedSimConfig.extendName(dutName).compile(SomeComponent(some, parameter))
+  *
+  * test(dut, s"parametric_test_$dutName") { dut =>
+  * ...
+  * }
+  * }}}
   */
 class SpinalFunSuite extends AnyFunSuite with BeforeAndAfterAllConfigMap {
   var _globalSeed: Option[Int] = None
@@ -92,10 +92,20 @@ class SpinalFunSuite extends AnyFunSuite with BeforeAndAfterAllConfigMap {
   def test[T <: Component](dut: => SimCompiled[T], testName: String, seed: Int)(
       body: T => Unit
   ): Unit = {
-    test(testName) {
-      dut.doSim(testName, seed = _globalSeed.getOrElse(seed)) { dut =>
-        body(dut)
+    val fileStream = new java.io.FileOutputStream(namedSimConfig._testPath + "/" + testName + ".log")
+    val teeStream = new TeeOutputStream(System.out, fileStream)
+    val oldOut = System.out
+    try {
+      //System.setOut(new java.io.PrintStream(teeStream))
+      test(testName) {
+        dut.doSim(testName, seed = _globalSeed.getOrElse(seed)) { dut =>
+          body(dut)
+        }
       }
+    } finally {
+      System.setOut(oldOut)
+      teeStream.flush()
+      fileStream.close()
     }
   }
 
